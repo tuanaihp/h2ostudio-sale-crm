@@ -161,6 +161,14 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       try { row.date = typeof data.date === 'string' ? data.date : (data.date as Date).toISOString(); } catch { /* ignore */ }
     }
 
+    // Auto-tags based on submission context
+    const autoTags: string[] = [];
+    if (data.luckyGift) autoTags.push('Có quà');
+    if (data.source === 'lucky_wheel') autoTags.push('Vòng quay');
+    if ((data.favoriteIds?.length || 0) >= 3) autoTags.push('Tiềm năng cao');
+    else if ((data.favoriteIds?.length || 0) > 0) autoTags.push('Đã thích album');
+    if (autoTags.length > 0) row.tags = autoTags;
+
     const { error } = await supabase.from('consultations').insert(row);
     if (error) throw new Error(error.message);
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
-import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid } from 'lucide-react';
+import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
@@ -17,6 +17,38 @@ const isStaleNew = (c: Consultation): boolean => {
 const getHoursOld = (createdAt: any): number => {
   const d = createdAt?.toDate ? createdAt.toDate() : new Date(createdAt);
   return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60));
+};
+
+// New lead chưa liên hệ từ 4h–48h (cảnh báo vàng)
+const isUrgentNew = (c: Consultation): boolean => {
+  if (c.status !== 'new') return false;
+  const hours = getHoursOld(c.createdAt);
+  return hours >= 4 && hours < 48;
+};
+
+// Trả về số ngày còn lại đến ngày chụp (âm = đã qua)
+const getShootingCountdown = (shootingDate?: string): number | null => {
+  if (!shootingDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const shoot = new Date(shootingDate);
+  shoot.setHours(0, 0, 0, 0);
+  return Math.round((shoot.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+// Ưu tiên hiển thị: hot+stale → hot → stale → urgent → new → contacted → registered
+const getLeadPriority = (c: Consultation): number => {
+  const favCount = c.favoriteIds?.length || 0;
+  const isHot = favCount >= 3 || !!c.luckyGift || c.source === 'lucky_wheel';
+  if (c.status === 'new') {
+    if (isHot && isStaleNew(c)) return 0;
+    if (isHot) return 1;
+    if (isStaleNew(c)) return 2;
+    if (isUrgentNew(c)) return 3;
+    return 4;
+  }
+  if (c.status === 'contacted') return 5;
+  return 6;
 };
 
 const RegistrationModal: React.FC<{ 
@@ -293,13 +325,15 @@ const KanbanCard: React.FC<{
   onOpenReg: (c: Consultation) => void;
 }> = ({ consult, isSuperAdmin, onStatusChange, onDelete, onOpenReg }) => {
   const stale = isStaleNew(consult);
+  const urgent = isUrgentNew(consult);
   const favCount = consult.favoriteIds?.length || 0;
   const isHot = favCount >= 3 || !!consult.luckyGift || consult.source === 'lucky_wheel';
   const isWarm = favCount >= 1 && !isHot;
   const hours = getHoursOld(consult.createdAt);
+  const shootCountdown = getShootingCountdown(consult.shootingDate);
 
   return (
-    <div className={`bg-white rounded-xl p-3 shadow-sm border transition-all ${stale ? 'border-orange-300 shadow-orange-100' : 'border-light-gray'}`}>
+    <div className={`bg-white rounded-xl p-3 shadow-sm border transition-all ${stale ? 'border-orange-300 shadow-orange-100' : urgent ? 'border-yellow-300 shadow-yellow-50' : 'border-light-gray'}`}>
       <div className="flex justify-between items-start gap-2 mb-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1 flex-wrap">
@@ -311,6 +345,9 @@ const KanbanCard: React.FC<{
             <p className="text-[10px] text-orange-600 font-bold mt-0.5">
               {hours >= 24 ? `${Math.floor(hours / 24)}N` : `${hours}h`} chưa gọi
             </p>
+          )}
+          {!stale && urgent && (
+            <p className="text-[10px] text-yellow-600 font-bold mt-0.5">{hours}h chưa gọi</p>
           )}
         </div>
         <StatusDropdown status={consult.status} onChange={(s) => onStatusChange(consult.id, s)} />
@@ -345,8 +382,10 @@ const KanbanCard: React.FC<{
       {consult.status === 'registered' && (
         <div className="flex flex-col gap-0.5 mt-1">
           {consult.shootingDate && (
-            <div className="text-[10px] text-blue-600 font-bold flex items-center gap-1">
+            <div className="text-[10px] text-blue-600 font-bold flex items-center gap-1 flex-wrap">
               <Camera size={9} /> Chụp: {format(new Date(consult.shootingDate), 'dd/MM')}
+              {shootCountdown === 1 && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded animate-pulse">D-1!</span>}
+              {shootCountdown === 3 && <span className="bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded">D-3</span>}
             </div>
           )}
           {consult.contractValue && (
@@ -412,6 +451,116 @@ const KanbanView: React.FC<{
           </div>
         );
       })}
+    </div>
+  );
+};
+
+const TodayPanel: React.FC<{ consultations: Consultation[] }> = ({ consultations }) => {
+  const [collapsed, setCollapsed] = useState(false);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const urgentUncontacted = consultations.filter(c => isUrgentNew(c) || isStaleNew(c));
+  const followUpToday = consultations.filter(c => c.followUpDate === todayStr);
+  const shootTomorrow = consultations.filter(c => getShootingCountdown(c.shootingDate) === 1);
+  const shootIn3Days = consultations.filter(c => getShootingCountdown(c.shootingDate) === 3);
+
+  const totalAlerts = urgentUncontacted.length + followUpToday.length + shootTomorrow.length + shootIn3Days.length;
+  if (totalAlerts === 0) return null;
+
+  const hasUrgent = urgentUncontacted.length > 0;
+
+  return (
+    <div className={`mb-6 rounded-2xl border overflow-hidden ${hasUrgent ? 'border-red-200 bg-red-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full px-5 py-3.5 flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-3">
+          <Bell size={15} className={hasUrgent ? 'text-red-600' : 'text-amber-600'} />
+          <span className={`font-bold text-sm ${hasUrgent ? 'text-red-800' : 'text-amber-800'}`}>
+            Cần xử lý hôm nay
+          </span>
+          <span className={`text-white text-xs font-bold px-2 py-0.5 rounded-full ${hasUrgent ? 'bg-red-600' : 'bg-amber-500'}`}>
+            {totalAlerts}
+          </span>
+        </div>
+        <ChevronDown size={15} className={`transition-transform ${collapsed ? '' : 'rotate-180'} ${hasUrgent ? 'text-red-500' : 'text-amber-500'}`} />
+      </button>
+
+      {!collapsed && (
+        <div className="px-5 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {urgentUncontacted.length > 0 && (
+            <div className="bg-white border border-red-200 rounded-xl p-3">
+              <div className="text-[10px] font-black text-red-700 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Clock size={10} /> Chưa gọi &gt;4h ({urgentUncontacted.length})
+              </div>
+              {urgentUncontacted.slice(0, 4).map(c => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-red-50 last:border-0 gap-2">
+                  <span className="text-xs font-semibold text-dark truncate">{c.name}</span>
+                  <a href={`tel:${c.phone}`} className="text-[10px] text-red-600 font-bold hover:underline whitespace-nowrap flex items-center gap-0.5 shrink-0">
+                    <Phone size={9} />{c.phone}
+                  </a>
+                </div>
+              ))}
+              {urgentUncontacted.length > 4 && <p className="text-[10px] text-red-400 mt-1">+{urgentUncontacted.length - 4} khác</p>}
+            </div>
+          )}
+
+          {followUpToday.length > 0 && (
+            <div className="bg-white border border-blue-200 rounded-xl p-3">
+              <div className="text-[10px] font-black text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Phone size={10} /> Hẹn gọi hôm nay ({followUpToday.length})
+              </div>
+              {followUpToday.slice(0, 4).map(c => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-blue-50 last:border-0 gap-2">
+                  <span className="text-xs font-semibold text-dark truncate">{c.name}</span>
+                  <a href={`tel:${c.phone}`} className="text-[10px] text-blue-600 font-bold hover:underline whitespace-nowrap flex items-center gap-0.5 shrink-0">
+                    <Phone size={9} />{c.phone}
+                  </a>
+                </div>
+              ))}
+              {followUpToday.length > 4 && <p className="text-[10px] text-blue-400 mt-1">+{followUpToday.length - 4} khác</p>}
+            </div>
+          )}
+
+          {shootTomorrow.length > 0 && (
+            <div className="bg-white border border-purple-200 rounded-xl p-3">
+              <div className="text-[10px] font-black text-purple-700 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Camera size={10} /> Chụp ngày mai ({shootTomorrow.length})
+              </div>
+              {shootTomorrow.slice(0, 4).map(c => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-purple-50 last:border-0 gap-2">
+                  <span className="text-xs font-semibold text-dark truncate">{c.name}</span>
+                  <a href={`tel:${c.phone}`} className="text-[10px] text-purple-600 font-bold hover:underline whitespace-nowrap flex items-center gap-0.5 shrink-0">
+                    <Phone size={9} />{c.phone}
+                  </a>
+                </div>
+              ))}
+              {shootTomorrow.length > 4 && <p className="text-[10px] text-purple-400 mt-1">+{shootTomorrow.length - 4} khác</p>}
+            </div>
+          )}
+
+          {shootIn3Days.length > 0 && (
+            <div className="bg-white border border-green-200 rounded-xl p-3">
+              <div className="text-[10px] font-black text-green-700 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Camera size={10} /> Chụp sau 3 ngày ({shootIn3Days.length})
+              </div>
+              {shootIn3Days.slice(0, 4).map(c => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-green-50 last:border-0 gap-2">
+                  <span className="text-xs font-semibold text-dark truncate">{c.name}</span>
+                  <span className="text-[10px] text-green-600 font-bold whitespace-nowrap shrink-0">
+                    {c.shootingDate ? format(new Date(c.shootingDate), 'dd/MM') : ''}
+                  </span>
+                </div>
+              ))}
+              {shootIn3Days.length > 4 && <p className="text-[10px] text-green-400 mt-1">+{shootIn3Days.length - 4} khác</p>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -652,7 +801,8 @@ const AdminConsultations: React.FC = () => {
       const search = searchTerm.toLowerCase();
       const tagsString = (c.tags || []).join(' ').toLowerCase();
       return c.name.toLowerCase().includes(search) || c.phone.includes(search) || tagsString.includes(search);
-    });
+    })
+    .sort((a, b) => getLeadPriority(a) - getLeadPriority(b));
 
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredConsultations.length) {
@@ -716,6 +866,28 @@ const AdminConsultations: React.FC = () => {
   }, {} as Record<string, number>);
 
   const staleLeads = consultations.filter(isStaleNew).length;
+
+  // Week / month stats
+  const now = new Date();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const getLeadDate = (c: Consultation) =>
+    c.createdAt?.toDate ? c.createdAt.toDate() : new Date(c.createdAt);
+
+  const thisWeekLeads = consultations.filter(c => getLeadDate(c) >= oneWeekAgo).length;
+  const lastWeekLeads = consultations.filter(c => { const d = getLeadDate(c); return d >= twoWeeksAgo && d < oneWeekAgo; }).length;
+  const weekTrend = lastWeekLeads > 0 ? Math.round(((thisWeekLeads - lastWeekLeads) / lastWeekLeads) * 100) : (thisWeekLeads > 0 ? 100 : 0);
+
+  const thisMonthRevenue = consultations
+    .filter(c => c.contractValue && getLeadDate(c) >= startOfMonth)
+    .reduce((sum, c) => sum + (c.contractValue || 0), 0);
+
+  const upcomingShootsCount = consultations.filter(c => {
+    const days = getShootingCountdown(c.shootingDate);
+    return days !== null && days >= 0 && days <= 7;
+  }).length;
 
   const extractMessageContent = (text: string | undefined) => {
     if (!text) return { message: '', links: [] };
@@ -894,6 +1066,44 @@ const AdminConsultations: React.FC = () => {
           </div>
         </div>
 
+        {/* Week / Month stats row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-light-gray flex items-center gap-4">
+            <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center shrink-0">
+              <TrendingUp size={22} />
+            </div>
+            <div>
+              <p className="text-xs text-dark/60 font-bold uppercase tracking-wider">Tuần này</p>
+              <p className="text-2xl font-bold text-dark">{thisWeekLeads} leads</p>
+              <p className={`text-xs font-bold ${weekTrend >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {weekTrend >= 0 ? '↑' : '↓'} {Math.abs(weekTrend)}% so tuần trước ({lastWeekLeads})
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-light-gray flex items-center gap-4">
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center shrink-0">
+              <DollarSign size={22} />
+            </div>
+            <div>
+              <p className="text-xs text-dark/60 font-bold uppercase tracking-wider">Doanh thu tháng này</p>
+              <p className="text-2xl font-bold text-dark">
+                {thisMonthRevenue > 0 ? `${(thisMonthRevenue / 1_000_000).toFixed(1)}M` : '—'}đ
+              </p>
+            </div>
+          </div>
+
+          <div className={`bg-white p-4 rounded-2xl shadow-sm border flex items-center gap-4 ${upcomingShootsCount > 0 ? 'border-blue-200 bg-blue-50/30' : 'border-light-gray'}`}>
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${upcomingShootsCount > 0 ? 'bg-blue-100 text-blue-500' : 'bg-blue-50 text-blue-300'}`}>
+              <Camera size={22} />
+            </div>
+            <div>
+              <p className="text-xs text-dark/60 font-bold uppercase tracking-wider">Lịch chụp 7 ngày tới</p>
+              <p className={`text-2xl font-bold ${upcomingShootsCount > 0 ? 'text-blue-600' : 'text-dark'}`}>{upcomingShootsCount}</p>
+            </div>
+          </div>
+        </div>
+
         {/* Source Breakdown & Contract Value */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex flex-wrap gap-2 items-center">
@@ -912,6 +1122,8 @@ const AdminConsultations: React.FC = () => {
             </div>
           )}
         </div>
+
+        <TodayPanel consultations={consultations} />
 
         {view === 'calendar' ? (
           <ScheduleCalendar consultations={consultations} styles={styles} />
@@ -989,6 +1201,11 @@ const AdminConsultations: React.FC = () => {
                               if (isWarm) return <span className="bg-orange-100 text-orange-600 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">Warm</span>;
                               return null;
                             })()}
+                            {isUrgentNew(consult) && (
+                              <span className="bg-yellow-100 text-yellow-700 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                                {getHoursOld(consult.createdAt)}h chưa gọi
+                              </span>
+                            )}
                             {isStaleNew(consult) && (
                               <span className="bg-orange-100 text-orange-600 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                 {getHoursOld(consult.createdAt) >= 24 ? `${Math.floor(getHoursOld(consult.createdAt)/24)}N` : `${getHoursOld(consult.createdAt)}h`} chưa gọi
@@ -1072,8 +1289,10 @@ const AdminConsultations: React.FC = () => {
                               onClick={() => setRegModalData(consult)}
                               title="Bấm để sửa thông tin đăng ký"
                             >
-                              <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase">
+                              <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase flex-wrap">
                                 <Camera size={10} /> Chụp: {consult.shootingDate ? format(new Date(consult.shootingDate), 'dd/MM') : '??'}
+                                {getShootingCountdown(consult.shootingDate) === 1 && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded animate-pulse">D-1!</span>}
+                                {getShootingCountdown(consult.shootingDate) === 3 && <span className="bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded">D-3</span>}
                               </div>
                               <div className="flex items-center gap-1.5 text-red-600 font-bold text-[10px] uppercase">
                                 <Calendar size={10} /> Cưới: {consult.weddingDate ? format(new Date(consult.weddingDate), 'dd/MM') : '??'}
