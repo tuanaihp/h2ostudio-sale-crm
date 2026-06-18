@@ -43,7 +43,7 @@ const PhotoItem = React.memo<SortablePhotoProps>(({
       className="relative group"
     >
       <Link 
-        to={`/style/${slug}/album/${albumSlug}/photo/${index}`}
+        to={`/style/${slug}/album/${albumSlug}/photo/${photo.id}`}
         className="block aspect-[3/4] overflow-hidden rounded-lg bg-light-gray"
       >
         {photo.design ? (
@@ -364,7 +364,7 @@ const AlbumDetail: React.FC = () => {
   const handleConsult = (e: React.MouseEvent, photo: Photo, index: number) => {
     e.preventDefault();
     e.stopPropagation();
-    const url = `${window.location.origin}/style/${slug}/album/${albumSlug}/photo/${index}`;
+    const url = `${window.location.origin}/style/${slug}/album/${albumSlug}/photo/${photo.id}`;
     const message = `Chào H2O STUDIO, mình đang quan tâm ảnh này trong album "${album.title}" (Ảnh số ${index + 1})\nLink: ${url}\nTư vấn giúp mình nhé!`;
     setModalTitle("Tư vấn ảnh này");
     setChatInitialMessage(message);

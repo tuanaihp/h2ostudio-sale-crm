@@ -13,7 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Heart, Sparkles, X } from 'lucide-react';
 
 const Home: React.FC = () => {
-  const { styles, setStyles, addStyle, isAdmin, isSuperAdmin, favorites, settings } = useApp();
+  const { styles, addStyle, isAdmin, isSuperAdmin, favorites, settings } = useApp();
   const [searchParams] = useSearchParams();
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -58,25 +58,7 @@ const Home: React.FC = () => {
     linkElement.click();
   };
 
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const importedStyles = JSON.parse(event.target?.result as string);
-        if (Array.isArray(importedStyles)) {
-          // In a real app, use a custom modal instead of window.confirm
-          setStyles(importedStyles);
-          console.log('Đã khôi phục dữ liệu thành công!');
-        }
-      } catch (err) {
-        console.log('File không hợp lệ!');
-      }
-    };
-    reader.readAsText(file);
-  };
 
   return (
     <Layout 
@@ -139,10 +121,6 @@ const Home: React.FC = () => {
             >
               NẠP DỮ LIỆU
             </button>
-            <label className="text-[10px] uppercase tracking-widest font-bold text-dark/40 hover:text-primary cursor-pointer transition-colors">
-              Khôi phục
-              <input type="file" accept=".json" onChange={importData} className="hidden" />
-            </label>
             <button onClick={exportData} className="text-[10px] uppercase tracking-widest font-bold text-dark/40 hover:text-primary transition-colors">
               Sao lưu (Tải về)
             </button>

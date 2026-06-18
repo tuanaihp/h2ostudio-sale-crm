@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AppProvider } from './context/AppContext';
 import { PhoneGate } from './components/PhoneGate';
@@ -42,6 +42,7 @@ function AppContent() {
           <Route path="/favorites" element={
             <PhoneGate><Favorites /></PhoneGate>
           } />
+          <Route path="/admin" element={<Navigate to="/admin/consultations" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/consultations" element={<AdminConsultations />} />
           <Route path="/admin/settings" element={<AdminSettings />} />

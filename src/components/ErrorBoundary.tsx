@@ -28,19 +28,17 @@ export class ErrorBoundary extends React.Component<Props, State> {
       let errorMessage = "Đã có lỗi xảy ra. Vui lòng thử lại sau.";
       
       try {
-        // Check if it's a Firestore permission error (JSON string)
         if (this.state.error?.message.startsWith('{')) {
           const errInfo = JSON.parse(this.state.error.message);
-          if (errInfo.error.includes('Missing or insufficient permissions')) {
+          if (errInfo.error?.includes('Missing or insufficient permissions') || errInfo.error?.includes('permission')) {
             errorMessage = "Bạn không có quyền thực hiện thao tác này. Vui lòng đăng nhập với tài khoản quản trị.";
           } else {
-             errorMessage = `Firestore Error: ${errInfo.error}`;
+            errorMessage = `Lỗi hệ thống: ${errInfo.error || errInfo.message || this.state.error.message}`;
           }
         } else {
-             errorMessage = `Lỗi hệ thống: ${this.state.error?.message}`;
+          errorMessage = `Lỗi hệ thống: ${this.state.error?.message}`;
         }
       } catch (e) {
-        // Fallback to default message
         errorMessage = `Lỗi hệ thống: ${this.state.error?.message}`;
       }
 

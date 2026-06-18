@@ -241,18 +241,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserRole(data.role);
       } else {
         const email = currentUser.email || '';
-        const isDefaultAdmin = email === 'maxsamuelbldhp@gmail.com' || email === 'nguyentuan@hps.edu.vn';
-        const isDefaultStaff = email === 'staff@h2ostudio.com';
+        const adminEmail = (import.meta as any).env?.VITE_ADMIN_EMAIL || '';
+        const isDefaultAdmin = adminEmail ? email === adminEmail : false;
 
-        if (isDefaultAdmin || isDefaultStaff) {
-          const role = isDefaultAdmin ? 'super_admin' : 'admin';
-          setUserRole(role);
+        if (isDefaultAdmin) {
+          setUserRole('super_admin');
           await supabase.from('user_roles').upsert({
             id: currentUser.id,
             email,
             phone_number: currentUser.phone || '',
-            role,
-            display_name: isDefaultStaff ? 'H2O Staff' : 'Admin Principal',
+            role: 'super_admin',
+            display_name: 'Admin Principal',
           });
         } else {
           setUserRole('client');
@@ -895,25 +894,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ─── Reorder ─────────────────────────────────────────────────────────────────
   const reorderStyles = async (newStyles: Style[]) => {
     if (!user || !isAdmin) return;
-    await Promise.all(newStyles.map((style, index) =>
-      supabase.from('styles').update({ order: index }).eq('id', style.id)
-    ));
+    await supabase.from('styles').upsert(
+      newStyles.map((style, index) => ({ id: style.id, order: index })),
+      { onConflict: 'id' }
+    );
   };
 
   const reorderAlbums = async (styleId: string, newAlbums: Album[]) => {
     if (!user || !isAdmin) return;
-    await Promise.all(newAlbums.map((album, index) =>
-      supabase.from('albums').update({ order: index }).eq('id', album.id)
-    ));
-    await touchStyle(styleId);
+    await supabase.from('albums').upsert(
+      newAlbums.map((album, index) => ({ id: album.id, order: index })),
+      { onConflict: 'id' }
+    );
+    touchStyle(styleId);
   };
 
   const reorderPhotos = async (styleId: string, albumId: string, newPhotos: Photo[]) => {
     if (!user || !isAdmin) return;
-    await Promise.all(newPhotos.map((photo, index) =>
-      supabase.from('photos').update({ order: index }).eq('id', photo.id)
-    ));
-    await touchStyle(styleId);
+    await supabase.from('photos').upsert(
+      newPhotos.map((photo, index) => ({ id: photo.id, order: index })),
+      { onConflict: 'id' }
+    );
+    touchStyle(styleId);
   };
 
   // ─── Consultation CRUD ───────────────────────────────────────────────────────

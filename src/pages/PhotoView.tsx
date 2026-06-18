@@ -16,8 +16,16 @@ const PhotoView: React.FC = () => {
   
   const style = styles.find(s => s.slug === slug);
   const album = style?.albums?.find(a => a.slug === albumSlug);
-  const currentIndex = parseInt(photoId || "0");
-  const photo = album?.photos?.[currentIndex];
+  const photos = album?.photos || [];
+  // Support both photo ID (new format) and numeric index (cross-album nav fallback)
+  const currentIndex = (() => {
+    if (!photoId) return 0;
+    const byId = photos.findIndex(p => p.id === photoId);
+    if (byId !== -1) return byId;
+    const byIndex = parseInt(photoId);
+    return isNaN(byIndex) ? 0 : Math.min(byIndex, Math.max(photos.length - 1, 0));
+  })();
+  const photo = photos[currentIndex];
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isConsultModalOpen, setIsConsultModalOpen] = useState(false);
@@ -31,32 +39,29 @@ const PhotoView: React.FC = () => {
   // Auto-play effect
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isAutoPlaying && album?.photos) {
-      if (currentIndex < album.photos.length - 1) {
+    if (isAutoPlaying && photos.length > 0) {
+      if (currentIndex < photos.length - 1) {
         interval = setInterval(() => {
           setDirection(1);
-          navigate(`/style/${slug}/album/${albumSlug}/photo/${currentIndex + 1}`);
-        }, 3500); // 3.5 seconds per photo
+          navigate(`/style/${slug}/album/${albumSlug}/photo/${photos[currentIndex + 1].id}`);
+        }, 3500);
       } else if (style && style.albums && style.albums.length > 1) {
-        // Go to the NEXT album in the style sequentially to allow a continuous slideshow
-        const currentAlbumIndex = style.albums.findIndex(a => a.id === album.id);
+        const currentAlbumIndex = style.albums.findIndex(a => a.id === album?.id);
         const nextAlbumIndex = (currentAlbumIndex + 1) % style.albums.length;
         const nextAlbum = style.albums[nextAlbumIndex];
-        
         interval = setInterval(() => {
           setDirection(1);
           navigate(`/style/${slug}/album/${nextAlbum.slug}/photo/0`);
         }, 3500);
       } else {
-        // If no other albums or photos, stop
         setIsAutoPlaying(false);
       }
     }
-    
+
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isAutoPlaying, currentIndex, album, style, slug, albumSlug, navigate]);
+  }, [isAutoPlaying, currentIndex, photos, album, style, slug, albumSlug, navigate]);
 
   const isUnmodifiedDesign = photo?.design && 
     !photo.design.text && 
@@ -89,9 +94,9 @@ const PhotoView: React.FC = () => {
   }, [currentIndex, album?.photos]);
 
   const handleNext = () => {
-    if (album && album.photos && currentIndex < album.photos.length - 1) {
+    if (photos.length > 0 && currentIndex < photos.length - 1) {
       setDirection(1);
-      navigate(`/style/${slug}/album/${albumSlug}/photo/${currentIndex + 1}`);
+      navigate(`/style/${slug}/album/${albumSlug}/photo/${photos[currentIndex + 1].id}`);
     } else if (style && style.albums && style.albums.length > 1) {
       const currentAlbumIndex = style.albums.findIndex(a => a.id === album?.id);
       const nextAlbumIndex = (currentAlbumIndex + 1) % style.albums.length;
@@ -102,9 +107,9 @@ const PhotoView: React.FC = () => {
   };
 
   const handlePrev = () => {
-    if (album && album.photos && currentIndex > 0) {
+    if (photos.length > 0 && currentIndex > 0) {
       setDirection(-1);
-      navigate(`/style/${slug}/album/${albumSlug}/photo/${currentIndex - 1}`);
+      navigate(`/style/${slug}/album/${albumSlug}/photo/${photos[currentIndex - 1].id}`);
     }
   };
 
