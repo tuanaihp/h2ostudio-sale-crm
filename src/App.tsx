@@ -13,6 +13,7 @@ const AdminConsultations = lazy(() => import('./pages/AdminConsultations'));
 const AdminSettings = lazy(() => import('./pages/AdminSettings'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const AdminTrash = lazy(() => import('./pages/AdminTrash'));
+const AdminContent = lazy(() => import('./pages/AdminContent'));
 const AiChatBubble = lazy(() => import('./components/AiChatBubble').then(m => ({ default: m.AiChatBubble })));
 
 const PageLoader = () => (
@@ -45,6 +46,7 @@ function AppContent() {
           <Route path="/admin/consultations" element={<AdminConsultations />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
           <Route path="/admin/trash" element={<AdminTrash />} />
+          <Route path="/admin/content" element={<AdminContent />} />
         </Routes>
       </Suspense>
       {!isAdmin && (
