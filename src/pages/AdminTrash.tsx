@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { Style, Album, Photo } from '../types';
 import { Trash2, RotateCcw, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
@@ -26,7 +25,7 @@ interface DeletedPhoto extends Photo {
 
 const AdminTrash: React.FC = () => {
   const { user, isAdmin, isAuthReady, restoreStyle, permanentDeleteStyle, restoreAlbum, permanentDeleteAlbum, restorePhoto, permanentDeletePhoto } = useApp();
-  
+
   const [deletedStyles, setDeletedStyles] = useState<DeletedStyle[]>([]);
   const [deletedAlbums, setDeletedAlbums] = useState<DeletedAlbum[]>([]);
   const [deletedPhotos, setDeletedPhotos] = useState<DeletedPhoto[]>([]);
@@ -35,113 +34,90 @@ const AdminTrash: React.FC = () => {
   const fetchTrashItems = async () => {
     setIsLoading(true);
     try {
-      const stylesSnap = await getDocs(collection(db, 'styles'));
-      
-      const newDeletedStyles: DeletedStyle[] = [];
-      const newDeletedAlbums: DeletedAlbum[] = [];
-      const newDeletedPhotos: DeletedPhoto[] = [];
+      const [stylesRes, albumsRes, photosRes] = await Promise.all([
+        supabase.from('styles').select('*').eq('deleted', true),
+        supabase.from('albums').select('*').eq('deleted', true),
+        supabase.from('photos').select('*').eq('deleted', true),
+      ]);
 
-      for (const styleDoc of stylesSnap.docs) {
-        const styleData = styleDoc.data() as Style;
-        
-        if (styleData.deleted) {
-          newDeletedStyles.push({ ...styleData, id: styleDoc.id, deletedAtDate: styleData.deletedAt?.toDate() });
-        }
+      // Also fetch non-deleted styles/albums for name lookup
+      const { data: allStyles } = await supabase.from('styles').select('id, slug, title');
+      const { data: allAlbums } = await supabase.from('albums').select('id, slug, title, style_id');
 
-        const albumsRef = collection(db, 'styles', styleDoc.id, 'albums');
-        const albumsSnap = await getDocs(albumsRef);
-        
-        for (const albumDoc of albumsSnap.docs) {
-          const albumData = albumDoc.data() as Album;
-          
-          if (albumData.deleted) {
-            newDeletedAlbums.push({ 
-              ...albumData, 
-              id: albumDoc.id, 
-              styleId: styleDoc.id,
-              styleSlug: styleData.slug,
-              styleTitle: styleData.title,
-              deletedAtDate: albumData.deletedAt?.toDate()
-            });
-          }
+      const styleMap = Object.fromEntries((allStyles || []).map(s => [s.id, s]));
+      const albumMap = Object.fromEntries((allAlbums || []).map(a => [a.id, a]));
 
-          const photosRef = collection(db, 'styles', styleDoc.id, 'albums', albumDoc.id, 'photos');
-          const photosSnap = await getDocs(photosRef);
-          
-          for (const photoDoc of photosSnap.docs) {
-            const photoData = photoDoc.data() as Photo;
-            
-            if (photoData.deleted) {
-              newDeletedPhotos.push({
-                ...photoData,
-                id: photoDoc.id,
-                styleId: styleDoc.id,
-                styleSlug: styleData.slug,
-                albumId: albumDoc.id,
-                albumSlug: albumData.slug,
-                albumTitle: albumData.title,
-                deletedAtDate: photoData.deletedAt?.toDate()
-              });
-            }
-          }
-        }
-      }
+      const newDeletedStyles: DeletedStyle[] = (stylesRes.data || []).map(row => ({
+        id: row.id, slug: row.slug || '', title: row.title || '', description: row.description || '',
+        coverImage: row.cover_image || '', design: row.design, order: row.order || 0,
+        deleted: true, deletedAt: row.deleted_at, albums: [],
+        deletedAtDate: row.deleted_at ? new Date(row.deleted_at) : undefined,
+      })).sort((a, b) => (b.deletedAtDate?.getTime() || 0) - (a.deletedAtDate?.getTime() || 0));
 
-      setDeletedStyles(newDeletedStyles.sort((a, b) => ((b.deletedAtDate?.getTime() || 0) - (a.deletedAtDate?.getTime() || 0))));
-      setDeletedAlbums(newDeletedAlbums.sort((a, b) => ((b.deletedAtDate?.getTime() || 0) - (a.deletedAtDate?.getTime() || 0))));
-      setDeletedPhotos(newDeletedPhotos.sort((a, b) => ((b.deletedAtDate?.getTime() || 0) - (a.deletedAtDate?.getTime() || 0))));
+      const newDeletedAlbums: DeletedAlbum[] = (albumsRes.data || []).map(row => {
+        const parentStyle = styleMap[row.style_id] || {};
+        return {
+          id: row.id, slug: row.slug || '', title: row.title || '', description: row.description || '',
+          coverImage: row.cover_image || '', design: row.design, order: row.order || 0,
+          deleted: true, deletedAt: row.deleted_at, photos: [],
+          styleId: row.style_id || '',
+          styleSlug: parentStyle.slug || '',
+          styleTitle: parentStyle.title || '',
+          deletedAtDate: row.deleted_at ? new Date(row.deleted_at) : undefined,
+        };
+      }).sort((a, b) => (b.deletedAtDate?.getTime() || 0) - (a.deletedAtDate?.getTime() || 0));
 
+      const newDeletedPhotos: DeletedPhoto[] = (photosRes.data || []).map(row => {
+        const parentAlbum = albumMap[row.album_id] || {};
+        const parentStyle = styleMap[parentAlbum.style_id] || {};
+        return {
+          id: row.id, image: row.image || '', alt: row.alt || '',
+          design: row.design, order: row.order || 0,
+          deleted: true, deletedAt: row.deleted_at,
+          styleId: parentAlbum.style_id || '',
+          styleSlug: parentStyle.slug || '',
+          albumId: row.album_id || '',
+          albumSlug: parentAlbum.slug || '',
+          albumTitle: parentAlbum.title || '',
+          deletedAtDate: row.deleted_at ? new Date(row.deleted_at) : undefined,
+        };
+      }).sort((a, b) => (b.deletedAtDate?.getTime() || 0) - (a.deletedAtDate?.getTime() || 0));
+
+      setDeletedStyles(newDeletedStyles);
+      setDeletedAlbums(newDeletedAlbums);
+      setDeletedPhotos(newDeletedPhotos);
     } catch (error) {
-      console.error("Failed to fetch trash items:", error);
+      console.error('Failed to fetch trash items:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (isAuthReady && isAdmin) {
-      fetchTrashItems();
-    }
+    if (isAuthReady && isAdmin) fetchTrashItems();
   }, [isAuthReady, isAdmin]);
 
   if (!isAuthReady) return null;
   if (!user || !isAdmin) return <Navigate to="/admin/login" />;
 
-  const handleRestoreStyle = async (styleId: string) => {
-    await restoreStyle(styleId);
-    await fetchTrashItems();
-  }
-
+  const handleRestoreStyle = async (styleId: string) => { await restoreStyle(styleId); await fetchTrashItems(); };
   const handlePermanentDeleteStyle = async (styleId: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn style này? Không thể khôi phục sau khi xóa.")) {
-      await permanentDeleteStyle(styleId);
-      await fetchTrashItems();
+    if (window.confirm('Bạn có chắc chắn muốn xóa vĩnh viễn style này? Không thể khôi phục sau khi xóa.')) {
+      await permanentDeleteStyle(styleId); await fetchTrashItems();
     }
-  }
-
-  const handleRestoreAlbum = async (styleSlug: string, albumId: string) => {
-    await restoreAlbum(styleSlug, albumId);
-    await fetchTrashItems();
-  }
-
+  };
+  const handleRestoreAlbum = async (styleSlug: string, albumId: string) => { await restoreAlbum(styleSlug, albumId); await fetchTrashItems(); };
   const handlePermanentDeleteAlbum = async (styleSlug: string, albumId: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn album này? Không thể khôi phục sau khi xóa.")) {
-      await permanentDeleteAlbum(styleSlug, albumId);
-      await fetchTrashItems();
+    if (window.confirm('Bạn có chắc chắn muốn xóa vĩnh viễn album này? Không thể khôi phục sau khi xóa.')) {
+      await permanentDeleteAlbum(styleSlug, albumId); await fetchTrashItems();
     }
-  }
-
-  const handleRestorePhoto = async (styleSlug: string, albumSlug: string, photoId: string) => {
-    await restorePhoto(styleSlug, albumSlug, photoId);
-    await fetchTrashItems();
-  }
-
+  };
+  const handleRestorePhoto = async (styleSlug: string, albumSlug: string, photoId: string) => { await restorePhoto(styleSlug, albumSlug, photoId); await fetchTrashItems(); };
   const handlePermanentDeletePhoto = async (styleSlug: string, albumSlug: string, photoId: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn ảnh này? Không thể khôi phục sau khi xóa.")) {
-      await permanentDeletePhoto(styleSlug, albumSlug, photoId);
-      await fetchTrashItems();
+    if (window.confirm('Bạn có chắc chắn muốn xóa vĩnh viễn ảnh này? Không thể khôi phục sau khi xóa.')) {
+      await permanentDeletePhoto(styleSlug, albumSlug, photoId); await fetchTrashItems();
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -167,7 +143,6 @@ const AdminTrash: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-12">
-            {/* Albums section */}
             <section>
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2 border-b pb-2">
                 Albums đã xóa ({deletedAlbums.length})
@@ -205,7 +180,6 @@ const AdminTrash: React.FC = () => {
               )}
             </section>
 
-            {/* Photos section */}
             <section>
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2 border-b pb-2">
                 Ảnh đã xóa ({deletedPhotos.length})
