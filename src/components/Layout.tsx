@@ -93,7 +93,7 @@ export const Layout: React.FC<LayoutProps> = ({
                       <p className="text-[10px] font-bold text-dark/40 uppercase tracking-widest leading-none">
                         {isAdmin ? 'Admin' : 'Khách'}
                       </p>
-                      <p className="text-xs font-medium text-dark truncate max-w-[100px]">{user.displayName}</p>
+                      <p className="text-xs font-medium text-dark truncate max-w-[100px]">{user.user_metadata?.full_name || user.email}</p>
                     </div>
                     {isAdmin && (
                       <div className="flex items-center gap-1">

@@ -586,7 +586,7 @@ const StatusDropdown: React.FC<{
 };
 
 const AdminConsultations: React.FC = () => {
-  const { isAuthReady, consultations, updateConsultationStatus, updateConsultationRegistration, updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation, isAdmin, isSuperAdmin, styles, handleLogout } = useApp();
+  const { isAuthReady, consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations, updateConsultationStatus, updateConsultationRegistration, updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation, isAdmin, isSuperAdmin, styles, handleLogout } = useApp();
   const [filter, setFilter] = useState<'all' | 'new' | 'contacted' | 'registered'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list');
@@ -1206,6 +1206,19 @@ const AdminConsultations: React.FC = () => {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Load More */}
+        {view === 'list' && hasMoreConsultations && (
+          <div className="flex justify-center py-6">
+            <button
+              onClick={loadMoreConsultations}
+              disabled={isLoadingMore}
+              className="px-6 py-2.5 rounded-full border border-light-gray text-sm font-medium text-dark/60 hover:bg-light-gray/50 disabled:opacity-50 transition-colors"
+            >
+              {isLoadingMore ? 'Đang tải...' : 'Xem thêm khách hàng'}
+            </button>
           </div>
         )}
       </div>

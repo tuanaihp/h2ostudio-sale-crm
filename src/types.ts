@@ -131,6 +131,8 @@ export interface AppSettings {
   integrationZaloOaId?: string;
   integrationZaloAccessToken?: string;
   integrationScriptNotes?: string;
+  welcomeMessage?: string;
+  secondWelcomeMessage?: string;
 }
 
 export interface AppConfig {
@@ -139,4 +141,34 @@ export interface AppConfig {
   facebookMessengerUrl: string;
   hotline: string;
   description: string;
+}
+
+// ─── Supabase DB row shapes ───────────────────────────────────────────────────
+
+export interface DbStyleRow {
+  id: string; slug: string; title: string; description: string;
+  cover_image: string; design: EditorState | null; order: number;
+  category?: string; deleted: boolean; deleted_at?: string; updated_at?: string;
+}
+export interface DbAlbumRow {
+  id: string; style_id: string; slug: string; title: string; description: string;
+  cover_image: string; cover_image_pos?: { x: number; y: number };
+  design: EditorState | null; order: number;
+  suggested_layout?: string; suitable_for?: string; display_likes?: string;
+  deleted: boolean; deleted_at?: string;
+}
+export interface DbPhotoRow {
+  id: string; album_id: string; style_id: string; image: string; alt: string;
+  design: EditorState | null; order: number; deleted: boolean; deleted_at?: string;
+}
+export interface DbConsultationRow {
+  id: string; name: string; phone: string; message?: string; date?: string;
+  created_at: string; status: 'new' | 'contacted' | 'registered'; notes?: string;
+  tags?: string[]; concept_id?: string; shooting_date?: string;
+  engagement_date?: string; wedding_date?: string; delivery_date?: string;
+  favorite_ids?: string[]; source?: string; lucky_gift?: string;
+  assigned_to?: string; follow_up_date?: string; contract_value?: number;
+}
+export interface DbUserRoleRow {
+  id: string; email: string; phone_number?: string; role: string; display_name?: string;
 }
