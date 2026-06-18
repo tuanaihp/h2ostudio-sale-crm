@@ -321,8 +321,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (!data || data.length === 0) {
-        // Seed initial data if empty and admin
-        if (isAdmin) seedInitialData();
+        if (isAdmin) {
+          await seedInitialData();
+          const { data: seeded } = await supabase
+            .from('styles')
+            .select('*')
+            .eq('deleted', false)
+            .order('order', { ascending: true });
+          setStyles((seeded || []).map(row => ({ ...dbToStyle(row), albums: [] })));
+        }
         setIsDataLoaded(true);
         return;
       }
