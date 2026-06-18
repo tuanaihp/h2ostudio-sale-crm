@@ -6,3 +6,7 @@ export const LARK_FALLBACK_URL =
   'https://open.larksuite.com/open-apis/bot/v2/hook/addf1821-ec82-4dcb-8ae6-327006f2acf5';
 
 export const GOOGLE_DRIVE_FOLDER_ID = '1N3yRO61mkEcWf2mQ-2aA244kfGA7hs11';
+
+// Cloudflare R2 — điền vào Vercel env khi tạo xong Cloudflare
+export const R2_WORKER_URL: string = (import.meta as any).env?.VITE_R2_WORKER_URL || '';
+export const R2_UPLOAD_SECRET: string = (import.meta as any).env?.VITE_R2_UPLOAD_SECRET || '';
