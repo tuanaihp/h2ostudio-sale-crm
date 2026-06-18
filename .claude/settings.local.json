@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "PowerShell(vercel --version)"
+      "PowerShell(vercel --version)",
+      "Bash(git remote *)",
+      "Bash(git push *)"
     ]
   }
 }
