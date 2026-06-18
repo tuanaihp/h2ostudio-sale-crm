@@ -1,0 +1,197 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // GLOBAL HELPERS (Pillar 3 & 4)
+    // ==========================================
+    
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function isSignedIn() { return request.auth != null; }
+    
+    function incoming() { return request.resource.data; }
+    
+    function existing() { return resource.data; }
+    
+    function isEmailVerified() {
+      // Mandating verification for all staff/admin writes as per Pillar 10
+      // BYPASS: Allowing specific developer/staff emails or Phone Auth
+      return isSignedIn() && (
+        ('email_verified' in request.auth.token && request.auth.token.email_verified == true) || 
+        ('email' in request.auth.token && (request.auth.token.email == 'maxsamuelbldhp@gmail.com' || request.auth.token.email == 'nguyentuan@hps.edu.vn' || request.auth.token.email == 'staff@h2ostudio.com')) ||
+        request.auth.uid == 'mVfBjW7kYMEPgenhUNrsJMgDjRd2' ||
+        request.auth.uid == 'ZurCpHs2nchhq3bhhpdgGhkiRwy2' ||
+        request.auth.token.firebase.sign_in_provider == 'phone'
+      );
+    }
+
+    function getStaffPhones() {
+      let docRef = /databases/$(database)/documents/settings/global;
+      return exists(docRef) ? get(docRef).data.get('staffPhones', []) : [];
+    }
+
+    function isAdmin() {
+      let isAuthenticated = request.auth != null;
+      let phoneNumber = (isAuthenticated && 'phone_number' in request.auth.token) ? request.auth.token.phone_number : '';
+      let email = (isAuthenticated && 'email' in request.auth.token) ? request.auth.token.email : '';
+      
+      let isHardcodedAdmin = isAuthenticated && (
+        request.auth.uid == 'mVfBjW7kYMEPgenhUNrsJMgDjRd2' ||
+        request.auth.uid == 'ZurCpHs2nchhq3bhhpdgGhkiRwy2' ||
+        email == 'maxsamuelbldhp@gmail.com' ||
+        email == 'nguyentuan@hps.edu.vn' ||
+        email == 'staff@h2ostudio.com' ||
+        phoneNumber == '+84899252393' ||
+        phoneNumber == '+84705825472' ||
+        phoneNumber == '0899252393' ||
+        phoneNumber == '0705825472'
+      );
+
+      return isHardcodedAdmin || (isAuthenticated && checkRoleAndPhones(['super_admin', 'admin', 'supper_admin'], phoneNumber));
+    }
+
+    function isStaff() {
+      let isAuthenticated = request.auth != null;
+      let phoneNumber = (isAuthenticated && 'phone_number' in request.auth.token) ? request.auth.token.phone_number : '';
+      let email = (isAuthenticated && 'email' in request.auth.token) ? request.auth.token.email : '';
+      
+      let isHardcodedStaff = isAuthenticated && (
+        request.auth.uid == 'mVfBjW7kYMEPgenhUNrsJMgDjRd2' ||
+        request.auth.uid == 'ZurCpHs2nchhq3bhhpdgGhkiRwy2' ||
+        email == 'maxsamuelbldhp@gmail.com' ||
+        email == 'nguyentuan@hps.edu.vn' ||
+        email == 'staff@h2ostudio.com' ||
+        phoneNumber == '+84899252393' ||
+        phoneNumber == '+84705825472' ||
+        phoneNumber == '0899252393' ||
+        phoneNumber == '0705825472'
+      );
+
+      return isHardcodedStaff || (isAuthenticated && checkRoleAndPhones(['super_admin', 'admin', 'staff', 'supper_admin'], phoneNumber));
+    }
+
+    function checkRoleAndPhones(allowedRoles, phoneNumber) {
+      let hasUserDoc = exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      let userDoc = hasUserDoc ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : null;
+      let userRole = userDoc != null ? userDoc.get('role', 'client') : 'client';
+      
+      let isAllowedRole = userRole in allowedRoles;
+      
+      let staffPhones = getStaffPhones();
+      let isAllowedPhone = phoneNumber != '' && (
+        phoneNumber in staffPhones || 
+        phoneNumber.replace('\\+84', '0') in staffPhones || 
+        phoneNumber.replace('^\\+84', '0') in staffPhones ||
+        ('+84' + phoneNumber.replace('^0', '')) in staffPhones
+      );
+
+      return isAllowedRole || isAllowedPhone;
+    }
+
+    // ==========================================
+    // GLOBAL SAFETY NET (Pillar 0)
+    // ==========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // ENTITY VALIDATION BLUEPRINTS (Pillar 2)
+    // ==========================================
+
+    function isValidConsultation(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'status', 'createdAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 20 &&
+             data.status in ['new', 'contacted', 'registered'] &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 128)) &&
+             (!('message' in data) || data.message == null || (data.message is string && data.message.size() <= 2000)) &&
+             (!('source' in data) || data.source == null || (data.source is string && data.source.size() <= 128)) &&
+             (!('luckyGift' in data) || data.luckyGift == null || (data.luckyGift is string && data.luckyGift.size() <= 128)) &&
+             (!('date' in data) || data.date == null || (data.date is string && data.date.size() <= 64)) &&
+             (!('favoriteIds' in data) || data.favoriteIds == null || (data.favoriteIds is list && data.favoriteIds.size() <= 50)) &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 5000)) &&
+             (!('tags' in data) || data.tags == null || (data.tags is list && data.tags.size() <= 20)) &&
+             (!('registrationData' in data) || data.registrationData == null || data.registrationData is map);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['role']) &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 256)) &&
+             (!('phoneNumber' in data) || data.phoneNumber == null || (data.phoneNumber is string && data.phoneNumber.size() <= 32)) &&
+             data.role in ['super_admin', 'admin', 'staff', 'client'] &&
+             (!('displayName' in data) || data.displayName == null || (data.displayName is string && data.displayName.size() <= 128));
+    }
+
+    // ==========================================
+    // COLLECTIONS
+    // ==========================================
+
+    // Styles, Albums, Photos - (Pillar 1: Master Gate Pattern)
+    match /styles/{styleId} {
+      allow read: if true;
+      allow write: if isStaff();
+      
+      match /albums/{albumId} {
+        allow read: if true;
+        allow write: if isStaff();
+        
+        match /photos/{photoId} {
+          allow read: if true;
+          allow write: if isStaff();
+        }
+      }
+    }
+
+    // Consultations (Open Entry, Restricted Management)
+    match /consultations/{consultId} {
+      // Allow anyone to create a consultation (lead capture)
+      allow create: if true;
+      
+      // Allow staff to read and write
+      allow read: if isStaff();
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // Users (Self-Isolation Pillar 6)
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isStaff());
+      allow list: if isStaff(); // Query Enforcer (Pillar 8)
+      
+      allow create: if isSignedIn() && request.auth.uid == userId && 
+                    isValidUser(incoming()) &&
+                    // Primary Owner Lock
+                    (incoming().role == 'client' || 
+                     request.auth.uid == 'mVfBjW7kYMEPgenhUNrsJMgDjRd2' ||
+                     request.auth.uid == 'ZurCpHs2nchhq3bhhpdgGhkiRwy2' ||
+                     (('email' in request.auth.token) && (request.auth.token.email == 'maxsamuelbldhp@gmail.com' || request.auth.token.email == 'nguyentuan@hps.edu.vn' || request.auth.token.email == 'staff@h2ostudio.com')) ||
+                     (request.auth.token.firebase.sign_in_provider == 'phone' && 'phone_number' in request.auth.token && (
+                       request.auth.token.phone_number in getStaffPhones() ||
+                       request.auth.token.phone_number == '+84899252393' ||
+                       request.auth.token.phone_number == '+84705825472' ||
+                       request.auth.token.phone_number == '0899252393' ||
+                       request.auth.token.phone_number == '0705825472' ||
+                       request.auth.token.phone_number.replace('\\+84', '0') in getStaffPhones() ||
+                       request.auth.token.phone_number.replace('^\\+84', '0') in getStaffPhones()
+                     )));
+      
+      allow update: if (isSignedIn() && request.auth.uid == userId && 
+                        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email']) &&
+                        incoming().email == existing().email) || isAdmin();
+      
+      allow delete: if isAdmin();
+    }
+
+    // Settings
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
+

@@ -1,0 +1,143 @@
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
+
+// In-memory cache for Google Sheet CSV content
+const sheetCache = new Map<string, { data: string; expiresAt: number }>();
+const SHEET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function fetchSheetCsv(sheetId: string, sheetName: string): Promise<string | null> {
+  const cacheKey = `${sheetId}::${sheetName}`;
+  const cached = sheetCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : ""}`;
+  const sheetRes = await fetch(sheetUrl);
+  if (!sheetRes.ok) return null;
+
+  const csvText = await sheetRes.text();
+  const rows = csvText.split("\n").slice(0, 120).join("\n");
+  sheetCache.set(cacheKey, { data: rows, expiresAt: Date.now() + SHEET_CACHE_TTL_MS });
+  return rows;
+}
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json());
+
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { messages, systemInstruction, integrationConfig } = req.body;
+      let finalInstruction = systemInstruction || "";
+
+      // 1. Append Google Sheet FAQ data (cached)
+      if (integrationConfig?.sheetEnabled && integrationConfig?.sheetId) {
+        try {
+          const rows = await fetchSheetCsv(integrationConfig.sheetId, integrationConfig.sheetName || "");
+          if (rows) {
+            finalInstruction += `\n\n[Dữ liệu FAQ chuyên ngành từ Google Sheet]:\n${rows}`;
+          }
+        } catch (sheetErr) {
+          console.error("Lỗi khi tải Google Sheet FAQs:", sheetErr);
+        }
+      }
+
+      // 2. Append offline script notes
+      if (integrationConfig?.scriptNotes) {
+        finalInstruction += `\n\n[Kịch bản cưới & FAQs lưu trữ sẵn]:\n${integrationConfig.scriptNotes}`;
+      }
+
+      // 3. Forward to custom chat API if configured
+      if (integrationConfig?.chatApiEnabled && integrationConfig?.chatApiUrl) {
+        const { chatApiUrl, chatApiKey, chatApiModelName, chatApiHeaders } = integrationConfig;
+
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (chatApiKey) headers["Authorization"] = `Bearer ${chatApiKey}`;
+        if (chatApiHeaders) {
+          try {
+            Object.assign(headers, JSON.parse(chatApiHeaders));
+          } catch {
+            // ignore malformed headers
+          }
+        }
+
+        const openAiMessages = [{ role: "system", content: finalInstruction }];
+        for (const msg of messages || []) {
+          openAiMessages.push({
+            role: msg.role === "model" ? "assistant" : "user",
+            content: msg.text
+          });
+        }
+
+        const proxyRes = await fetch(chatApiUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ model: chatApiModelName || "gpt-3.5-turbo", messages: openAiMessages })
+        });
+
+        if (!proxyRes.ok) {
+          const errorText = await proxyRes.text();
+          throw new Error(`Custom Chat API responded with ${proxyRes.status}: ${errorText}`);
+        }
+
+        const proxyData: any = await proxyRes.json();
+        return res.json({ text: proxyData?.choices?.[0]?.message?.content || JSON.stringify(proxyData) });
+      }
+
+      // 4. Default: Google Gemini
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "Thiếu API Key Gemini. Vui lòng thiết lập trong Settings." });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+      });
+
+      const formatedContents = (messages || []).map((m: any) => ({
+        role: m.role,
+        parts: [{ text: m.text }],
+      }));
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: formatedContents,
+        config: { systemInstruction: finalInstruction },
+      });
+
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("AI Chat Error:", error);
+      res.status(500).json({ error: error?.message || "Lỗi khi gọi AI" });
+    }
+  });
+
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.join(process.cwd(), "dist")));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(process.cwd(), "dist", "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

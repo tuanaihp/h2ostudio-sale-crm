@@ -1,0 +1,19 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(facebookexternalhit|facebookcatalog|zalo|twitterbot|linkedinbot|whatsapp|telegrambot|viber|skypeuripreview|discordbot).*"
+        }
+      ],
+      "destination": "/api/bot"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

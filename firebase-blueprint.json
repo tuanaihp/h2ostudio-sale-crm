@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "Style": {
+      "title": "Style",
+      "description": "A wedding photography style concept",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "design": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "slug", "title", "coverImage"]
+    },
+    "Album": {
+      "title": "Album",
+      "description": "An album within a style concept",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "coverImagePos": { "type": "object" },
+        "suggestedLayout": { "type": "string" },
+        "suitableFor": { "type": "string" },
+        "design": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "slug", "title", "coverImage"]
+    },
+    "Photo": {
+      "title": "Photo",
+      "description": "A photo within an album",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "image": { "type": "string" },
+        "alt": { "type": "string" },
+        "design": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "image"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the application",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff", "client"] },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Consultation": {
+      "title": "Consultation",
+      "description": "A customer inquiry or consultation request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "contacted", "registered"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "assignedTo": { "type": "string" },
+        "followUpDate": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "status"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "brandLogo": { "type": "string" },
+        "watermarkOpacity": { "type": "number" },
+        "watermarkPosition": { "type": "string", "enum": ["top-left", "top-right", "bottom-left", "bottom-right", "center", "top-center", "bottom-center"] },
+        "partnerBrand1": { "type": "object" },
+        "partnerBrand2": { "type": "object" },
+        "showPartnerBrands": { "type": "boolean" }
+      }
+    }
+  },
+  "firestore": {
+    "/styles": {
+      "schema": "Style",
+      "description": "Collection of wedding style concepts"
+    },
+    "/styles/{styleId}/albums": {
+      "schema": "Album",
+      "description": "Albums belonging to a style"
+    },
+    "/styles/{styleId}/albums/{albumId}/photos": {
+      "schema": "Photo",
+      "description": "Photos belonging to an album"
+    },
+    "/users": {
+      "schema": "User",
+      "description": "Collection of users and their roles"
+    },
+    "/settings": {
+      "schema": "Settings",
+      "description": "Global app settings like brand logo"
+    },
+    "/consultations": {
+      "schema": "Consultation",
+      "description": "Collection of customer inquiries"
+    }
+  }
+}
