@@ -37,8 +37,6 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
     }
   }, [isOpen, initialMessage, favorites.length]);
 
-  if (!isOpen) return null;
-
   const handleSubmitConsult = async (e: React.FormEvent) => {
     e.preventDefault();
     setPhoneError('');
@@ -93,6 +91,8 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-dark/60 backdrop-blur-sm">
