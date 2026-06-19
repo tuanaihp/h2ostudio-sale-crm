@@ -42,7 +42,7 @@ export default async function handler(req: any, res: any) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         msg_type: 'text',
-        content: { text: `📸 Lịch chụp ngày mai — ${displayDate}\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\nChuẩn bị cho ${shoots.length} buổi chụp!` },
+        content: { text: `teamsaleh2o\n📸 Lịch chụp ngày mai — ${displayDate}\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\nChuẩn bị cho ${shoots.length} buổi chụp!` },
       }),
     });
 

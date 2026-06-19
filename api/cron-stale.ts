@@ -36,7 +36,7 @@ export default async function handler(req: any, res: any) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         msg_type: 'text',
-        content: { text: `⚠️ Khách chưa được liên hệ trên 48h\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\nCần xử lý ngay ${stale.length} lead!` },
+        content: { text: `teamsaleh2o\n⚠️ Khách chưa được liên hệ trên 48h\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\nCần xử lý ngay ${stale.length} lead!` },
       }),
     });
 

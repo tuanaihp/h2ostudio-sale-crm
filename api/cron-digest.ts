@@ -36,7 +36,7 @@ export default async function handler(req: any, res: any) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         msg_type: 'text',
-        content: { text: `📋 Digest khách mới — ${today}\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\n✅ Tổng ${leads.length} khách mới trong 24h` },
+        content: { text: `teamsaleh2o\n📋 Digest khách mới — ${today}\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\n✅ Tổng ${leads.length} khách mới trong 24h` },
       }),
     });
 
