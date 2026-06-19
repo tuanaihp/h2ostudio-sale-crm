@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { ChatModal } from '../components/ChatModal';
 import { ConsultationModal } from '../components/ConsultationModal';
@@ -12,7 +12,7 @@ import { getDisplayImageUrl } from '../utils/image';
 const PhotoView: React.FC = () => {
   const { slug, albumSlug, photoId } = useParams<{ slug: string; albumSlug: string; photoId: string }>();
   const navigate = useNavigate();
-  const { styles, favorites, toggleFavorite, settings, isAdmin, isDataLoaded } = useApp();
+  const { styles, favorites, toggleFavorite, settings, isAdmin, isDataLoaded, fetchPhotos } = useApp();
   
   const style = styles.find(s => s.slug === slug);
   const album = style?.albums?.find(a => a.slug === albumSlug);
@@ -26,6 +26,16 @@ const PhotoView: React.FC = () => {
     return isNaN(byIndex) ? 0 : Math.min(byIndex, Math.max(photos.length - 1, 0));
   })();
   const photo = photos[currentIndex];
+
+  const fetchedAlbumsRef = useRef<Set<string>>(new Set());
+
+  // Fetch photos for current album if not yet loaded
+  useEffect(() => {
+    if (style && album && (!album.photos || album.photos.length === 0) && !fetchedAlbumsRef.current.has(album.id)) {
+      fetchedAlbumsRef.current.add(album.id);
+      fetchPhotos(style.id, album.id);
+    }
+  }, [style?.id, album?.id, album?.photos?.length]);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isConsultModalOpen, setIsConsultModalOpen] = useState(false);
@@ -46,13 +56,20 @@ const PhotoView: React.FC = () => {
           navigate(`/style/${slug}/album/${albumSlug}/photo/${photos[currentIndex + 1].id}`);
         }, 3500);
       } else if (style && style.albums && style.albums.length > 1) {
-        const currentAlbumIndex = style.albums.findIndex(a => a.id === album?.id);
-        const nextAlbumIndex = (currentAlbumIndex + 1) % style.albums.length;
-        const nextAlbum = style.albums[nextAlbumIndex];
-        interval = setInterval(() => {
-          setDirection(1);
-          navigate(`/style/${slug}/album/${nextAlbum.slug}/photo/0`);
-        }, 3500);
+        // Use same order as "Có thể bạn cũng thích": other albums in style, cycle
+        const relatedAlbums = style.albums.filter(a => a.id !== album?.id);
+        if (relatedAlbums.length > 0) {
+          const currentRelatedIndex = relatedAlbums.findIndex(a => a.slug === albumSlug);
+          const nextIndex = (currentRelatedIndex + 1) % relatedAlbums.length;
+          const nextAlbum = relatedAlbums[nextIndex];
+          const firstPhotoId = nextAlbum.photos?.[0]?.id || '0';
+          interval = setInterval(() => {
+            setDirection(1);
+            navigate(`/style/${slug}/album/${nextAlbum.slug}/photo/${firstPhotoId}`);
+          }, 3500);
+        } else {
+          setIsAutoPlaying(false);
+        }
       } else {
         setIsAutoPlaying(false);
       }
@@ -98,11 +115,15 @@ const PhotoView: React.FC = () => {
       setDirection(1);
       navigate(`/style/${slug}/album/${albumSlug}/photo/${photos[currentIndex + 1].id}`);
     } else if (style && style.albums && style.albums.length > 1) {
-      const currentAlbumIndex = style.albums.findIndex(a => a.id === album?.id);
-      const nextAlbumIndex = (currentAlbumIndex + 1) % style.albums.length;
-      const nextAlbum = style.albums[nextAlbumIndex];
-      setDirection(1);
-      navigate(`/style/${slug}/album/${nextAlbum.slug}/photo/0`);
+      const relatedAlbums = style.albums.filter(a => a.id !== album?.id);
+      if (relatedAlbums.length > 0) {
+        const currentRelatedIndex = relatedAlbums.findIndex(a => a.slug === albumSlug);
+        const nextIndex = (currentRelatedIndex + 1) % relatedAlbums.length;
+        const nextAlbum = relatedAlbums[nextIndex];
+        const firstPhotoId = nextAlbum.photos?.[0]?.id || '0';
+        setDirection(1);
+        navigate(`/style/${slug}/album/${nextAlbum.slug}/photo/${firstPhotoId}`);
+      }
     }
   };
 
@@ -152,6 +173,14 @@ const PhotoView: React.FC = () => {
   }, [currentIndex, album, slug, albumSlug, navigate]);
 
   if (!style || !album || !photo) {
+    // Album exists but photos haven't loaded yet (cross-album auto-advance) — show loading
+    if (isDataLoaded && style && album && (!album.photos || album.photos.length === 0)) {
+      return (
+        <div className="fixed inset-0 z-[200] bg-dark flex flex-col items-center justify-center">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      );
+    }
     if (isDataLoaded) {
       return <Navigate to="/" />;
     }
@@ -342,9 +371,9 @@ const PhotoView: React.FC = () => {
         >
           <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
         </button>
-        <button 
+        <button
           onClick={handleNext}
-          disabled={!album.photos || currentIndex === album.photos.length - 1}
+          disabled={!album.photos || (currentIndex === album.photos.length - 1 && style.albums.filter(a => a.id !== album.id).length === 0)}
           className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white transition-all z-[100] rounded-full disabled:hidden flex items-center justify-center backdrop-blur-sm shadow-lg hover:brightness-110 active:scale-95"
           style={{ backgroundColor: `${themeColor}44` }} // 25% opacity
         >

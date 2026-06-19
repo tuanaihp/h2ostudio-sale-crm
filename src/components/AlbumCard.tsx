@@ -84,7 +84,7 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
               <OptimizedImage 
                 src={album.coverImage} 
                 alt={album.title}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-95"
                 containerClassName="w-full h-full"
                 referrerPolicy="no-referrer"
               />
