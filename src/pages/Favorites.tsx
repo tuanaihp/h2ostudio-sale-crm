@@ -6,41 +6,45 @@ import { OptimizedImage } from '../components/OptimizedImage';
 import { DesignPreview } from '../components/DesignPreview';
 import { Layout } from '../components/Layout';
 import { Helmet } from 'react-helmet-async';
-import { Heart, Send, MessageCircle, Share2, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Heart, Send, MessageCircle, Share2, Sparkles, ExternalLink } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ConsultationModal } from '../components/ConsultationModal';
 import { ChatModal } from '../components/ChatModal';
 import { motion } from 'motion/react';
 
 export const Favorites: React.FC = () => {
   const { styles, favorites } = useApp();
+  const [searchParams] = useSearchParams();
   const [isConsultModalOpen, setIsConsultModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [initialMessage, setInitialMessage] = useState('');
 
+  // ?preview=id1,id2,id3 — team sale xem concept khách đã chọn (read-only gallery)
+  const previewIds = useMemo(() => {
+    const raw = searchParams.get('preview');
+    return raw ? raw.split(',').filter(Boolean) : null;
+  }, [searchParams]);
+
   const favoriteItems = useMemo(() => {
+    const ids = previewIds ?? favorites;
     const items: { type: 'style' | 'album' | 'photo', data: any, styleSlug?: string, albumSlug?: string, index?: number }[] = [];
-    
     styles.forEach(style => {
-      if (favorites.includes(style.id)) {
+      if (ids.includes(style.id)) {
         items.push({ type: 'style', data: style });
       }
-      
       (style.albums || []).forEach(album => {
-        if (favorites.includes(album.id)) {
+        if (ids.includes(album.id)) {
           items.push({ type: 'album', data: album, styleSlug: style.slug });
         }
-        
         (album.photos || []).forEach((photo, index) => {
-          if (favorites.includes(photo.id)) {
+          if (ids.includes(photo.id)) {
             items.push({ type: 'photo', data: photo, styleSlug: style.slug, albumSlug: album.slug, index });
           }
         });
       });
     });
-    
     return items;
-  }, [styles, favorites]);
+  }, [styles, favorites, previewIds]);
 
   if (favoriteItems.length === 0) {
     return (
@@ -49,11 +53,15 @@ export const Favorites: React.FC = () => {
           <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6">
             <Heart className="w-10 h-10 text-gray-300" />
           </div>
-          <h2 className="text-2xl font-bold text-dark mb-2">Chưa có mục yêu thích</h2>
+          <h2 className="text-2xl font-bold text-dark mb-2">
+            {previewIds ? 'Không tìm thấy album' : 'Chưa có mục yêu thích'}
+          </h2>
           <p className="text-dark/60 max-w-md mb-8">
-            Bạn chưa lưu bất kỳ concept, album hay bức ảnh nào. Hãy khám phá và thả tim cho những gì bạn thích nhé!
+            {previewIds
+              ? 'Album trong link này chưa được tải hoặc không tồn tại.'
+              : 'Bạn chưa lưu bất kỳ concept, album hay bức ảnh nào. Hãy khám phá và thả tim cho những gì bạn thích nhé!'}
           </p>
-          <Link 
+          <Link
             to="/"
             className="px-8 py-3 bg-dark text-white rounded-full font-medium hover:bg-dark/90 transition-colors"
           >
@@ -105,35 +113,52 @@ export const Favorites: React.FC = () => {
           <meta name="description" content="Tổng hợp những ý tưởng và concept bạn yêu thích nhất tại H2O STUDIO." />
         </Helmet>
         
+        {/* Banner cho team sale khi mở link ?preview= */}
+        {previewIds && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
+            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold">H2O</div>
+            <div>
+              <p className="text-sm font-bold text-blue-800">📋 Chế độ xem concept khách đã chọn</p>
+              <p className="text-xs text-blue-600 mt-0.5">Đây là {favoriteItems.length} album/concept mà khách đã thêm vào danh sách yêu thích. Dùng để tư vấn và báo giá chính xác hơn.</p>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
             <h1 className="text-3xl sm:text-4xl font-bold text-dark mb-4 flex items-center gap-3">
               <Heart className="w-8 h-8 text-red-500 fill-red-500" />
-              Album Yêu Thích
+              {previewIds ? 'Concept Khách Yêu Thích' : 'Album Yêu Thích'}
             </h1>
-            <p className="text-dark/60">Tổng hợp những ý tưởng và concept bạn yêu thích nhất tại H2O STUDIO.</p>
+            <p className="text-dark/60">
+              {previewIds
+                ? `${favoriteItems.length} album/concept khách đã chọn — dùng làm cơ sở tư vấn báo giá`
+                : 'Tổng hợp những ý tưởng và concept bạn yêu thích nhất tại H2O STUDIO.'}
+            </p>
           </div>
-          
-          <motion.button 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleSendToStudio}
-            className="flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-secondary to-primary text-white rounded-2xl font-bold shadow-xl shadow-primary/20 transition-all relative group"
-          >
-            <Send size={20} />
-            Gửi Nhận Báo Giá
-            
-            {/* Coach Mark for Final Step */}
-            <div className="absolute bottom-full mb-4 right-0 bg-white text-dark text-[10px] font-bold px-3 py-2 rounded-xl shadow-2xl whitespace-nowrap pointer-events-none animate-bounce border border-primary/20">
-              <span className="flex items-center gap-2">
-                <Sparkles size={14} className="text-primary" />
-                Gửi ngay để nhận ưu đãi & báo giá!
-              </span>
-              <div className="absolute top-full right-8 border-8 border-transparent border-t-white" />
-            </div>
-            
-            <span className="absolute inset-0 rounded-2xl bg-white/20 animate-pulse pointer-events-none" />
-          </motion.button>
+
+          {!previewIds && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSendToStudio}
+              className="flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-secondary to-primary text-white rounded-2xl font-bold shadow-xl shadow-primary/20 transition-all relative group"
+            >
+              <Send size={20} />
+              Gửi Nhận Báo Giá
+
+              {/* Coach Mark for Final Step */}
+              <div className="absolute bottom-full mb-4 right-0 bg-white text-dark text-[10px] font-bold px-3 py-2 rounded-xl shadow-2xl whitespace-nowrap pointer-events-none animate-bounce border border-primary/20">
+                <span className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-primary" />
+                  Gửi ngay để nhận ưu đãi & báo giá!
+                </span>
+                <div className="absolute top-full right-8 border-8 border-transparent border-t-white" />
+              </div>
+
+              <span className="absolute inset-0 rounded-2xl bg-white/20 animate-pulse pointer-events-none" />
+            </motion.button>
+          )}
         </div>
 
         {favoriteStyles.length > 0 && (

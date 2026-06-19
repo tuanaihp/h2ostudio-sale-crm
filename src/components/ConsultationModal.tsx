@@ -16,7 +16,7 @@ interface ConsultationModalProps {
 }
 
 export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, onClose, initialMessage }) => {
-  const { submitConsultation, favorites, consultations } = useApp();
+  const { submitConsultation, favorites, consultations, styles } = useApp();
   const [consultForm, setConsultForm] = useState({ name: '', phone: '', message: '', date: undefined as Date | undefined, source: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -37,21 +37,40 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
     }
   }, [isOpen, initialMessage, favorites.length]);
 
+  // Resolve favorite IDs → album info for Lark rich message
+  const favoriteAlbumsInfo = useMemo(() => {
+    if (!favorites.length) return [];
+    const result: { title: string; url: string; styleName: string }[] = [];
+    styles.forEach(style => {
+      style.albums?.forEach(album => {
+        if (favorites.includes(album.id)) {
+          result.push({
+            title: album.title,
+            url: `${window.location.origin}/style/${style.slug}/album/${album.slug}`,
+            styleName: style.title,
+          });
+        }
+      });
+    });
+    return result;
+  }, [styles, favorites]);
+
   const handleSubmitConsult = async (e: React.FormEvent) => {
     e.preventDefault();
     setPhoneError('');
     if (!consultForm.name || !consultForm.phone) return;
-    
+
     if (!validateVietnamesePhone(consultForm.phone)) {
       setPhoneError('Số điện thoại không hợp lệ (VD: 0912345678)');
       return;
     }
-    
+
     setIsSubmitting(true);
     try {
       await submitConsultation({
         ...consultForm,
-        favoriteIds: favorites
+        favoriteIds: favorites,
+        favoriteAlbums: favoriteAlbumsInfo,
       });
       setIsSuccess(true);
     } catch (err: any) {

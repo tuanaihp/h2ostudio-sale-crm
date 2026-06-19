@@ -120,21 +120,97 @@ const RegistrationModal: React.FC<{
               </div>
 
               {showFavorites && (
-                <div className="mb-4 p-3 bg-pink-50/50 rounded-xl border border-pink-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {favoriteAlbums.map(({ style, album }) => (
+                <div className="mb-4 rounded-xl border border-pink-100 overflow-hidden">
+                  {/* Header với copy-all button */}
+                  <div className="flex items-center justify-between px-3 py-2 bg-pink-50 border-b border-pink-100">
+                    <span className="text-xs font-bold text-pink-600">📸 {favoriteAlbums.length} album khách đã chọn</span>
                     <button
-                      key={`${style.id}:${album.id}`}
                       type="button"
                       onClick={() => {
-                        setFormData({ ...formData, conceptId: `${style.id}:${album.id}` });
-                        setShowFavorites(false);
+                        const links = favoriteAlbums.map(({ style, album }) =>
+                          `• ${album.title} (${style.title}): ${window.location.origin}/style/${style.slug}/album/${album.slug}`
+                        ).join('\n');
+                        navigator.clipboard.writeText(`📸 Concept khách yêu thích:\n${links}`);
                       }}
-                      className="text-left p-2 hover:bg-white rounded-lg border border-transparent hover:border-pink-200 transition-all group"
+                      className="flex items-center gap-1 text-[10px] font-bold text-pink-500 hover:text-pink-700 px-2 py-1 hover:bg-pink-100 rounded-full transition-colors"
+                      title="Copy tất cả link album"
                     >
-                      <div className="text-[10px] text-pink-500 font-bold uppercase tracking-wider">{style.title}</div>
-                      <div className="text-sm font-medium text-dark group-hover:text-pink-600">{album.title}</div>
+                      <Copy size={10} />
+                      Copy tất cả link
                     </button>
-                  ))}
+                  </div>
+
+                  {/* Album list với thumbnail */}
+                  <div className="divide-y divide-pink-50 bg-white">
+                    {favoriteAlbums.map(({ style, album }) => {
+                      const albumUrl = `${window.location.origin}/style/${style.slug}/album/${album.slug}`;
+                      return (
+                        <div key={`${style.id}:${album.id}`} className="flex items-center gap-3 p-2 hover:bg-pink-50/50 transition-colors group">
+                          {/* Thumbnail */}
+                          <div className="w-10 h-12 rounded-lg overflow-hidden shrink-0 bg-gray-100">
+                            {album.coverImage && (
+                              <img
+                                src={album.coverImage}
+                                alt={album.title}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[9px] text-pink-500 font-bold uppercase tracking-wider truncate">{style.title}</div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData({ ...formData, conceptId: `${style.id}:${album.id}` });
+                                setShowFavorites(false);
+                              }}
+                              className="text-xs font-semibold text-dark group-hover:text-pink-600 text-left truncate w-full transition-colors"
+                            >
+                              {album.title}
+                            </button>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <a
+                              href={albumUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 text-dark/40 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Mở album"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <ExternalLink size={13} />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard.writeText(albumUrl)}
+                              className="p-1.5 text-dark/40 hover:text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Copy link"
+                            >
+                              <Copy size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Shareable preview link */}
+                  <div className="px-3 py-2 bg-pink-50 border-t border-pink-100">
+                    <a
+                      href={`/favorites?preview=${favoriteAlbums.map(({ album }) => album.id).join(',')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-[10px] font-bold text-primary hover:underline"
+                    >
+                      <ExternalLink size={10} />
+                      Xem toàn bộ concept khách chọn (gallery view)
+                    </a>
+                  </div>
                 </div>
               )}
 

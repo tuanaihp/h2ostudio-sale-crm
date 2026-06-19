@@ -68,6 +68,7 @@ interface ConsultationContextType {
   submitConsultation: (data: {
     name: string; phone: string; email?: string; message?: string;
     date?: Date; favoriteIds?: string[]; source?: string; luckyGift?: string;
+    favoriteAlbums?: { title: string; url: string; styleName?: string }[];
   }) => Promise<void>;
   updateConsultationStatus: (id: string, status: 'new' | 'contacted' | 'registered') => Promise<void>;
   updateConsultationRegistration: (id: string, data: Partial<Consultation>) => Promise<void>;
@@ -174,6 +175,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const submitConsultation = useCallback(async (data: {
     name: string; phone: string; email?: string; message?: string;
     date?: Date; favoriteIds?: string[]; source?: string; luckyGift?: string;
+    favoriteAlbums?: { title: string; url: string; styleName?: string }[];
   }) => {
     const id = `consult-${Date.now()}`;
     const row: Record<string, unknown> = { id, name: data.name, phone: data.phone, status: 'new' };
@@ -207,6 +209,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         source: data.source,
         luckyGift: data.luckyGift,
         favoriteCount: data.favoriteIds?.length || 0,
+        albums: data.favoriteAlbums || [],
       }),
     }).catch(err => console.error('Lark notify error:', err));
 
