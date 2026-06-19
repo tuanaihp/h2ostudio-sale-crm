@@ -245,10 +245,13 @@ const AdminSettings: React.FC = () => {
           integrationSheetId, 
           integrationSheetName, 
           integrationSheetApiKey, 
-          integrationZaloEnabled, 
-          integrationZaloOaId, 
-          integrationZaloAccessToken, 
-          integrationScriptNotes 
+          integrationZaloEnabled,
+          integrationZaloOaId,
+          integrationZaloAccessToken,
+          integrationScriptNotes,
+          telegramBotToken,
+          telegramChatId,
+          telegramNotificationEnabled,
         };
       }
       else if (section === 'wheel') {
@@ -905,6 +908,46 @@ const AdminSettings: React.FC = () => {
                 rows={6}
                 className="w-full p-3 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
               />
+            </div>
+
+            {/* Telegram Bot Notification */}
+            <div className="bg-sky-50/60 rounded-2xl p-5 border border-sky-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-dark text-sm flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-sky-100 text-sky-600"><Bell size={16} /></span>
+                  Thông báo Telegram Bot
+                </h3>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" checked={telegramNotificationEnabled} onChange={(e) => setTelegramNotificationEnabled(e.target.checked)} />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                </label>
+              </div>
+              <p className="text-xs text-dark/50">Bắn thông báo khách mới về nhóm Telegram — có tên, SĐT và link album yêu thích.</p>
+              <div className={`space-y-3 transition-opacity ${!telegramNotificationEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                <div>
+                  <label className="block text-xs font-bold text-dark/70 mb-1">Bot Token</label>
+                  <input
+                    type="text"
+                    value={telegramBotToken}
+                    onChange={(e) => setTelegramBotToken(e.target.value)}
+                    placeholder="123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-sky-400 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-dark/70 mb-1">Chat ID (nhóm/channel)</label>
+                  <input
+                    type="text"
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    placeholder="-100xxxxxxxxxx"
+                    className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-sky-400 text-sm font-mono"
+                  />
+                </div>
+                <p className="text-xs text-dark/50">
+                  Tạo bot qua @BotFather → lấy Token. Thêm bot vào nhóm → lấy Chat ID tại: api.telegram.org/bot<b>TOKEN</b>/getUpdates
+                </p>
+              </div>
             </div>
           </div>
         );
