@@ -4,7 +4,11 @@
       "Bash(node_modules/.bin/tsc --noEmit)",
       "PowerShell(vercel --version)",
       "Bash(git remote *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'feat: 3-tier image upload fallback chain \\(R2 → Drive → Supabase\\) *)",
+      "Bash(git commit *)"
     ]
   }
 }
