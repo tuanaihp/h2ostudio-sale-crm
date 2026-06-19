@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
 import { GOOGLE_SCRIPT_URL, LARK_FALLBACK_URL } from '../utils/config';
 import type { Consultation, DbConsultationRow } from '../types';
 import { useAuth } from './AuthContext';
 import { useSettings } from './SettingsContext';
+import { useToast } from './ToastContext';
 
 const PAGE_SIZE = 50;
 
@@ -62,6 +63,8 @@ interface ConsultationContextType {
   hasMoreConsultations: boolean;
   isLoadingMore: boolean;
   loadMoreConsultations: () => Promise<void>;
+  unreadCount: number;
+  markAllRead: () => void;
   submitConsultation: (data: {
     name: string; phone: string; email?: string; message?: string;
     date?: Date; favoriteIds?: string[]; source?: string; luckyGift?: string;
@@ -79,11 +82,31 @@ const ConsultationContext = createContext<ConsultationContextType | undefined>(u
 export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAdmin, isSuperAdmin, isAuthReady } = useAuth();
   const { settings } = useSettings();
+  const { showToast } = useToast();
 
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [hasMoreConsultations, setHasMoreConsultations] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageRef = useRef(0);
+
+  const [lastSeenAt, setLastSeenAt] = useState<string>(() => {
+    const saved = localStorage.getItem('admin_last_seen_at');
+    if (saved) return saved;
+    const now = new Date().toISOString();
+    localStorage.setItem('admin_last_seen_at', now);
+    return now;
+  });
+
+  const markAllRead = useCallback(() => {
+    const now = new Date().toISOString();
+    localStorage.setItem('admin_last_seen_at', now);
+    setLastSeenAt(now);
+  }, []);
+
+  const unreadCount = useMemo(
+    () => consultations.filter(c => c.status === 'new' && c.createdAt > lastSeenAt).length,
+    [consultations, lastSeenAt]
+  );
 
   // ─── Load (paginated) ───────────────────────────────────────────────────────
   const loadConsultations = useCallback(async (reset = false) => {
@@ -122,7 +145,9 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const channel = supabase.channel('consultations-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'consultations' }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          setConsultations(prev => [dbToConsultation(payload.new as DbConsultationRow), ...prev]);
+          const newConsult = dbToConsultation(payload.new as DbConsultationRow);
+          setConsultations(prev => [newConsult, ...prev]);
+          showToast(`🔔 Khách mới: ${newConsult.name} · ${newConsult.phone}`, 'info');
         } else if (payload.eventType === 'UPDATE') {
           setConsultations(prev => prev.map(c =>
             c.id === (payload.new as DbConsultationRow).id ? dbToConsultation(payload.new as DbConsultationRow) : c
@@ -248,6 +273,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   return (
     <ConsultationContext.Provider value={{
       consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations,
+      unreadCount, markAllRead,
       submitConsultation, updateConsultationStatus, updateConsultationRegistration,
       updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation,
     }}>

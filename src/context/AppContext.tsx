@@ -10,13 +10,13 @@ import { ToastProvider, useToast } from './ToastContext';
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <AuthProvider>
     <SettingsProvider>
-      <ConsultationProvider>
-        <ContentProvider>
-          <ToastProvider>
+      <ToastProvider>
+        <ConsultationProvider>
+          <ContentProvider>
             {children}
-          </ToastProvider>
-        </ContentProvider>
-      </ConsultationProvider>
+          </ContentProvider>
+        </ConsultationProvider>
+      </ToastProvider>
     </SettingsProvider>
   </AuthProvider>
 );
@@ -28,6 +28,7 @@ export const useApp = () => ({
   ...useSettings(),
   ...useConsultations(),
   ...useContent(),
+  ...useToast(),
 });
 
 // Re-export individual hooks for direct usage

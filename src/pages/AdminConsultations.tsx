@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
@@ -735,7 +735,7 @@ const StatusDropdown: React.FC<{
 };
 
 const AdminConsultations: React.FC = () => {
-  const { isAuthReady, consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations, updateConsultationStatus, updateConsultationRegistration, updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation, isAdmin, isSuperAdmin, styles, handleLogout } = useApp();
+  const { isAuthReady, consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations, updateConsultationStatus, updateConsultationRegistration, updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation, isAdmin, isSuperAdmin, styles, handleLogout, markAllRead } = useApp();
   const [filter, setFilter] = useState<'all' | 'new' | 'contacted' | 'registered'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list');
@@ -743,6 +743,10 @@ const AdminConsultations: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
+  useEffect(() => {
+    if (isAdmin) markAllRead();
+  }, [isAdmin]);
 
   if (!isAuthReady) {
     return (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, MessageCircle, Share2, LogIn, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2 } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Share2, LogIn, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2, Bell } from 'lucide-react';
 import { APP_CONFIG } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { getDisplayImageUrl } from '../utils/image';
@@ -28,7 +28,7 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login, handleLogout, isAuthReady, isAdmin, isSuperAdmin, favorites, settings } = useApp();
+  const { user, login, handleLogout, isAuthReady, isAdmin, isSuperAdmin, favorites, settings, unreadCount } = useApp();
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -97,13 +97,18 @@ export const Layout: React.FC<LayoutProps> = ({
                     </div>
                     {isAdmin && (
                       <div className="flex items-center gap-1">
-                        <Link 
-                          to="/admin/consultations" 
-                          className="p-2 bg-primary/10 hover:bg-primary/20 rounded-full transition-colors text-primary flex items-center gap-2 px-3"
+                        <Link
+                          to="/admin/consultations"
+                          className="relative p-2 bg-primary/10 hover:bg-primary/20 rounded-full transition-colors text-primary flex items-center gap-2 px-3"
                           title="Quản lý khách hàng"
                         >
                           <UserIcon size={18} />
                           <span className="text-[10px] font-bold uppercase tracking-widest hidden md:block">Quản lý</span>
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 animate-pulse z-10">
+                              {unreadCount > 99 ? '99+' : unreadCount}
+                            </span>
+                          )}
                         </Link>
                         {isSuperAdmin && (
                           <Link 
