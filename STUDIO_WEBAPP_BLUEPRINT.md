@@ -491,5 +491,106 @@ pattern trong CLAUDE.md. Điền thông tin studio vào APP_CONFIG trong mockDat
 
 ---
 
+## 17. SETUP LARK WEBHOOK (production-tested)
+
+### Bước 1 — Tạo bot trong nhóm Lark
+
+1. Mở app Lark → vào nhóm chat của team sale (hoặc tạo nhóm mới)
+2. Click tên nhóm ở trên → **Bots** → **Add bot** → **Custom Bot**
+3. Đặt tên bot (VD: "Thông báo khách hàng [Tên Studio]")
+4. **Cài đặt bảo mật:**
+   - ✅ **Bật "Đặt từ khóa"** → nhập 1 từ khóa bí mật (VD: `teamsaleh2o`) → đây là keyword filter bảo vệ webhook
+   - ❌ Không cần bật IP whitelist hay xác nhận chữ ký
+5. Copy **URL Webhook** → dán vào code
+
+> ⚠️ **QUAN TRỌNG:** URL Webhook là bí mật — không commit lên GitHub public, không đăng lên blog hay issue.
+
+---
+
+### Bước 2 — Cấu hình trong code
+
+**`src/utils/config.ts`** — paste URL webhook vào đây:
+```typescript
+export const LARK_FALLBACK_URL = 'https://open.larksuite.com/open-apis/bot/v2/hook/YOUR_HOOK_ID';
+```
+
+Hoặc tốt hơn, thêm vào **Vercel environment variables**:
+```
+LARK_WEBHOOK_URL = https://open.larksuite.com/open-apis/bot/v2/hook/YOUR_HOOK_ID
+```
+
+---
+
+### Bước 3 — BẮTBUỘC: Thêm keyword vào tất cả tin nhắn
+
+Vì đã bật keyword filter, **mọi tin nhắn gửi qua webhook đều phải chứa từ khóa** đã đặt. Không có từ khóa → Lark trả về `code: 19024 "Key Words Not Found"` và block tin nhắn.
+
+```typescript
+// ✅ ĐÚNG — có keyword ở đầu
+const text = `teamsaleh2o\n📋 Nội dung tin nhắn...`;
+
+// ❌ SAI — không có keyword → bị block
+const text = `📋 Nội dung tin nhắn...`;
+```
+
+**Áp dụng cho tất cả nơi gọi Lark:**
+- `api/cron-digest.ts` — digest sáng
+- `api/cron-stale.ts` — cảnh báo stale leads
+- `api/cron-shoots.ts` — nhắc lịch chụp
+- Google Apps Script (nếu dùng) — thêm keyword vào body gửi Lark
+
+---
+
+### Bước 4 — Test webhook
+
+Trong terminal **PowerShell** (Windows):
+```powershell
+Invoke-RestMethod -Uri "YOUR_WEBHOOK_URL" -Method POST -ContentType "application/json" -Body '{"msg_type":"text","content":{"text":"YOUR_KEYWORD\nTest OK!"}}'
+```
+
+> ⚠️ **Không dùng `curl` trong PowerShell** — đó là alias của `Invoke-WebRequest`, không tương thích cú pháp Unix. Phải dùng `Invoke-RestMethod` hoặc `curl.exe` (nếu đã cài Git Bash curl).
+
+**Kết quả mong đợi:**
+- `{"code": 0}` → thành công, nhóm Lark nhận được tin
+- `{"code": 19024, "msg": "Key Words Not Found"}` → thiếu keyword trong message
+- `{"code": 19021}` → URL webhook sai hoặc bot bị xóa
+
+---
+
+### Bước 5 — Vercel Cron (tự động gửi theo lịch)
+
+Thêm vào **`vercel.json`**:
+```json
+{
+  "crons": [
+    { "path": "/api/cron-digest",  "schedule": "0 1 * * *"  },
+    { "path": "/api/cron-stale",   "schedule": "30 1 * * *" },
+    { "path": "/api/cron-shoots",  "schedule": "0 10 * * *" }
+  ]
+}
+```
+
+| Cron | UTC | Giờ VN | Tác dụng |
+|------|-----|--------|----------|
+| `cron-digest` | 01:00 | 08:00 sáng | Danh sách khách mới 24h |
+| `cron-stale` | 01:30 | 08:30 sáng | Cảnh báo lead >48h chưa gọi |
+| `cron-shoots` | 10:00 | 17:00 chiều | Lịch chụp ngày mai |
+
+> **Lưu ý:** Vercel Cron yêu cầu Pro plan. Nếu dùng Hobby plan, dùng [cron-job.org](https://cron-job.org) (miễn phí) để gọi các endpoint thủ công theo lịch.
+
+---
+
+### Checklist Lark Setup
+
+- [ ] Tạo bot trong nhóm Lark team
+- [ ] Ghi lại từ khóa keyword filter đã đặt
+- [ ] Dán webhook URL vào `config.ts` hoặc Vercel env var `LARK_WEBHOOK_URL`
+- [ ] Thêm keyword vào đầu tất cả message trong cron functions
+- [ ] Test bằng `Invoke-RestMethod` → nhận được `code: 0`
+- [ ] Thêm cron config vào `vercel.json`
+- [ ] Deploy và test thủ công các endpoint `/api/cron-*`
+
+---
+
 *Blueprint này được tạo từ dự án H2O Studio Sale Album — đã production-tested.*
 *Cập nhật lần cuối: 2026-06-19*
