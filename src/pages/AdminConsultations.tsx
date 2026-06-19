@@ -743,10 +743,19 @@ const AdminConsultations: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [showFollowUpAlert, setShowFollowUpAlert] = useState(false);
 
   useEffect(() => {
     if (isAdmin) markAllRead();
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || !consultations.length) return;
+    if (sessionStorage.getItem('followup_alert_dismissed')) return;
+    const today = new Date().toISOString().split('T')[0];
+    const due = consultations.filter(c => c.followUpDate && c.followUpDate <= today && c.status !== 'registered');
+    if (due.length > 0) setShowFollowUpAlert(true);
+  }, [isAdmin, consultations]);
 
   if (!isAuthReady) {
     return (
@@ -860,6 +869,9 @@ const AdminConsultations: React.FC = () => {
   const registeredLeads = consultations.filter(c => c.status === 'registered').length;
   const conversionRate = totalLeads > 0 ? Math.round((registeredLeads / totalLeads) * 100) : 0;
   const totalContractValue = consultations.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+  const avgContractValue = registeredLeads > 0 ? Math.round(totalContractValue / registeredLeads) : 0;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const overdueFollowUps = consultations.filter(c => c.followUpDate && c.followUpDate <= todayStr && c.status !== 'registered');
 
   const sourceStats = consultations.reduce((acc, c) => {
     let src = 'Trực tiếp';
@@ -1071,7 +1083,7 @@ const AdminConsultations: React.FC = () => {
         </div>
 
         {/* Week / Month stats row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-light-gray flex items-center gap-4">
             <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center shrink-0">
               <TrendingUp size={22} />
@@ -1106,6 +1118,18 @@ const AdminConsultations: React.FC = () => {
               <p className={`text-2xl font-bold ${upcomingShootsCount > 0 ? 'text-blue-600' : 'text-dark'}`}>{upcomingShootsCount}</p>
             </div>
           </div>
+
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-light-gray flex items-center gap-4">
+            <div className="w-12 h-12 bg-purple-50 text-purple-500 rounded-xl flex items-center justify-center shrink-0">
+              <DollarSign size={22} />
+            </div>
+            <div>
+              <p className="text-xs text-dark/60 font-bold uppercase tracking-wider">Avg hợp đồng</p>
+              <p className="text-2xl font-bold text-dark">
+                {avgContractValue > 0 ? `${(avgContractValue / 1_000_000).toFixed(1)}M` : '—'}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Source Breakdown & Contract Value */}
@@ -1128,6 +1152,50 @@ const AdminConsultations: React.FC = () => {
         </div>
 
         <TodayPanel consultations={consultations} />
+
+        {/* D1: Follow-up overdue alert modal */}
+        {showFollowUpAlert && overdueFollowUps.length > 0 && (
+          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+              <div className="bg-purple-600 px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Bell size={20} className="text-white" />
+                  <h3 className="text-white font-bold text-base">Hẹn gọi chưa thực hiện</h3>
+                </div>
+                <button
+                  onClick={() => { setShowFollowUpAlert(false); sessionStorage.setItem('followup_alert_dismissed', '1'); }}
+                  className="text-white/70 hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 max-h-72 overflow-y-auto divide-y divide-light-gray">
+                {overdueFollowUps.map(c => (
+                  <div key={c.id} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-dark text-sm truncate">{c.name}</p>
+                      <p className="text-xs text-dark/50">{c.followUpDate} · {c.phone}</p>
+                    </div>
+                    <a
+                      href={`tel:${c.phone}`}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-bold hover:bg-green-200 transition-colors"
+                    >
+                      <Phone size={13} /> Gọi
+                    </a>
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => { setShowFollowUpAlert(false); sessionStorage.setItem('followup_alert_dismissed', '1'); }}
+                  className="w-full py-2.5 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700 transition-colors"
+                >
+                  Đã biết, đóng lại
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {view === 'calendar' ? (
           <ScheduleCalendar consultations={consultations} styles={styles} />
