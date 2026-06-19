@@ -1,5 +1,5 @@
 // Proxy gửi Lark notification với keyword filter — tránh CORS khi gọi từ browser
-const LARK_URL = process.env.LARK_WEBHOOK_URL || 'https://open.larksuite.com/open-apis/bot/v2/hook/addf1821-ec82-4dcb-8ae6-327006f2acf5';
+const LARK_DEFAULT_URL = process.env.LARK_WEBHOOK_URL || 'https://open.larksuite.com/open-apis/bot/v2/hook/addf1821-ec82-4dcb-8ae6-327006f2acf5';
 const LARK_KEYWORD = process.env.LARK_KEYWORD || 'teamsaleh2o';
 
 interface AlbumInfo {
@@ -14,7 +14,8 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { name, phone, source, luckyGift, favoriteCount, albums } = req.body || {};
+    const { name, phone, source, luckyGift, favoriteCount, albums, webhookUrl } = req.body || {};
+    const LARK_URL: string = webhookUrl || LARK_DEFAULT_URL;
     const albumList: AlbumInfo[] = Array.isArray(albums) ? albums : [];
 
     // Build Lark "post" format — supports clickable links

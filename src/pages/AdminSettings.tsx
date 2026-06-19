@@ -15,7 +15,7 @@ const TABS = [
   { id: 'integrations', label: 'Cổng kết nối', icon: Cpu },
   { id: 'wheel', label: 'Vòng quay May mắn', icon: Gift },
   { id: 'partners', label: 'Hệ sinh thái', icon: LinkIcon },
-  { id: 'notification', label: 'Thông báo Lark', icon: Bell },
+  { id: 'notification', label: 'Thông báo', icon: Bell },
   { id: 'staff', label: 'Truy cập nhân viên', icon: Users },
 ];
 
@@ -48,6 +48,10 @@ const AdminSettings: React.FC = () => {
 
   const [larkWebhookUrl, setLarkWebhookUrl] = useState(settings.larkWebhookUrl || '');
   const [larkNotificationEnabled, setLarkNotificationEnabled] = useState(settings.larkNotificationEnabled !== false);
+
+  const [telegramBotToken, setTelegramBotToken] = useState(settings.telegramBotToken || '');
+  const [telegramChatId, setTelegramChatId] = useState(settings.telegramChatId || '');
+  const [telegramNotificationEnabled, setTelegramNotificationEnabled] = useState(settings.telegramNotificationEnabled === true);
 
   const [aiConsultantEnabled, setAiConsultantEnabled] = useState(settings.aiConsultantEnabled !== false);
   const [aiConsultantName, setAiConsultantName] = useState(settings.aiConsultantName || 'Trợ lý H2O');
@@ -126,6 +130,9 @@ const AdminSettings: React.FC = () => {
     if (settings.luckyWheelNotificationEnabled !== undefined) setLuckyWheelNotificationEnabled(settings.luckyWheelNotificationEnabled);
     if (settings.larkWebhookUrl) setLarkWebhookUrl(settings.larkWebhookUrl);
     if (settings.larkNotificationEnabled !== undefined) setLarkNotificationEnabled(settings.larkNotificationEnabled);
+    if (settings.telegramBotToken) setTelegramBotToken(settings.telegramBotToken);
+    if (settings.telegramChatId) setTelegramChatId(settings.telegramChatId);
+    if (settings.telegramNotificationEnabled !== undefined) setTelegramNotificationEnabled(settings.telegramNotificationEnabled);
   }, [settings]);
 
   if (!isAuthReady) {
@@ -292,7 +299,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { partnerBrand1: finalPartner1, partnerBrand2: finalPartner2, showPartnerBrands };
       } 
       else if (section === 'notification') {
-        partialSettings = { larkWebhookUrl, larkNotificationEnabled };
+        partialSettings = { larkWebhookUrl, larkNotificationEnabled, telegramBotToken, telegramChatId, telegramNotificationEnabled };
       } 
       else if (section === 'staff') {
         partialSettings = { staffPhones };
@@ -814,27 +821,27 @@ const AdminSettings: React.FC = () => {
               )}
             </div>
 
-            {/* 3. Lark Integration Status */}
+            {/* 3. Notification Integration Status */}
             <div className="bg-light-gray/20 rounded-2xl p-5 border border-light-gray space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-dark text-sm flex items-center gap-2">
                     <span className="p-1 rounded-lg bg-blue-100 text-blue-600"><Bell size={16} /></span>
-                    Đồng bộ Báo cáo Leads sang Lark Webhook
+                    Thông báo khách mới (Lark / Telegram)
                   </h3>
                   <p className="text-xs text-dark/50 mt-1">
-                    Bắn thông báo khách hàng cần tư vấn, đã chọn concept hoặc trúng thưởng về Lark Suite.
+                    Bắn thông báo khách hàng cần tư vấn, đã chọn concept hoặc trúng thưởng.
                   </p>
                 </div>
-                <span className={`text-[11px] font-bold px-2 py-1 rounded ${settings.larkWebhookUrl ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                  {settings.larkWebhookUrl ? 'Đang Liên kết' : 'Chưa thiết lập'}
-                </span>
-              </div>
-              {settings.larkWebhookUrl && (
-                <div className="text-xs bg-white border border-light-gray rounded-xl p-3 font-mono truncate">
-                  {settings.larkWebhookUrl}
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${settings.larkWebhookUrl && settings.larkNotificationEnabled !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    Lark {settings.larkWebhookUrl && settings.larkNotificationEnabled !== false ? '✓' : '—'}
+                  </span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${settings.telegramNotificationEnabled && settings.telegramBotToken ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    Telegram {settings.telegramNotificationEnabled && settings.telegramBotToken ? '✓' : '—'}
+                  </span>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* 4. Zalo OA Connection */}
@@ -1183,41 +1190,78 @@ const AdminSettings: React.FC = () => {
           <div className="space-y-6 flex flex-col h-full">
             <h2 className="text-xl font-bold text-dark flex items-center gap-2 mb-2 pb-4 border-b border-light-gray">
               <Bell size={24} className="text-primary" />
-              Thông báo Lark (Feishu)
+              Thông báo khách mới
             </h2>
             <p className="text-sm text-dark/60 bg-light-gray/30 p-4 rounded-xl border border-light-gray/50">
-              Cấu hình gửi thông báo vào nhóm Lark. Mỗi khi có khách hàng đăng ký nhận khuyến mãi hoặc để lại số điện thoại, hệ thống sẽ tự động bắn tin nhắn vào Lark.
+              Mỗi khi có khách đăng ký, hệ thống bắn thông báo đến Lark và/hoặc Telegram cùng lúc. Có thể bật cả hai.
             </p>
-            
-            <div className="space-y-6 mt-4">
-              <label className="flex items-center justify-between p-4 bg-white border border-light-gray rounded-2xl cursor-pointer hover:border-primary transition-colors">
-                <span className="font-bold text-dark">Kích hoạt thông báo Lark</span>
+
+            {/* ── Lark ── */}
+            <div className="space-y-4 p-4 bg-blue-50/50 border border-blue-100 rounded-2xl">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-black text-blue-700 uppercase tracking-wider">Lark (Feishu)</span>
+              </div>
+              <label className="flex items-center justify-between p-3 bg-white border border-light-gray rounded-xl cursor-pointer hover:border-primary transition-colors">
+                <span className="font-bold text-dark text-sm">Kích hoạt thông báo Lark</span>
                 <div className="relative">
-                  <input 
-                    type="checkbox" 
-                    className="sr-only" 
-                    checked={larkNotificationEnabled}
-                    onChange={(e) => setLarkNotificationEnabled(e.target.checked)}
-                  />
+                  <input type="checkbox" className="sr-only" checked={larkNotificationEnabled} onChange={(e) => setLarkNotificationEnabled(e.target.checked)} />
                   <div className={`block w-12 h-7 rounded-full transition-colors ${larkNotificationEnabled ? 'bg-primary' : 'bg-gray-200'}`}></div>
                   <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${larkNotificationEnabled ? 'translate-x-5' : ''}`}></div>
                 </div>
               </label>
-
               <div className={`transition-opacity ${!larkNotificationEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                <label className="block text-sm font-bold text-dark mb-2">
-                  Lark Webhook URL
-                </label>
-                <input 
-                  type="text" 
+                <label className="block text-sm font-bold text-dark mb-2">Lark Webhook URL</label>
+                <input
+                  type="text"
                   value={larkWebhookUrl}
                   onChange={(e) => setLarkWebhookUrl(e.target.value)}
                   placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/..."
-                  className="w-full p-4 bg-light-gray/50 border border-light-gray rounded-xl focus:outline-none focus:border-primary text-sm font-mono"
+                  className="w-full p-3 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-primary text-sm font-mono"
                 />
-                <p className="text-xs text-dark/60 mt-2 flex items-start gap-1">
-                  <span className="text-primary font-bold">*</span>
-                  <span>Hướng dẫn: Vào nhóm Lark của bạn {`->`} Settings {`->`} Bots {`->`} Add Custom Bot {`->`} Copy Webhook URL.</span>
+                <p className="text-xs text-dark/60 mt-2">
+                  <span className="text-primary font-bold">* </span>
+                  Nhóm Lark → Settings → Bots → Add Custom Bot → Copy Webhook URL.
+                </p>
+              </div>
+            </div>
+
+            {/* ── Telegram ── */}
+            <div className="space-y-4 p-4 bg-sky-50/50 border border-sky-100 rounded-2xl">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-black text-sky-700 uppercase tracking-wider">Telegram Bot</span>
+              </div>
+              <label className="flex items-center justify-between p-3 bg-white border border-light-gray rounded-xl cursor-pointer hover:border-sky-400 transition-colors">
+                <span className="font-bold text-dark text-sm">Kích hoạt thông báo Telegram</span>
+                <div className="relative">
+                  <input type="checkbox" className="sr-only" checked={telegramNotificationEnabled} onChange={(e) => setTelegramNotificationEnabled(e.target.checked)} />
+                  <div className={`block w-12 h-7 rounded-full transition-colors ${telegramNotificationEnabled ? 'bg-sky-500' : 'bg-gray-200'}`}></div>
+                  <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${telegramNotificationEnabled ? 'translate-x-5' : ''}`}></div>
+                </div>
+              </label>
+              <div className={`space-y-3 transition-opacity ${!telegramNotificationEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div>
+                  <label className="block text-sm font-bold text-dark mb-2">Bot Token</label>
+                  <input
+                    type="text"
+                    value={telegramBotToken}
+                    onChange={(e) => setTelegramBotToken(e.target.value)}
+                    placeholder="123456789:AAF..."
+                    className="w-full p-3 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-sky-400 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-dark mb-2">Chat ID (nhóm hoặc channel)</label>
+                  <input
+                    type="text"
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    placeholder="-100xxxxxxxxxx"
+                    className="w-full p-3 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-sky-400 text-sm font-mono"
+                  />
+                </div>
+                <p className="text-xs text-dark/60">
+                  <span className="text-sky-600 font-bold">* </span>
+                  Tạo bot qua @BotFather → lấy Token. Thêm bot vào nhóm/channel → lấy Chat ID qua @userinfobot hoặc Telegram API.
                 </p>
               </div>
             </div>

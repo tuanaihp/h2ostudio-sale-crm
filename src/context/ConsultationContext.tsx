@@ -199,19 +199,38 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const { error } = await supabase.from('consultations').insert(row);
     if (error) throw new Error(error.message);
 
-    // Gửi Lark notification qua server-side proxy (có keyword filter, tránh CORS)
-    fetch('/api/lark-notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: data.name,
-        phone: data.phone,
-        source: data.source,
-        luckyGift: data.luckyGift,
-        favoriteCount: data.favoriteIds?.length || 0,
-        albums: data.favoriteAlbums || [],
-      }),
-    }).catch(err => console.error('Lark notify error:', err));
+    // Lark + Telegram — gửi song song, không block submit
+    if (settings?.larkNotificationEnabled !== false) {
+      fetch('/api/lark-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name,
+          phone: data.phone,
+          source: data.source,
+          luckyGift: data.luckyGift,
+          favoriteCount: data.favoriteIds?.length || 0,
+          albums: data.favoriteAlbums || [],
+          webhookUrl: settings?.larkWebhookUrl || undefined,
+        }),
+      }).catch(err => console.error('Lark notify error:', err));
+    }
+
+    if (settings?.telegramNotificationEnabled && settings?.telegramBotToken && settings?.telegramChatId) {
+      fetch('/api/telegram-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name,
+          phone: data.phone,
+          source: data.source,
+          luckyGift: data.luckyGift,
+          albums: data.favoriteAlbums || [],
+          botToken: settings.telegramBotToken,
+          chatId: settings.telegramChatId,
+        }),
+      }).catch(err => console.error('Telegram notify error:', err));
+    }
 
     const larkUrl = settings?.larkWebhookUrl || LARK_FALLBACK_URL;
     fetch(GOOGLE_SCRIPT_URL, {

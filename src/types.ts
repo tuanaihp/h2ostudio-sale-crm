@@ -114,6 +114,9 @@ export interface AppSettings {
   showPartnerBrands?: boolean;
   larkWebhookUrl?: string;
   larkNotificationEnabled?: boolean;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  telegramNotificationEnabled?: boolean;
   aiConsultantEnabled?: boolean;
   aiConsultantName?: string;
   aiConsultantPrompt?: string;
