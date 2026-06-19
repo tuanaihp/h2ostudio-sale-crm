@@ -6,25 +6,25 @@ interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> 
   containerClassName?: string;
 }
 
-export const OptimizedImage: React.FC<OptimizedImageProps> = ({ 
-  className = '', 
-  containerClassName = '', 
-  alt = 'Image', 
+export const OptimizedImage: React.FC<OptimizedImageProps> = ({
+  className = '',
+  containerClassName = '',
+  alt = 'Image',
   src,
-  ...props 
+  ...props
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const displaySrc = getDisplayImageUrl(src);
 
   return (
-    <div className={`relative overflow-hidden bg-gray-200 ${containerClassName}`}>
+    <div className={`relative overflow-hidden bg-gray-100 ${containerClassName}`}>
       {!isLoaded && (
-        <div className="absolute inset-0 animate-pulse bg-gray-300" />
+        <div className="absolute inset-0 skeleton-shimmer" />
       )}
       <motion.img
         initial={{ opacity: 0 }}
         animate={{ opacity: isLoaded ? 1 : 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.4 }}
         onLoad={() => setIsLoaded(true)}
         loading="lazy"
         decoding="async"

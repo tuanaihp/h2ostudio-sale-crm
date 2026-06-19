@@ -46,6 +46,46 @@ const PhotoView: React.FC = () => {
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const isFavorite = photo ? favorites.includes(photo.id) : false;
 
+  // Swipe gesture
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 45) {
+      if (dx < 0) handleNext();
+      else handlePrev();
+    }
+  };
+
+  // Double-tap to like
+  const lastTapTime = useRef(0);
+  const [heartBurst, setHeartBurst] = useState<{ x: number; y: number; key: number } | null>(null);
+
+  const handleImageTap = (e: React.MouseEvent | React.TouchEvent) => {
+    const now = Date.now();
+    if (now - lastTapTime.current < 320) {
+      if (photo) toggleFavorite(photo.id);
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      let x: number, y: number;
+      if ('changedTouches' in e) {
+        x = e.changedTouches[0].clientX - rect.left;
+        y = e.changedTouches[0].clientY - rect.top;
+      } else {
+        x = (e as React.MouseEvent).clientX - rect.left;
+        y = (e as React.MouseEvent).clientY - rect.top;
+      }
+      setHeartBurst({ x, y, key: now });
+      setTimeout(() => setHeartBurst(null), 750);
+    }
+    lastTapTime.current = now;
+  };
+
   // Auto-play effect
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -246,36 +286,22 @@ const PhotoView: React.FC = () => {
       </div>
 
       {/* Main Image View */}
-      <div 
+      <div
         className="flex-1 relative flex items-center justify-center overflow-hidden"
         style={{ '--style-theme-color': themeColor } as React.CSSProperties}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onClick={handleImageTap}
       >
-        <AnimatePresence initial={false} custom={direction}>
+        {/* Crossfade transition */}
+        <AnimatePresence initial={false} mode="sync">
           {showAsDesign ? (
             <motion.div
-              key={currentIndex}
-              custom={direction}
-              variants={{
-                enter: (direction: number) => ({
-                  x: direction > 0 ? "100%" : "-100%",
-                  opacity: 1
-                }),
-                center: {
-                  x: 0,
-                  opacity: 1
-                },
-                exit: (direction: number) => ({
-                  x: direction > 0 ? "-100%" : "100%",
-                  opacity: 1
-                })
-              }}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ 
-                x: { type: "tween", ease: "linear", duration: 0.5 },
-                opacity: { duration: 0.5 }
-              }}
+              key={`design-${currentIndex}`}
+              initial={{ opacity: 0, scale: 1.04 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.38, ease: 'easeInOut' }}
               className="absolute w-full h-full flex items-center justify-center p-4"
             >
               <DesignPreview design={photo.design} className="w-full max-w-lg aspect-[3/4] rounded-lg shadow-2xl" />
@@ -289,9 +315,9 @@ const PhotoView: React.FC = () => {
                   settings.watermarkPosition === 'center' ? 'items-center justify-center' :
                   'items-end justify-end'
                 }`}>
-                  <img 
-                    src={getDisplayImageUrl(settings.brandLogo)} 
-                    alt="Watermark" 
+                  <img
+                    src={getDisplayImageUrl(settings.brandLogo)}
+                    alt="Watermark"
                     className="max-w-[100px] sm:max-w-[150px] h-auto drop-shadow-md"
                     style={{ opacity: settings.watermarkOpacity || 0.5 }}
                     referrerPolicy="no-referrer"
@@ -301,29 +327,11 @@ const PhotoView: React.FC = () => {
             </motion.div>
           ) : (
             <motion.div
-              key={currentIndex}
-              custom={direction}
-              variants={{
-                enter: (direction: number) => ({
-                  x: direction > 0 ? "100%" : "-100%",
-                  opacity: 1
-                }),
-                center: {
-                  x: 0,
-                  opacity: 1
-                },
-                exit: (direction: number) => ({
-                  x: direction > 0 ? "-100%" : "100%",
-                  opacity: 1
-                })
-              }}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ 
-                x: { type: "tween", ease: "linear", duration: 0.5 },
-                opacity: { duration: 0.5 }
-              }}
+              key={`photo-${currentIndex}`}
+              initial={{ opacity: 0, scale: 1.04 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.38, ease: 'easeInOut' }}
               className="absolute w-full h-full flex items-center justify-center"
             >
               {!loadedImages[photo.image] && (
@@ -349,9 +357,9 @@ const PhotoView: React.FC = () => {
                   settings.watermarkPosition === 'center' ? 'items-center justify-center' :
                   'items-end justify-end'
                 }`}>
-                  <img 
-                    src={getDisplayImageUrl(settings.brandLogo)} 
-                    alt="Watermark" 
+                  <img
+                    src={getDisplayImageUrl(settings.brandLogo)}
+                    alt="Watermark"
                     className="max-w-[100px] sm:max-w-[150px] h-auto drop-shadow-md"
                     style={{ opacity: settings.watermarkOpacity || 0.5 }}
                     referrerPolicy="no-referrer"
@@ -362,20 +370,31 @@ const PhotoView: React.FC = () => {
           )}
         </AnimatePresence>
 
+        {/* Double-tap heart burst */}
+        {heartBurst && (
+          <div
+            key={heartBurst.key}
+            className="absolute pointer-events-none z-[200] heart-burst"
+            style={{ left: heartBurst.x, top: heartBurst.y }}
+          >
+            <Heart className="w-16 h-16 text-red-500 fill-red-500 drop-shadow-2xl" />
+          </div>
+        )}
+
         {/* Navigation Arrows */}
-        <button 
-          onClick={handlePrev}
+        <button
+          onClick={(e) => { e.stopPropagation(); handlePrev(); }}
           disabled={currentIndex === 0}
           className="absolute left-4 top-1/2 -translate-y-1/2 p-2 text-white transition-all z-[100] rounded-full disabled:hidden flex items-center justify-center backdrop-blur-sm shadow-lg hover:brightness-110 active:scale-95"
-          style={{ backgroundColor: `${themeColor}44` }} // 25% opacity
+          style={{ backgroundColor: `${themeColor}44` }}
         >
           <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
         </button>
         <button
-          onClick={handleNext}
+          onClick={(e) => { e.stopPropagation(); handleNext(); }}
           disabled={!album.photos || (currentIndex === album.photos.length - 1 && style.albums.filter(a => a.id !== album.id).length === 0)}
           className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white transition-all z-[100] rounded-full disabled:hidden flex items-center justify-center backdrop-blur-sm shadow-lg hover:brightness-110 active:scale-95"
-          style={{ backgroundColor: `${themeColor}44` }} // 25% opacity
+          style={{ backgroundColor: `${themeColor}44` }}
         >
           <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
         </button>

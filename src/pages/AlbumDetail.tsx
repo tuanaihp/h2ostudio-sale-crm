@@ -42,22 +42,30 @@ const PhotoItem = React.memo<SortablePhotoProps>(({
       transition={{ delay: (index % 4) * 0.05 }}
       className="relative group"
     >
-      <Link 
+      <Link
         to={`/style/${slug}/album/${albumSlug}/photo/${photo.id}`}
-        className="block aspect-[3/4] overflow-hidden rounded-lg bg-light-gray"
+        className="block aspect-[3/4] overflow-hidden rounded-lg bg-light-gray relative"
       >
         {photo.design ? (
           <DesignPreview design={photo.design} className="w-full h-full" fallbackImage={photo.image} />
         ) : (
-          <OptimizedImage 
-            src={photo.image} 
+          <OptimizedImage
+            src={photo.image}
             alt={photo.alt}
-            className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             containerClassName="w-full h-full"
             referrerPolicy="no-referrer"
           />
         )}
-        
+
+        {/* Hover overlay — "Xem ảnh" hint */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 pointer-events-none">
+          <span className="text-white text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+            <MessageCircle size={10} />
+            Xem ảnh
+          </span>
+        </div>
+
         {/* Dynamic Watermark Overlay for thumbnails */}
         {!photo.design && settings?.brandLogo && (
           <div className={`absolute pointer-events-none z-10 p-2 flex inset-0 ${
@@ -185,6 +193,22 @@ const AlbumDetail: React.FC = () => {
       setCoverPos(album.coverImagePos || { x: 50, y: 50 });
     }
   }, [album?.coverImagePos, isRepositioningCover, album]);
+
+  // Parallax cover background + sticky CTA visibility
+  const coverBgRef = useRef<HTMLDivElement>(null);
+  const [showStickyConsult, setShowStickyConsult] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setShowStickyConsult(y > 380);
+      if (coverBgRef.current) {
+        coverBgRef.current.style.transform = `translateY(${y * 0.28}px)`;
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // If we found the style but haven't found the album yet, check if we are still loading albums
   const isLoadingAlbums = style && (!style.albums || style.albums.length === 0);
@@ -394,10 +418,11 @@ const AlbumDetail: React.FC = () => {
       
       {/* Cover Image Section */}
       <div className="relative w-full h-[50vh] sm:h-[70vh] bg-dark flex items-center justify-center overflow-hidden group">
-        {/* Blurred Background */}
-        <div 
-          className="absolute inset-0 opacity-40 blur-3xl scale-125" 
-          style={{ backgroundImage: `url(${getDisplayImageUrl(album.coverImage)})`, backgroundSize: 'cover', backgroundPosition: 'center' }} 
+        {/* Blurred Background — parallax on scroll */}
+        <div
+          ref={coverBgRef}
+          className="absolute inset-0 opacity-40 blur-3xl scale-125 will-change-transform"
+          style={{ backgroundImage: `url(${getDisplayImageUrl(album.coverImage)})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
         />
         
         {/* Main Image in a Frame */}
@@ -587,22 +612,27 @@ const AlbumDetail: React.FC = () => {
 
         {/* Cross-selling Section */}
         <div className="mt-16 pt-8 border-t border-light-gray">
-          <h3 className="text-xl font-bold text-dark mb-6">Có thể bạn cũng thích</h3>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-xl font-bold text-dark">Khách thường xem cùng album này</h3>
+              <p className="text-xs text-dark/50 mt-0.5">Chọn thêm để tư vấn combo tiết kiệm hơn</p>
+            </div>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {style.albums.filter(a => a.id !== album.id).slice(0, 4).map(relatedAlbum => (
-              <Link 
-                key={relatedAlbum.id} 
+              <Link
+                key={relatedAlbum.id}
                 to={`/style/${slug}/album/${relatedAlbum.slug}`}
                 className="group block"
               >
                 <div className="aspect-[3/4] rounded-xl overflow-hidden mb-2 relative">
-                  <OptimizedImage 
-                    src={relatedAlbum.coverImage} 
+                  <OptimizedImage
+                    src={relatedAlbum.coverImage}
                     alt={relatedAlbum.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className="w-full h-full object-cover group-hover:scale-95 transition-transform duration-500"
                   />
-                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="text-white text-xs font-bold uppercase tracking-widest border border-white px-3 py-1.5 rounded-full">Xem ngay</span>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                    <span className="text-white text-[10px] font-bold uppercase tracking-widest">Xem album</span>
                   </div>
                 </div>
                 <h4 className="text-sm font-bold text-dark truncate">{relatedAlbum.title}</h4>
@@ -613,8 +643,28 @@ const AlbumDetail: React.FC = () => {
         </div>
       </div>
 
+      {/* Sticky floating CTA — appears after scroll */}
+      {showStickyConsult && !isAdmin && (
+        <div className="fixed bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end gap-2">
+          <motion.button
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            onClick={() => {
+              const message = `Chào H2O STUDIO, mình cần tư vấn về concept "${album.title}" (từ bộ sưu tập ${style.title})\nLink: ${window.location.href}\nTư vấn cho mình nhé!`;
+              setConsultInitialMessage(message);
+              setIsConsultModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-5 py-3 rounded-full text-white font-bold shadow-2xl text-sm"
+            style={{ background: 'linear-gradient(135deg, #A4756B, #ECB697)' }}
+          >
+            <MessageCircle size={18} />
+            Tư vấn concept này
+          </motion.button>
+        </div>
+      )}
+
       {/* Consultation Modal */}
-      <ConsultationModal 
+      <ConsultationModal
         isOpen={isConsultModalOpen}
         onClose={() => setIsConsultModalOpen(false)}
         initialMessage={consultInitialMessage || chatInitialMessage}

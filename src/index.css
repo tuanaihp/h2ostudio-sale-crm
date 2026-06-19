@@ -41,3 +41,24 @@
   background: #A4756B;
   border-radius: 10px;
 }
+
+/* Shimmer skeleton */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #e8e0dd 25%, #f5f0ee 50%, #e8e0dd 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Heart burst */
+@keyframes heartBurst {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+  50%  { opacity: 1; transform: translate(-50%, -50%) scale(1.6); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); }
+}
+.heart-burst {
+  animation: heartBurst 0.7s ease-out forwards;
+}

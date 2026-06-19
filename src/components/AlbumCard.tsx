@@ -63,6 +63,10 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
 
   const likesCount = parseLikes(album.displayLikes, album.id);
   const isHotConcept = index < 5 && likesCount >= 5000;
+  // Deterministic viewer count seeded by album id — consistent per album, varies 3–18
+  const viewerCount = !isAdmin
+    ? (album.id.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) & 0xffff, 7) % 16) + 3
+    : 0;
 
   return (
     <motion.div
@@ -116,6 +120,16 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
             </div>
           )}
 
+          {/* Social proof — not shown to admin */}
+          {viewerCount > 0 && (
+            <div className="absolute bottom-3 left-3 right-3 flex justify-end z-10 pointer-events-none">
+              <span className="flex items-center gap-1 bg-black/50 backdrop-blur-sm text-white text-[9px] font-semibold rounded-full px-2 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                {viewerCount} người đang xem
+              </span>
+            </div>
+          )}
+
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -123,8 +137,8 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
               toggleFavorite(album.id);
             }}
             className={`absolute ${isHotConcept ? 'top-10' : 'top-4'} left-4 p-2 rounded-full backdrop-blur-md transition-all duration-300 z-10 ${
-              isFavorite 
-                ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' 
+              isFavorite
+                ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
                 : 'bg-black/20 text-white/70 hover:bg-black/40 hover:text-white'
             }`}
           >
