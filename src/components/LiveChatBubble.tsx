@@ -202,23 +202,23 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
       className="fixed bottom-24 right-4 sm:bottom-8 sm:right-8 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden w-[90vw] max-w-[340px] sm:w-[340px] flex flex-col origin-bottom-right"
       style={{ height: 500 }}
     >
-      {/* Header */}
-      <div className="bg-dark text-white px-4 py-3 flex items-center justify-between shrink-0">
+      {/* Header — gradient đồng bộ nút CHAT */}
+      <div className="bg-gradient-to-br from-secondary via-primary to-primary text-white px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center">
+            <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
               <User size={18} />
             </div>
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-dark rounded-full" />
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 border-2 border-primary rounded-full" />
           </div>
           <div>
             <p className="font-bold text-sm">Chat với tư vấn viên</p>
-            <p className="text-xs text-white/70">H2O Studio · phản hồi trong vài phút</p>
+            <p className="text-xs text-white/80">H2O Studio · phản hồi trong vài phút</p>
           </div>
         </div>
         <button
           onClick={() => setOpen(false)}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
         >
           <X size={18} />
         </button>
@@ -227,7 +227,7 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-gray-50 p-3 space-y-2">
         <div className="flex justify-start">
-          <div className="w-7 h-7 bg-dark rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
+          <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
           <div className="bg-white text-gray-800 rounded-2xl rounded-bl-sm border border-gray-100 px-3 py-2 text-sm shadow-sm max-w-[78%]">
             <p>Xin chào! Tư vấn viên H2O Studio sẵn sàng hỗ trợ anh/chị 💕</p>
             <p className="text-[10px] text-gray-400 mt-0.5">H2O Studio</p>
@@ -237,15 +237,15 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
             {msg.sender === 'admin' && (
-              <div className="w-7 h-7 bg-dark rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
+              <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
             )}
             <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
               msg.sender === 'customer'
-                ? 'bg-dark text-white rounded-br-sm'
+                ? 'bg-gradient-to-br from-secondary via-primary to-primary text-white rounded-br-sm'
                 : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
             }`}>
               <p className="whitespace-pre-wrap">{msg.content}</p>
-              <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-white/60' : 'text-gray-400'}`}>
+              <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-white/70' : 'text-gray-400'}`}>
                 {format(new Date(msg.created_at), 'HH:mm')}
               </p>
             </div>
@@ -253,23 +253,23 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
         ))}
 
         {showForm && !formDone && (
-          <div className="bg-gray-100 border border-gray-200 rounded-2xl p-3 mx-1">
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-3 mx-1">
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-1.5">
-                <User size={13} className="text-gray-600" />
-                <p className="text-xs font-semibold text-gray-700">Để lại thông tin nhận tư vấn</p>
+                <User size={13} className="text-primary" />
+                <p className="text-xs font-semibold text-primary">Để lại thông tin nhận tư vấn</p>
               </div>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={13} /></button>
             </div>
             <p className="text-[11px] text-gray-500 mb-2">Tư vấn viên sẽ gọi lại xác nhận lịch cho anh/chị 😊</p>
             <div className="space-y-1.5">
               <input
-                className="w-full border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-dark/30"
+                className="w-full border border-primary/20 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Tên anh/chị (không bắt buộc)"
                 value={formName} onChange={e => setFormName(e.target.value)}
               />
               <input
-                className="w-full border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-dark/30"
+                className="w-full border border-primary/20 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Số điện thoại *" type="tel"
                 value={formPhone} onChange={e => setFormPhone(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && submitInfo()}
@@ -277,7 +277,7 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
               <button
                 onClick={submitInfo}
                 disabled={formPhone.trim().length < 9 || formSaving}
-                className="w-full bg-dark text-white rounded-lg py-1.5 text-xs font-bold hover:bg-dark/90 transition-colors disabled:opacity-40"
+                className="w-full bg-gradient-to-r from-secondary to-primary text-white rounded-lg py-1.5 text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {formSaving ? 'Đang lưu...' : 'Gửi thông tin'}
               </button>
@@ -291,7 +291,7 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
       {/* Input */}
       <div className="border-t bg-white p-3 flex gap-2 shrink-0">
         <input
-          className="flex-1 border border-gray-200 rounded-full px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dark/30"
+          className="flex-1 border border-gray-200 rounded-full px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           placeholder="Nhắn tin với tư vấn viên..."
           value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
@@ -299,7 +299,7 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
         />
         <button
           onClick={send} disabled={!input.trim() || sending}
-          className="bg-dark text-white rounded-full p-2.5 disabled:opacity-40 hover:bg-dark/90 transition-colors"
+          className="bg-gradient-to-br from-secondary to-primary text-white rounded-full p-2.5 disabled:opacity-40 hover:opacity-90 transition-opacity"
         >
           <Send size={15} />
         </button>
@@ -318,7 +318,7 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => { _setOpen(true); setHasNew(false); }}
-            className="w-14 h-14 bg-dark text-white rounded-full shadow-lg shadow-dark/20 flex items-center justify-center relative hover:bg-dark/90 transition-colors"
+            className="w-14 h-14 bg-gradient-to-br from-secondary via-primary to-primary text-white rounded-full shadow-lg shadow-primary/30 flex items-center justify-center relative hover:opacity-90 transition-opacity"
           >
             <User size={24} />
             <span className="absolute top-0 right-0 flex h-3.5 w-3.5">
