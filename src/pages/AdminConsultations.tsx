@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
-import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText } from 'lucide-react';
+import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
@@ -1462,6 +1462,14 @@ const AdminConsultations: React.FC = () => {
                 ))}
               </div>
             )}
+
+            <Link
+              to="/admin/scripts"
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-sm hover:bg-amber-100 transition-all"
+            >
+              <BookOpen size={16} />
+              Kho kịch bản
+            </Link>
 
             {isSuperAdmin && (
               <button

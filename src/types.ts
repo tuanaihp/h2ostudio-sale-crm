@@ -138,6 +138,28 @@ export interface AppSettings {
   secondWelcomeMessage?: string;
 }
 
+export interface SaleScript {
+  id: string;
+  phase: string;
+  title: string;
+  content: string;
+  tags: string[];
+  orderNum: number;
+  enabled: boolean;
+}
+
+export interface DbSaleScriptRow {
+  id: string;
+  phase: string;
+  title: string;
+  content: string;
+  tags: string[] | null;
+  order_num: number;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface AppConfig {
   brandName: string;
   zaloUrl: string;
