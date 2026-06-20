@@ -204,6 +204,39 @@ export interface DbChatMessageRow {
   created_at: string;
 }
 
+export interface Promotion {
+  id: string;
+  title: string;
+  shortDesc: string;
+  content: string;
+  emoji: string;
+  color: string;
+  bgColor: string;
+  startDate: string;
+  endDate: string;
+  ctaText: string;
+  showOnWebsite: boolean;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface DbPromotionRow {
+  id: string;
+  title: string;
+  short_desc: string;
+  content: string;
+  emoji: string;
+  color: string;
+  bg_color: string;
+  start_date: string;
+  end_date: string;
+  cta_text: string;
+  show_on_website: boolean;
+  enabled: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface AppConfig {
   brandName: string;
   zaloUrl: string;

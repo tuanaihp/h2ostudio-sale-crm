@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext';
 import { getDisplayImageUrl } from '../utils/image';
 import { LiveChatWidget } from './LiveChatWidget';
 import { LuckyWheelWidget } from './LuckyWheelWidget';
+import { PromoBanner } from './PromoBanner';
 
 import { PartnerBrandsIcons } from './PartnerBrandsIcons';
 
@@ -165,6 +166,8 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
         </div>
       </header>
+
+      <PromoBanner />
 
       {/* Main Content */}
       <main className={`flex-1 ${showBottomBar ? 'pb-24' : 'pb-12'}`}>

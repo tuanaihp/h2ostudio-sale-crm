@@ -1182,6 +1182,8 @@ const AdminConsultations: React.FC = () => {
   const [chatInitialPhone, setChatInitialPhone] = useState<string | null>(null);
   const [chatUnread, setChatUnread] = useState(0);
   const [chatNotif, setChatNotif] = useState<{ text: string; from: string } | null>(null);
+  const chatPanelOpenRef = React.useRef(false);
+  React.useEffect(() => { chatPanelOpenRef.current = chatPanelOpen; }, [chatPanelOpen]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -1203,6 +1205,7 @@ const AdminConsultations: React.FC = () => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async (payload) => {
         const msg = payload.new as any;
         if (msg.sender !== 'customer') return;
+        if (chatPanelOpenRef.current) return; // don't toast if panel already open
         const { data: sess } = await supabase.from('chat_sessions').select('name, phone').eq('id', msg.session_id).maybeSingle();
         const from = (sess as any)?.name || ((sess as any)?.phone?.startsWith('anon_') ? 'Khách ẩn danh' : (sess as any)?.phone) || 'Khách';
         setChatNotif({ text: msg.content, from });
@@ -1534,6 +1537,14 @@ const AdminConsultations: React.FC = () => {
             >
               <BookOpen size={16} />
               Kho kịch bản
+            </Link>
+
+            <Link
+              to="/admin/promotions"
+              className="flex items-center gap-2 px-4 py-2.5 bg-pink-50 text-pink-700 border border-pink-200 rounded-xl font-bold text-sm hover:bg-pink-100 transition-all"
+            >
+              <Gift size={16} />
+              Lịch KM
             </Link>
 
             {isSuperAdmin && (

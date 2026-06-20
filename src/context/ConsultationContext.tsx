@@ -194,6 +194,18 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (data.source === 'lucky_wheel') autoTags.push('Vòng quay');
     if ((data.favoriteIds?.length || 0) >= 3) autoTags.push('Tiềm năng cao');
     else if ((data.favoriteIds?.length || 0) > 0) autoTags.push('Đã thích album');
+
+    // Auto-tag with active promotion
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: activePromos } = await supabase
+        .from('promotions').select('title')
+        .eq('enabled', true).lte('start_date', today).gte('end_date', today).limit(1);
+      if (activePromos && activePromos.length > 0) {
+        autoTags.push(`🎉 KM: ${activePromos[0].title}`);
+      }
+    } catch { /* ignore */ }
+
     if (autoTags.length > 0) row.tags = autoTags;
 
     const { error } = await supabase.from('consultations').insert(row);
