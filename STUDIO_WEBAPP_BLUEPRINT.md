@@ -21,14 +21,14 @@
 11. [Live Chat & Bot AI & AdminChatPanel](#11-live-chat--bot-ai--adminchatpanel)
 12. [Kho Câu Hỏi Thực Tế (Knowledge Base)](#12-kho-câu-hỏi-thực-tế-knowledge-base)
 13. [Lịch Khuyến Mãi (Promotions)](#13-lịch-khuyến-mãi-promotions)
-13. [AppSettings Interface](#13-appsettings-interface)
-14. [Environment Variables (Vercel)](#14-environment-variables-vercel)
-15. [Quy tắc Code](#15-quy-tắc-code)
-16. [Checklist Build Phases](#16-checklist-build-phases)
-17. [Deploy lên Vercel](#17-deploy-lên-vercel)
-18. [Setup Lark Webhook — Chi tiết từng bước](#18-setup-lark-webhook--chi-tiết-từng-bước)
-19. [Setup Telegram Bot — Chi tiết từng bước](#19-setup-telegram-bot--chi-tiết-từng-bước)
-20. [Prompt mẫu để bắt đầu dự án mới](#20-prompt-mẫu-để-bắt-đầu-dự-án-mới)
+14. [AppSettings Interface](#14-appsettings-interface)
+15. [Environment Variables (Vercel)](#15-environment-variables-vercel)
+16. [Quy tắc Code](#16-quy-tắc-code)
+17. [Checklist Build Phases](#17-checklist-build-phases)
+18. [Deploy lên Vercel](#18-deploy-lên-vercel)
+19. [Setup Lark Webhook — Chi tiết từng bước](#19-setup-lark-webhook--chi-tiết-từng-bước)
+20. [Setup Telegram Bot — Chi tiết từng bước](#20-setup-telegram-bot--chi-tiết-từng-bước)
+21. [Prompt mẫu để bắt đầu dự án mới](#21-prompt-mẫu-để-bắt-đầu-dự-án-mới)
 
 ---
 
@@ -219,21 +219,25 @@ src/
 │   ├── AlbumDetail.tsx         ← danh sách photos + cross-sell + sticky CTA
 │   ├── PhotoView.tsx           ← xem ảnh full (swipe + double-tap like)
 │   ├── Favorites.tsx           ← danh sách yêu thích + ?preview= cho team sale
-│   ├── AdminConsultations.tsx  ← CRM chính (list + kanban + calendar)
+│   ├── AdminConsultations.tsx  ← CRM chính (list + kanban + calendar + nav bar)
 │   ├── AdminContent.tsx        ← quản lý styles/albums/photos
 │   ├── AdminSettings.tsx       ← cấu hình hệ thống (5 tabs)
 │   ├── AdminLogin.tsx
-│   └── AdminTrash.tsx
+│   ├── AdminTrash.tsx
+│   ├── AdminScripts.tsx        ← kho kịch bản chốt sale (sale_scripts table)
+│   ├── AdminPromotions.tsx     ← lịch khuyến mãi (3 tab: lịch / danh sách / thống kê)
+│   └── AdminKnowledgeBase.tsx  ← kho câu hỏi thực tế (customer_faqs table)
 ├── components/
-│   ├── Layout.tsx              ← header + footer + bottom bar mobile
+│   ├── Layout.tsx              ← header + footer + bottom bar mobile + <PromoBanner />
 │   ├── AlbumCard.tsx           ← card album (social proof badge, zoom-out hover)
 │   ├── OptimizedImage.tsx      ← skeleton shimmer loader
 │   ├── ConsultationModal.tsx   ← form đăng ký nhận báo giá
 │   ├── ChatModal.tsx
 │   ├── PhoneGate.tsx           ← popup yêu cầu SĐT
-│   ├── LiveChatWidget.tsx      ← galaxy CHAT button + auto-open 10s + controls LiveChatBubble
-│   ├── LiveChatBubble.tsx      ← customer-facing chat panel (standalone & controlled mode) + Bot AI
-│   ├── AdminChatPanel.tsx      ← admin side-drawer: session list + reply + @kịch bản + 📷 album picker
+│   ├── LiveChatWidget.tsx      ← CHAT button + auto-open 10s + Bot standalone fallback
+│   ├── LiveChatBubble.tsx      ← customer chat panel + Bot Tầng 1/2 (callBotTier1/2)
+│   ├── AdminChatPanel.tsx      ← admin side-drawer: session list + reply + @kịch bản + 📷 album + 📌 FAQ
+│   ├── PromoBanner.tsx         ← banner KM trên website (dismiss to sessionStorage)
 │   ├── LuckyWheelWidget.tsx
 │   ├── ImageCropperModal.tsx
 │   └── PartnerBrandsIcons.tsx
@@ -241,7 +245,8 @@ src/
 ├── utils/
 │   ├── config.ts               ← GOOGLE_SCRIPT_URL, LARK_FALLBACK_URL, R2_WORKER_URL
 │   ├── image.ts                ← uploadImageToStorage(), getDisplayImageUrl()
-│   └── phone.ts                ← validateVietnamesePhone()
+│   ├── phone.ts                ← validateVietnamesePhone()
+│   └── synonyms.ts             ← SYNONYM_GROUPS + expandQuery() cho Bot Tầng 1
 ├── types.ts                    ← tất cả interfaces + DbRow types
 ├── supabase.ts                 ← createClient
 ├── index.css                   ← shimmer, heartBurst keyframes
@@ -251,6 +256,7 @@ api/
 ├── lark-notify.ts              ← Vercel serverless: gửi Lark (post format + fallback text)
 ├── telegram-notify.ts          ← Vercel serverless: gửi Telegram Bot (HTML format)
 ├── chat.ts                     ← Vercel serverless: AI chat (Gemini)
+├── live-chat-bot.ts            ← Vercel serverless: Bot Tầng 2 (Gemini + kịch bản context)
 └── bot.ts                      ← Vercel serverless: OG meta tags cho social preview
 ```
 
@@ -274,6 +280,9 @@ const Home = lazy(() => import('./pages/Home'));
 /admin/settings → AdminSettings (super_admin only)
 /admin/login → AdminLogin
 /admin/trash → AdminTrash
+/admin/scripts → AdminScripts (kho kịch bản chốt sale)
+/admin/promotions → AdminPromotions (lịch khuyến mãi)
+/admin/knowledge-base → AdminKnowledgeBase (kho câu hỏi thực tế)
 ```
 
 **`vercel.json` rewrites** (bắt buộc cho SPA):
@@ -841,7 +850,7 @@ const PromoCard: React.FC<PromoCardProps> = ({ ... }) => { ... };
 
 ---
 
-## 13. AppSettings Interface
+## 14. AppSettings Interface
 
 ```typescript
 // src/types.ts
@@ -913,7 +922,7 @@ export interface AppSettings {
 
 ---
 
-## 14. Environment Variables (Vercel)
+## 15. Environment Variables (Vercel)
 
 Thêm tất cả biến này vào **Vercel Dashboard → Project → Settings → Environment Variables**:
 
@@ -948,7 +957,7 @@ TELEGRAM_CHAT_ID          = -100xxxxxxxxxx
 
 ---
 
-## 15. Quy tắc Code
+## 16. Quy tắc Code
 
 ### Làm:
 - TypeScript strict, define interfaces cho mọi DB row (`DbStyleRow`, `DbAlbumRow`...)
@@ -971,7 +980,7 @@ TELEGRAM_CHAT_ID          = -100xxxxxxxxxx
 
 ---
 
-## 16. Checklist Build Phases
+## 17. Checklist Build Phases
 
 ### Phase 1 — Nền tảng
 - [ ] Supabase setup (schema + RLS + Auth + Realtime)
@@ -1023,7 +1032,7 @@ TELEGRAM_CHAT_ID          = -100xxxxxxxxxx
 
 ---
 
-## 17. Deploy lên Vercel
+## 18. Deploy lên Vercel
 
 ### Lần đầu (setup)
 ```powershell
@@ -1058,7 +1067,7 @@ npx vercel ls   # Xem danh sách deployment và trạng thái
 
 ---
 
-## 18. Setup Lark Webhook — Chi tiết từng bước
+## 19. Setup Lark Webhook — Chi tiết từng bước
 
 ### Bước 1 — Tạo nhóm và bot trong Lark
 
@@ -1155,7 +1164,7 @@ Invoke-RestMethod -Uri "YOUR_WEBHOOK_URL" -Method POST `
 
 ---
 
-## 19. Setup Telegram Bot — Chi tiết từng bước
+## 20. Setup Telegram Bot — Chi tiết từng bước
 
 ### Bước 1 — Tạo Bot qua @BotFather
 
@@ -1284,7 +1293,7 @@ curl -X POST "https://[domain]/api/telegram-notify" \
 
 ---
 
-## 20. Prompt mẫu để bắt đầu dự án mới
+## 21. Prompt mẫu để bắt đầu dự án mới
 
 ```
 Tôi muốn xây dựng một webapp studio cho [TÊN STUDIO] — [MÔ TẢ DỊCH VỤ].
@@ -1308,4 +1317,4 @@ pattern trong CLAUDE.md.
 ---
 
 *Blueprint này được tạo từ dự án H2O Studio Sale Album — production-tested.*  
-*Cập nhật lần cuối: 2026-06-20 — Kho Câu Hỏi (customer_faqs) + từ điển đồng nghĩa + Bot Tầng 1 tìm FAQ trước*
+*Cập nhật lần cuối: 2026-06-20 — đủ 21 mục, file structure + routing đầy đủ toàn bộ tính năng production*
