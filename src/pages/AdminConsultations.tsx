@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
-import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen } from 'lucide-react';
+import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen, Database } from 'lucide-react';
 import { AdminChatPanel } from '../components/AdminChatPanel';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
@@ -1545,6 +1545,14 @@ const AdminConsultations: React.FC = () => {
             >
               <Gift size={16} />
               Lịch KM
+            </Link>
+
+            <Link
+              to="/admin/knowledge-base"
+              className="flex items-center gap-2 px-4 py-2.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-xl font-bold text-sm hover:bg-teal-100 transition-all"
+            >
+              <Database size={16} />
+              Kho Câu Hỏi
             </Link>
 
             {isSuperAdmin && (

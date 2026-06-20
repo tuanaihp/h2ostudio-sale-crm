@@ -3,6 +3,7 @@ import { X, Send, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabase';
 import { format } from 'date-fns';
+import { expandQuery } from '../utils/synonyms';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -148,32 +149,55 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     setTimeout(() => setShowForm(true), 1500);
   };
 
-  // Tầng 1: khớp từ khóa với kho kịch bản, không tốn API
+  // Tầng 1: tìm trong customer_faqs (Q&A thực tế) + sale_scripts, dùng từ điển đồng nghĩa
   const callBotTier1 = async (customerMessage: string, sid: string) => {
     try {
-      const { data: scriptData } = await supabase
-        .from('sale_scripts').select('id, phase, title, content, tags')
-        .eq('enabled', true).order('order_num', { ascending: true });
+      const [{ data: faqData }, { data: scriptData }] = await Promise.all([
+        supabase.from('customer_faqs').select('id, question, answer, tags, usage_count').eq('is_approved', true),
+        supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
+      ]);
 
       await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
 
-      const q = customerMessage.toLowerCase();
-      const words = q.split(/\s+/).filter(w => w.length >= 2);
+      // Mở rộng từ khóa bằng từ điển đồng nghĩa
+      const words = expandQuery(customerMessage);
 
-      const scored = (scriptData || []).map((s: any) => {
+      const scoreItem = (text1: string, text2: string, tags: string[], w3: number, w2: number, w1: number) => {
         let score = 0;
         words.forEach(w => {
-          if (s.title?.toLowerCase().includes(w)) score += 3;
-          if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) score += 2;
-          if (s.content?.toLowerCase().includes(w)) score += 1;
+          if (text1.toLowerCase().includes(w)) score += w3;
+          if (tags.some(t => t.toLowerCase().includes(w))) score += w2;
+          if (text2.toLowerCase().includes(w)) score += w1;
         });
-        return { s, score };
-      }).sort((a: any, b: any) => b.score - a.score);
+        return score;
+      };
+
+      // FAQ thực tế: câu hỏi (+4), tags (+2), câu trả lời (+1)
+      const scoredFaqs = (faqData || []).map((f: any) => ({
+        type: 'faq' as const, item: f,
+        score: scoreItem(f.question, f.answer, f.tags || [], 4, 2, 1),
+      }));
+
+      // Kịch bản: tiêu đề (+3), tags (+2), nội dung (+1)
+      const scoredScripts = (scriptData || []).map((s: any) => ({
+        type: 'script' as const, item: s,
+        score: scoreItem(s.title, s.content, s.tags || [], 3, 2, 1),
+      }));
+
+      const best = [...scoredFaqs, ...scoredScripts].sort((a, b) => b.score - a.score)[0];
 
       let text: string;
-      if (scored.length > 0 && scored[0].score > 0) {
-        const best = scored[0].s.content as string;
-        text = best.length > 450 ? best.slice(0, 450) + '...' : best;
+      if (best && best.score > 0) {
+        if (best.type === 'faq') {
+          text = best.item.answer;
+          // Tăng usage_count không chặn luồng chính
+          supabase.from('customer_faqs')
+            .update({ usage_count: (best.item.usage_count || 0) + 1 })
+            .eq('id', best.item.id).then(() => {});
+        } else {
+          const c = best.item.content as string;
+          text = c.length > 450 ? c.slice(0, 450) + '...' : c;
+        }
       } else {
         text = 'Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Tư vấn viên sẽ phản hồi anh/chị sớm nhất có thể. Anh/chị vui lòng để lại số điện thoại để được hỗ trợ tốt hơn ạ 💕';
       }

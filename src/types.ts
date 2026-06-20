@@ -141,6 +141,31 @@ export interface AppSettings {
   secondWelcomeMessage?: string;
 }
 
+export interface CustomerFaq {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  tags: string[];
+  usageCount: number;
+  source: 'manual' | 'from_chat';
+  isApproved: boolean;
+  createdAt: string;
+}
+
+export interface DbCustomerFaqRow {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  tags: string[] | null;
+  usage_count: number;
+  source: string;
+  is_approved: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface SaleScript {
   id: string;
   phase: string;

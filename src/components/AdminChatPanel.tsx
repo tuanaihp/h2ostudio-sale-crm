@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check, Camera } from 'lucide-react';
+import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check, Camera, BookmarkPlus } from 'lucide-react';
 import { supabase } from '../supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -92,6 +92,11 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
   const [copied, setCopied]               = useState<string | null>(null);
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
   const [albumSearch, setAlbumSearch]     = useState('');
+
+  // Lưu vào kho câu hỏi
+  const [saveFaqTarget, setSaveFaqTarget] = useState<{ question: string; answer: string } | null>(null);
+  const [saveFaqForm, setSaveFaqForm]     = useState({ question: '', answer: '', category: 'khac', tags: '' });
+  const [saveFaqSaving, setSaveFaqSaving] = useState(false);
 
   const bottomRef    = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLTextAreaElement>(null);
@@ -233,6 +238,29 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
     setInput(newVal);
     setAtQuery(null);
     setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const openSaveFaq = (msg: Msg, index: number) => {
+    // Pre-fill answer với tin nhắn admin liền kề tiếp theo (nếu có)
+    const nextAdminMsg = messages.slice(index + 1).find(m => m.sender === 'admin');
+    setSaveFaqForm({ question: msg.content, answer: nextAdminMsg?.content || '', category: 'khac', tags: '' });
+    setSaveFaqTarget({ question: msg.content, answer: nextAdminMsg?.content || '' });
+  };
+
+  const saveFaq = async () => {
+    if (!saveFaqForm.question.trim() || !saveFaqForm.answer.trim()) return;
+    setSaveFaqSaving(true);
+    const tags = saveFaqForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+    await supabase.from('customer_faqs').insert({
+      id: crypto.randomUUID(),
+      question: saveFaqForm.question.trim(),
+      answer: saveFaqForm.answer.trim(),
+      category: saveFaqForm.category,
+      tags, source: 'from_chat', is_approved: true, usage_count: 0,
+      created_at: new Date().toISOString(),
+    });
+    setSaveFaqSaving(false);
+    setSaveFaqTarget(null);
   };
 
   const insertAlbumLink = (style: Style, album: Album) => {
@@ -410,24 +438,36 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
               {messages.length === 0 && (
                 <p className="text-center text-xs text-gray-400 mt-6">Cuộc trò chuyện bắt đầu — nhắn gì đó để chào khách 👋</p>
               )}
-              {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
+              {messages.map((msg, idx) => (
+                <div key={msg.id} className={`flex group ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
                   {msg.sender === 'customer' && (
                     <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 mr-2 shrink-0 self-end">
                       {activeSession ? initials(activeSession) : '?'}
                     </div>
                   )}
-                  <div className={`max-w-[68%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
-                    msg.sender === 'admin'
-                      ? 'bg-blue-600 text-white rounded-br-sm'
-                      : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
-                  }`}>
-                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                    <p className={`text-[10px] mt-1 ${msg.sender === 'admin' ? 'text-blue-200' : 'text-gray-400'}`}>
-                      {format(new Date(msg.created_at), 'HH:mm')}
-                      {' · '}
-                      {msg.sender === 'admin' ? 'Bạn' : (activeSession?.name || 'Khách')}
-                    </p>
+                  <div className="flex items-end gap-1.5">
+                    <div className={`max-w-[68%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
+                      msg.sender === 'admin'
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
+                    }`}>
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      <p className={`text-[10px] mt-1 ${msg.sender === 'admin' ? 'text-blue-200' : 'text-gray-400'}`}>
+                        {format(new Date(msg.created_at), 'HH:mm')}
+                        {' · '}
+                        {msg.sender === 'admin' ? 'Bạn' : (activeSession?.name || 'Khách')}
+                      </p>
+                    </div>
+                    {/* Nút Lưu vào kho — chỉ hiện trên tin nhắn của khách */}
+                    {msg.sender === 'customer' && (
+                      <button
+                        onClick={() => openSaveFaq(msg, idx)}
+                        title="📌 Lưu vào kho câu hỏi"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg shrink-0 mb-1"
+                      >
+                        <BookmarkPlus size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -593,6 +633,88 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
           </div>
         )}
       </div>
+
+      {/* ── Modal Lưu vào kho câu hỏi ── */}
+      {saveFaqTarget && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <BookmarkPlus size={18} className="text-amber-500" />
+                <h3 className="font-bold text-dark text-sm">📌 Lưu vào Kho Câu Hỏi</h3>
+              </div>
+              <button onClick={() => setSaveFaqTarget(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">❓ Câu hỏi của khách</label>
+                <textarea
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 resize-none"
+                  rows={2}
+                  value={saveFaqForm.question}
+                  onChange={e => setSaveFaqForm(f => ({ ...f, question: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                  💬 Câu trả lời tốt nhất
+                  {saveFaqForm.answer && <span className="ml-1 font-normal text-gray-400">(tự động từ tin nhắn kế tiếp của bạn)</span>}
+                </label>
+                <textarea
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 resize-none"
+                  rows={4}
+                  placeholder="Nhập câu trả lời chốt sale tốt nhất..."
+                  value={saveFaqForm.answer}
+                  onChange={e => setSaveFaqForm(f => ({ ...f, answer: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">📂 Nhóm</label>
+                  <select
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                    value={saveFaqForm.category}
+                    onChange={e => setSaveFaqForm(f => ({ ...f, category: e.target.value }))}
+                  >
+                    <option value="gia">💰 Giá & Gói</option>
+                    <option value="lich">📅 Lịch & Đặt ngày</option>
+                    <option value="album">📷 Album & Ảnh</option>
+                    <option value="quy_trinh">📋 Quy trình</option>
+                    <option value="khuyen_mai">🎉 Khuyến mãi</option>
+                    <option value="khac">💬 Khác</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1"># Tags (cách nhau dấu phẩy)</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                    placeholder="giá, cưới..."
+                    value={saveFaqForm.tags}
+                    onChange={e => setSaveFaqForm(f => ({ ...f, tags: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 p-4 border-t">
+              <button
+                onClick={() => setSaveFaqTarget(null)}
+                className="flex-1 border border-gray-200 rounded-xl py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Huỷ
+              </button>
+              <button
+                onClick={saveFaq}
+                disabled={!saveFaqForm.question.trim() || !saveFaqForm.answer.trim() || saveFaqSaving}
+                className="flex-1 bg-amber-500 text-white rounded-xl py-2 text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition-colors"
+              >
+                {saveFaqSaving ? 'Đang lưu...' : '💾 Lưu vào kho'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

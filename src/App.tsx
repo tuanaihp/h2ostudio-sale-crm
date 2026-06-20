@@ -16,6 +16,7 @@ const AdminTrash = lazy(() => import('./pages/AdminTrash'));
 const AdminContent = lazy(() => import('./pages/AdminContent'));
 const AdminScripts = lazy(() => import('./pages/AdminScripts'));
 const AdminPromotions = lazy(() => import('./pages/AdminPromotions'));
+const AdminKnowledgeBase = lazy(() => import('./pages/AdminKnowledgeBase'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-white">
@@ -51,6 +52,7 @@ function AppContent() {
           <Route path="/admin/content" element={<AdminContent />} />
           <Route path="/admin/scripts" element={<AdminScripts />} />
           <Route path="/admin/promotions" element={<AdminPromotions />} />
+          <Route path="/admin/knowledge-base" element={<AdminKnowledgeBase />} />
         </Routes>
       </Suspense>
     </>

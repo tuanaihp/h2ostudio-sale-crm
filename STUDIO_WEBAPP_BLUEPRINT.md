@@ -19,7 +19,8 @@
 9. [Auto-tag khi Submit Lead](#9-auto-tag-khi-submit-lead)
 10. [Admin CRM — Tính năng tự động](#10-admin-crm--tính-năng-tự-động)
 11. [Live Chat & Bot AI & AdminChatPanel](#11-live-chat--bot-ai--adminchatpanel)
-12. [Lịch Khuyến Mãi (Promotions)](#12-lịch-khuyến-mãi-promotions)
+12. [Kho Câu Hỏi Thực Tế (Knowledge Base)](#12-kho-câu-hỏi-thực-tế-knowledge-base)
+13. [Lịch Khuyến Mãi (Promotions)](#13-lịch-khuyến-mãi-promotions)
 13. [AppSettings Interface](#13-appsettings-interface)
 14. [Environment Variables (Vercel)](#14-environment-variables-vercel)
 15. [Quy tắc Code](#15-quy-tắc-code)
@@ -635,7 +636,87 @@ const insertAlbumLink = (style: Style, album: Album) => {
 
 ---
 
-## 12. Lịch Khuyến Mãi (Promotions)
+## 12. Kho Câu Hỏi Thực Tế (Knowledge Base)
+
+### Tổng quan
+
+Hệ thống Q&A tích lũy từ chat thực tế với khách → Bot Tầng 1 tìm kiếm kho này trước `sale_scripts` → kho càng lớn bot càng chính xác.
+
+```
+Chat thực tế → Admin click "📌 Lưu vào kho" → customer_faqs lớn dần
+                                                      ↓
+Bot Tầng 1: expandQuery (từ điển đồng nghĩa) → score faqs + scripts → trả lời tốt nhất
+```
+
+### Database table: `customer_faqs`
+
+```sql
+CREATE TABLE customer_faqs (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  question text NOT NULL,
+  answer text NOT NULL,
+  category text NOT NULL DEFAULT 'khac',  -- 'gia'|'lich'|'album'|'quy_trinh'|'khuyen_mai'|'khac'
+  tags text[] DEFAULT '{}',
+  usage_count integer NOT NULL DEFAULT 0,
+  source text NOT NULL DEFAULT 'manual',  -- 'manual' | 'from_chat'
+  is_approved boolean NOT NULL DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE customer_faqs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read approved" ON customer_faqs FOR SELECT USING (is_approved = true);
+CREATE POLICY "Admin all access" ON customer_faqs FOR ALL USING (auth.role() = 'authenticated');
+```
+
+### src/utils/synonyms.ts
+
+- `SYNONYM_GROUPS`: mảng `[từ chính, [đồng nghĩa...]]` — ~20 nhóm từ ngữ cảnh chụp ảnh cưới
+- `expandQuery(query)`: expand câu hỏi thành set từ khóa đã mở rộng
+
+```typescript
+expandQuery("bao nhiêu tiền")
+// → ["bao", "nhiêu", "tiền", "giá", "chi", "phí", "báo", "giá", "tiền", ...]
+```
+
+### AdminKnowledgeBase.tsx (`/admin/knowledge-base`)
+
+- Stats: tổng Q&A, từ chat thực tế, số lần bot đã dùng
+- Filter category + search
+- FAQ cards: click để xem câu trả lời đầy đủ
+- Add/Edit modal: câu hỏi, câu trả lời, nhóm, tags
+- Badge "💬 Chat thực tế" cho FAQ được lưu từ AdminChatPanel
+- Badge "✅ Bot dùng N×" hiển thị usage_count
+
+### AdminChatPanel.tsx — nút 📌 Lưu vào kho
+
+- Hover vào tin nhắn của khách → hiện `BookmarkPlus` button
+- Click → modal pre-fill:
+  - Question = nội dung tin nhắn khách đó
+  - Answer = tin nhắn admin kế tiếp sau câu hỏi đó (nếu có)
+- Admin chỉnh sửa rồi chọn category + tags → Save
+
+### Bot Tầng 1 — search logic (LiveChatBubble.tsx)
+
+```typescript
+// Fetch song song cả hai nguồn
+const [{ data: faqData }, { data: scriptData }] = await Promise.all([
+  supabase.from('customer_faqs').select('...').eq('is_approved', true),
+  supabase.from('sale_scripts').select('...').eq('enabled', true),
+]);
+
+// Mở rộng từ khóa
+const words = expandQuery(customerMessage);
+
+// Score FAQ: question +4, tags +2, answer +1
+// Score Script: title +3, tags +2, content +1
+// FAQ được ưu tiên hơn (weight cao hơn) vì là Q&A thực tế đã kiểm duyệt
+
+// Lấy best match → trả lời; FAQ → tăng usage_count
+```
+
+---
+
+## 13. Lịch Khuyến Mãi (Promotions)
 
 ### Tổng quan
 
@@ -1227,4 +1308,4 @@ pattern trong CLAUDE.md.
 ---
 
 *Blueprint này được tạo từ dự án H2O Studio Sale Album — production-tested.*  
-*Cập nhật lần cuối: 2026-06-20 — Bot AI 2 tầng (Tầng 1 kịch bản + Tầng 2 API) + Widget/Bot độc lập*
+*Cập nhật lần cuối: 2026-06-20 — Kho Câu Hỏi (customer_faqs) + từ điển đồng nghĩa + Bot Tầng 1 tìm FAQ trước*
