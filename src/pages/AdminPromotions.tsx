@@ -6,6 +6,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Edit3, Trash2, Save, X,
   Calendar, List, TrendingUp, Eye, EyeOff, Megaphone,
   ToggleLeft, ToggleRight, Users, ArrowLeft, Check, AlertCircle,
+  Sparkles, UserCheck, Phone, MessageCircle, Loader2,
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, getDay,
@@ -13,6 +14,20 @@ import {
 } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import type { Promotion, DbPromotionRow } from '../types';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface AiPromoProposal {
+  title: string;
+  shortDesc: string;
+  content: string;
+  emoji: string;
+  color: string;
+  bgColor: string;
+  startDate: string;
+  endDate: string;
+  ctaText: string;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -26,6 +41,7 @@ const COLORS = [
   { bg: '#F0FFF4', color: '#276749', label: 'Xanh lá' },
   { bg: '#FFF5F3', color: '#A4756B', label: 'Hồng studio' },
   { bg: '#FFF0F5', color: '#D53F8C', label: 'Hồng đậm' },
+  { bg: '#FAF0FF', color: '#7B2D8B', label: 'Tím' },
   { bg: '#F7FAFC', color: '#4A5568', label: 'Xám' },
 ];
 
@@ -44,6 +60,22 @@ const BLANK_FORM = {
   showOnWebsite: true,
   enabled: true,
 };
+
+const STATUS_CONFIG_MINI: Record<string, { label: string; cls: string }> = {
+  new:        { label: 'Mới',     cls: 'bg-red-100 text-red-600' },
+  called:     { label: 'Đã gọi',  cls: 'bg-yellow-100 text-yellow-700' },
+  contacted:  { label: 'Đã gọi',  cls: 'bg-yellow-100 text-yellow-700' },
+  consulting: { label: 'Tư vấn',  cls: 'bg-blue-100 text-blue-700' },
+  quoted:     { label: 'Báo giá', cls: 'bg-purple-100 text-purple-700' },
+  registered: { label: 'Đã chốt', cls: 'bg-green-100 text-green-700' },
+};
+
+const EXAMPLE_COMMANDS = [
+  'tạo KM cho tất cả ngày đặc biệt trong năm 2026',
+  'tạo KM mùa cưới tháng 10-12/2026 với ưu đãi giảm 15-20%',
+  'tạo KM Valentine, 8/3, Giáng Sinh 2026',
+  'tạo 5 chương trình KM thu hút khách cưới mùa hè 2026',
+];
 
 // ─── DB mapper ────────────────────────────────────────────────────────────────
 
@@ -93,19 +125,37 @@ const STATUS_LABEL: Record<string, string> = {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminPromotions() {
-  const { isAdmin, isAuthReady, consultations } = useApp();
+  const { isAdmin, isAuthReady, consultations, updateConsultationTags } = useApp();
 
-  const [promos, setPromos]             = useState<Promotion[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [tab, setTab]                   = useState<'calendar' | 'list' | 'stats'>('calendar');
-  const [viewMonth, setViewMonth]       = useState(new Date());
-  const [selectedDay, setSelectedDay]   = useState<Date | null>(null);
-  const [showModal, setShowModal]       = useState(false);
-  const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
+  // ── Existing state ──────────────────────────────────────────────────────────
+  const [promos, setPromos]               = useState<Promotion[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [tab, setTab]                     = useState<'calendar' | 'list' | 'stats' | 'customers'>('calendar');
+  const [viewMonth, setViewMonth]         = useState(new Date());
+  const [selectedDay, setSelectedDay]     = useState<Date | null>(null);
+  const [showModal, setShowModal]         = useState(false);
+  const [editingPromo, setEditingPromo]   = useState<Promotion | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [saving, setSaving]             = useState(false);
-  const [statsYear, setStatsYear]       = useState(new Date().getFullYear());
-  const [form, setForm]                 = useState({ ...BLANK_FORM });
+  const [saving, setSaving]               = useState(false);
+  const [statsYear, setStatsYear]         = useState(new Date().getFullYear());
+  const [form, setForm]                   = useState({ ...BLANK_FORM });
+
+  // ── AI Bulk Create state ────────────────────────────────────────────────────
+  const [aiModal, setAiModal]               = useState(false);
+  const [aiCommand, setAiCommand]           = useState('');
+  const [aiLoading, setAiLoading]           = useState(false);
+  const [aiProposals, setAiProposals]       = useState<AiPromoProposal[]>([]);
+  const [selectedProposals, setSelectedProposals] = useState<Set<number>>(new Set());
+  const [importingAi, setImportingAi]       = useState(false);
+  const [aiError, setAiError]               = useState('');
+
+  // ── AI Content state ────────────────────────────────────────────────────────
+  const [aiContentLoading, setAiContentLoading] = useState(false);
+
+  // ── Customers tab state ─────────────────────────────────────────────────────
+  const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
+  const [assignSearch, setAssignSearch]       = useState('');
+  const [showAssign, setShowAssign]           = useState(false);
 
   if (isAuthReady && !isAdmin) return <Navigate to="/admin/login" replace />;
 
@@ -119,17 +169,16 @@ export default function AdminPromotions() {
     setLoading(false);
   };
 
-  // ── Calendar ──────────────────────────────────────────────────────────────
+  // ── Calendar helpers ──────────────────────────────────────────────────────
 
   const calDays = (): (Date | null)[] => {
     const days = eachDayOfInterval({ start: startOfMonth(viewMonth), end: endOfMonth(viewMonth) });
-    const dow = getDay(startOfMonth(viewMonth)); // 0=Sun
-    const offset = dow === 0 ? 6 : dow - 1;     // Mon-start offset
+    const dow = getDay(startOfMonth(viewMonth));
+    const offset = dow === 0 ? 6 : dow - 1;
     return [...Array(offset).fill(null), ...days];
   };
 
   const promosForDay = (day: Date) => promos.filter(p => promoCoverDay(p, day));
-
   const selectedPromos = selectedDay ? promosForDay(selectedDay) : [];
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
@@ -203,11 +252,130 @@ export default function AdminPromotions() {
 
   const maxCount = Math.max(...statsData.map(x => x.count), 1);
 
+  // ── AI Bulk Create ────────────────────────────────────────────────────────
+
+  const callAiBulk = async () => {
+    if (!aiCommand.trim()) return;
+    setAiLoading(true);
+    setAiError('');
+    setAiProposals([]);
+    try {
+      const res = await fetch('/api/ai-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: aiCommand, type: 'bulk' }),
+      });
+      const data = await res.json();
+      if (data.result && Array.isArray(data.result)) {
+        setAiProposals(data.result);
+        setSelectedProposals(new Set(data.result.map((_: AiPromoProposal, i: number) => i)));
+      } else {
+        setAiError(data.error || 'AI không trả về kết quả. Thử lại với lệnh khác.');
+      }
+    } catch {
+      setAiError('Lỗi kết nối. Vui lòng thử lại.');
+    }
+    setAiLoading(false);
+  };
+
+  const importAiProposals = async () => {
+    const toImport = aiProposals.filter((_, i) => selectedProposals.has(i));
+    if (!toImport.length) return;
+    setImportingAi(true);
+    for (const p of toImport) {
+      await supabase.from('promotions').insert({
+        id: crypto.randomUUID(),
+        title: p.title, short_desc: p.shortDesc, content: p.content,
+        emoji: p.emoji || '🎉', color: p.color || '#A4756B', bg_color: p.bgColor || '#FFF5F3',
+        start_date: p.startDate, end_date: p.endDate,
+        cta_text: p.ctaText || 'Đăng ký nhận ưu đãi',
+        show_on_website: true, enabled: true,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+    }
+    await loadPromos();
+    setAiModal(false);
+    setAiProposals([]);
+    setSelectedProposals(new Set());
+    setAiCommand('');
+    setImportingAi(false);
+  };
+
+  // ── AI Content ────────────────────────────────────────────────────────────
+
+  const callAiContent = async () => {
+    if (!form.title.trim()) return;
+    setAiContentLoading(true);
+    try {
+      const res = await fetch('/api/ai-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'content',
+          context: `${form.title} (${form.startDate} đến ${form.endDate})`,
+        }),
+      });
+      const data = await res.json();
+      if (data.result) {
+        setForm(f => ({
+          ...f,
+          shortDesc: data.result.shortDesc || f.shortDesc,
+          content:   data.result.content   || f.content,
+          ctaText:   data.result.ctaText   || f.ctaText,
+        }));
+      }
+    } catch {}
+    setAiContentLoading(false);
+  };
+
+  const openEditWithAi = async (p: Promotion) => {
+    openEdit(p);
+    setAiContentLoading(true);
+    try {
+      const res = await fetch('/api/ai-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'content',
+          context: `${p.title} (${p.startDate} đến ${p.endDate})`,
+        }),
+      });
+      const data = await res.json();
+      if (data.result) {
+        setForm(f => ({
+          ...f,
+          shortDesc: data.result.shortDesc || f.shortDesc,
+          content:   data.result.content   || f.content,
+          ctaText:   data.result.ctaText   || f.ctaText,
+        }));
+      }
+    } catch {}
+    setAiContentLoading(false);
+  };
+
+  // ── Customers ─────────────────────────────────────────────────────────────
+
+  const getPromoCustomers = (promo: Promotion) => {
+    const tag = `🎉 KM: ${promo.title}`;
+    return consultations.filter(c => (c.tags || []).includes(tag));
+  };
+
+  const assignToPromo = async (consultationId: string, promo: Promotion) => {
+    const tag = `🎉 KM: ${promo.title}`;
+    const c = consultations.find(x => x.id === consultationId);
+    if (!c) return;
+    const newTags = Array.from(new Set([...(c.tags || []), tag]));
+    await updateConsultationTags(consultationId, newTags);
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
+
+  const selectedPromoForCustomers = selectedPromoId ? promos.find(p => p.id === selectedPromoId) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ── Top nav ──────────────────────────────────────────────────────────── */}
+
+      {/* ── Top nav ────────────────────────────────────────────────────────────── */}
       <div className="bg-white border-b sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -224,29 +392,42 @@ export default function AdminPromotions() {
 
           {/* Tabs */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            {([['calendar', Calendar, 'Lịch'], ['list', List, 'Danh sách'], ['stats', TrendingUp, 'Thống kê']] as const).map(
-              ([key, Icon, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setTab(key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                    tab === key ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <Icon size={13} />
-                  <span className="hidden sm:inline">{label}</span>
-                </button>
-              )
-            )}
+            {([
+              ['calendar', Calendar, 'Lịch'],
+              ['list', List, 'Danh sách'],
+              ['stats', TrendingUp, 'Thống kê'],
+              ['customers', Users, 'Khách hàng'],
+            ] as const).map(([key, Icon, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  tab === key ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Icon size={13} />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
           </div>
 
-          <button
-            onClick={() => openCreate()}
-            className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <Plus size={14} />
-            <span className="hidden sm:inline">Tạo KM</span>
-          </button>
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setAiModal(true); setAiProposals([]); setAiError(''); }}
+              className="flex items-center gap-1.5 bg-violet-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-violet-700 transition-colors"
+            >
+              <Sparkles size={14} />
+              <span className="hidden sm:inline">AI tạo KM</span>
+            </button>
+            <button
+              onClick={() => openCreate()}
+              className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">Tạo KM</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -276,9 +457,7 @@ export default function AdminPromotions() {
               {/* Day headers */}
               <div className="grid grid-cols-7 border-b">
                 {WEEK_DAYS.map(d => (
-                  <div key={d} className={`text-center text-[11px] font-bold py-2 ${
-                    d === 'CN' ? 'text-red-500' : 'text-gray-400'
-                  }`}>{d}</div>
+                  <div key={d} className={`text-center text-[11px] font-bold py-2 ${d === 'CN' ? 'text-red-500' : 'text-gray-400'}`}>{d}</div>
                 ))}
               </div>
 
@@ -298,21 +477,14 @@ export default function AdminPromotions() {
                       }`}
                     >
                       <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${
-                        isToday(day)
-                          ? 'bg-primary text-white'
-                          : isWeekend
-                            ? 'text-red-400'
-                            : 'text-gray-700'
+                        isToday(day) ? 'bg-primary text-white' : isWeekend ? 'text-red-400' : 'text-gray-700'
                       }`}>
                         {format(day, 'd')}
                       </span>
                       <div className="space-y-0.5">
                         {dayPromos.slice(0, 2).map(p => (
-                          <div
-                            key={p.id}
-                            className="truncate text-[10px] font-medium px-1.5 py-0.5 rounded-sm leading-snug"
-                            style={{ backgroundColor: p.bgColor, color: p.color }}
-                          >
+                          <div key={p.id} className="truncate text-[10px] font-medium px-1.5 py-0.5 rounded-sm leading-snug"
+                            style={{ backgroundColor: p.bgColor, color: p.color }}>
                             {p.emoji} {p.title}
                           </div>
                         ))}
@@ -357,10 +529,8 @@ export default function AdminPromotions() {
                     <div className="bg-white rounded-2xl border p-6 text-center">
                       <Calendar size={32} className="mx-auto mb-2 text-gray-200" />
                       <p className="text-sm text-gray-400">Không có KM nào ngày này</p>
-                      <button
-                        onClick={() => openCreate(selectedDay)}
-                        className="mt-3 text-xs text-primary font-semibold hover:underline"
-                      >
+                      <button onClick={() => openCreate(selectedDay)}
+                        className="mt-3 text-xs text-primary font-semibold hover:underline">
                         + Tạo khuyến mãi
                       </button>
                     </div>
@@ -368,6 +538,7 @@ export default function AdminPromotions() {
                     selectedPromos.map(p => (
                       <PromoCard key={p.id} promo={p}
                         onEdit={() => openEdit(p)}
+                        onAiContent={() => openEditWithAi(p)}
                         onDelete={() => setConfirmDelete(p.id)}
                         onToggle={() => toggleEnabled(p)}
                         confirmDelete={confirmDelete}
@@ -391,38 +562,36 @@ export default function AdminPromotions() {
         {/* ════════════════ LIST TAB ════════════════ */}
         {tab === 'list' && (
           <div className="space-y-3">
-            {loading && (
-              <div className="text-center py-12 text-gray-400 text-sm">Đang tải...</div>
-            )}
+            {loading && <div className="text-center py-12 text-gray-400 text-sm">Đang tải...</div>}
             {!loading && promos.length === 0 && (
               <div className="bg-white rounded-2xl border p-12 text-center">
                 <Megaphone size={40} className="mx-auto mb-3 text-gray-200" />
                 <p className="text-sm font-medium text-gray-500">Chưa có chương trình khuyến mãi nào</p>
-                <button
-                  onClick={() => openCreate()}
-                  className="mt-4 bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors"
-                >
-                  + Tạo khuyến mãi đầu tiên
-                </button>
+                <div className="flex items-center justify-center gap-3 mt-4">
+                  <button onClick={() => openCreate()}
+                    className="bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors">
+                    + Tạo thủ công
+                  </button>
+                  <button onClick={() => setAiModal(true)}
+                    className="bg-violet-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-violet-700 transition-colors flex items-center gap-1.5">
+                    <Sparkles size={14} /> AI tạo hàng loạt
+                  </button>
+                </div>
               </div>
             )}
             {promos.map(p => {
               const status = promoStatus(p);
+              const customerCount = getPromoCustomers(p).length;
               return (
                 <div key={p.id}
                   className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-opacity ${!p.enabled ? 'opacity-60' : ''}`}
                 >
                   <div className="flex items-start gap-4 p-4">
-                    {/* Color bar */}
                     <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-
-                    {/* Emoji */}
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
                       style={{ backgroundColor: p.bgColor }}>
                       {p.emoji}
                     </div>
-
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-2 flex-wrap">
                         <h3 className="font-bold text-gray-900 text-sm">{p.title}</h3>
@@ -437,19 +606,30 @@ export default function AdminPromotions() {
                             <EyeOff size={9} /> Ẩn website
                           </span>
                         )}
+                        {customerCount > 0 && (
+                          <button
+                            onClick={() => { setSelectedPromoId(p.id); setTab('customers'); }}
+                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1"
+                            style={{ backgroundColor: p.bgColor, color: p.color }}
+                          >
+                            <Users size={9} /> {customerCount} khách
+                          </button>
+                        )}
                       </div>
                       {p.shortDesc && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{p.shortDesc}</p>}
                       <p className="text-[11px] text-gray-400 mt-1">
                         {format(parseISO(p.startDate), 'dd/MM/yyyy')} → {format(parseISO(p.endDate), 'dd/MM/yyyy')}
                       </p>
                     </div>
-
-                    {/* Actions */}
                     <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => openEditWithAi(p)}
+                        className="p-2 rounded-lg hover:bg-violet-50 transition-colors text-gray-400 hover:text-violet-600"
+                        title="AI viết nội dung">
+                        <Sparkles size={14} />
+                      </button>
                       <button onClick={() => toggleEnabled(p)}
                         className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400"
-                        title={p.enabled ? 'Tắt' : 'Bật'}
-                      >
+                        title={p.enabled ? 'Tắt' : 'Bật'}>
                         {p.enabled ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
                       </button>
                       <button onClick={() => openEdit(p)}
@@ -471,8 +651,6 @@ export default function AdminPromotions() {
                       )}
                     </div>
                   </div>
-
-                  {/* Content preview */}
                   {p.content && (
                     <div className="px-4 pb-3 ml-5 pl-9">
                       <p className="text-xs text-gray-500 line-clamp-2">{p.content}</p>
@@ -487,7 +665,6 @@ export default function AdminPromotions() {
         {/* ════════════════ STATS TAB ════════════════ */}
         {tab === 'stats' && (
           <div className="space-y-6">
-            {/* Year selector */}
             <div className="flex items-center gap-3">
               <h2 className="font-bold text-gray-800">Thống kê hiệu quả KM</h2>
               <div className="flex items-center gap-1 bg-white border rounded-lg px-1">
@@ -506,14 +683,11 @@ export default function AdminPromotions() {
               </div>
             ) : (
               <>
-                {/* Top 3 highlight */}
                 {statsData.filter(x => x.count > 0).length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {statsData.filter(x => x.count > 0).slice(0, 3).map((x, i) => (
-                      <div key={x.promo.id}
-                        className="bg-white rounded-2xl border p-4 relative overflow-hidden"
-                        style={{ borderTopColor: x.promo.color, borderTopWidth: 3 }}
-                      >
+                      <div key={x.promo.id} className="bg-white rounded-2xl border p-4 relative overflow-hidden"
+                        style={{ borderTopColor: x.promo.color, borderTopWidth: 3 }}>
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
@@ -529,16 +703,20 @@ export default function AdminPromotions() {
                             <p className="text-[10px] text-gray-400">leads</p>
                           </div>
                         </div>
+                        <button
+                          onClick={() => { setSelectedPromoId(x.promo.id); setTab('customers'); }}
+                          className="mt-2 text-[11px] font-semibold hover:underline"
+                          style={{ color: x.promo.color }}
+                        >
+                          Xem danh sách khách →
+                        </button>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Bar chart */}
                 <div className="bg-white rounded-2xl border p-5">
-                  <h3 className="font-bold text-gray-700 text-sm mb-4">
-                    Leads theo chương trình — {statsYear}
-                  </h3>
+                  <h3 className="font-bold text-gray-700 text-sm mb-4">Leads theo chương trình — {statsYear}</h3>
                   <div className="space-y-3">
                     {statsData.map(x => (
                       <div key={x.promo.id} className="flex items-center gap-3">
@@ -549,37 +727,154 @@ export default function AdminPromotions() {
                           </p>
                         </div>
                         <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-500 flex items-center justify-end pr-2"
-                            style={{
-                              width: `${(x.count / maxCount) * 100}%`,
-                              backgroundColor: x.promo.color,
-                              minWidth: x.count > 0 ? '2rem' : '0',
-                            }}
-                          >
-                            {x.count > 0 && (
-                              <span className="text-white text-[10px] font-bold">{x.count}</span>
-                            )}
+                          <div className="h-full rounded-full transition-all duration-500 flex items-center justify-end pr-2"
+                            style={{ width: `${(x.count / maxCount) * 100}%`, backgroundColor: x.promo.color, minWidth: x.count > 0 ? '2rem' : '0' }}>
+                            {x.count > 0 && <span className="text-white text-[10px] font-bold">{x.count}</span>}
                           </div>
                         </div>
-                        {x.count === 0 && (
-                          <span className="text-[11px] text-gray-400">0 leads</span>
-                        )}
+                        {x.count === 0 && <span className="text-[11px] text-gray-400">0 leads</span>}
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Note */}
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex gap-3 items-start">
                   <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700">
                     Leads được tính khi khách đăng ký trong thời gian KM đang chạy và tự động được gắn tag <strong>🎉 KM: [tên KM]</strong>.
-                    Số liệu phản ánh khách hàng đến từ mỗi chương trình.
                   </p>
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ════════════════ CUSTOMERS TAB ════════════════ */}
+        {tab === 'customers' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            {/* Left: Promo selector */}
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Chọn chương trình</p>
+              {promos.length === 0 && (
+                <div className="bg-white rounded-2xl border p-6 text-center text-gray-400">
+                  <p className="text-sm">Chưa có chương trình nào</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                {promos.map(p => {
+                  const count = getPromoCustomers(p).length;
+                  const isActive = selectedPromoId === p.id;
+                  return (
+                    <button key={p.id}
+                      onClick={() => setSelectedPromoId(p.id)}
+                      className={`w-full text-left px-3 py-3 rounded-xl border transition-all ${
+                        isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
+                          style={{ backgroundColor: p.bgColor }}>
+                          {p.emoji}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-semibold truncate ${isActive ? 'text-primary' : 'text-gray-900'}`}>{p.title}</p>
+                          <p className="text-xs text-gray-400">
+                            {format(parseISO(p.startDate), 'dd/MM')} – {format(parseISO(p.endDate), 'dd/MM')}
+                          </p>
+                        </div>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${count > 0 ? '' : 'text-gray-300'}`}
+                          style={count > 0 ? { backgroundColor: p.bgColor, color: p.color } : {}}>
+                          {count}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right: Customer list */}
+            <div className="lg:col-span-2">
+              {selectedPromoForCustomers ? (
+                <div className="space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                        <span>{selectedPromoForCustomers.emoji} {selectedPromoForCustomers.title}</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {getPromoCustomers(selectedPromoForCustomers).length} khách đã được gắn vào KM này
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setShowAssign(true); setAssignSearch(''); }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/90 transition-colors"
+                    >
+                      <UserCheck size={13} /> Gắn thêm khách
+                    </button>
+                  </div>
+
+                  {/* Info banner */}
+                  <div className="px-4 py-3 rounded-xl text-xs flex items-start gap-2"
+                    style={{ backgroundColor: selectedPromoForCustomers.bgColor, color: selectedPromoForCustomers.color }}>
+                    <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                    <span>Khách tự động được gắn KM này khi đăng ký trong thời gian chương trình chạy (tag <strong>🎉 KM: {selectedPromoForCustomers.title}</strong>). Bạn cũng có thể gắn thêm thủ công.</span>
+                  </div>
+
+                  {/* Customer cards */}
+                  {getPromoCustomers(selectedPromoForCustomers).length === 0 ? (
+                    <div className="bg-white rounded-2xl border p-10 text-center text-gray-400">
+                      <Users size={36} className="mx-auto mb-2 text-gray-200" />
+                      <p className="text-sm font-medium">Chưa có khách nào</p>
+                      <p className="text-xs mt-1">Gắn thủ công hoặc chờ khách đăng ký trong thời gian KM</p>
+                      <button onClick={() => { setShowAssign(true); setAssignSearch(''); }}
+                        className="mt-3 text-xs text-primary font-semibold hover:underline flex items-center gap-1 mx-auto">
+                        <UserCheck size={12} /> Gắn thêm khách ngay
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {getPromoCustomers(selectedPromoForCustomers).map(c => {
+                        const statusCfg = STATUS_CONFIG_MINI[c.status] || STATUS_CONFIG_MINI.new;
+                        return (
+                          <div key={c.id} className="bg-white rounded-xl border px-4 py-3 flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold text-sm text-gray-900">{c.name}</p>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${statusCfg.cls}`}>
+                                  {statusCfg.label}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 font-mono mt-0.5">{c.phone}</p>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <a href={`tel:${c.phone}`}
+                                className="p-2 bg-primary/10 text-primary rounded-lg hover:bg-primary hover:text-white transition-colors"
+                                title="Gọi ngay">
+                                <Phone size={13} />
+                              </a>
+                              <a href={`https://zalo.me/${c.phone}`} target="_blank" rel="noopener noreferrer"
+                                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-500 hover:text-white transition-colors"
+                                title="Nhắn Zalo">
+                                <MessageCircle size={13} />
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border p-12 text-center text-gray-400">
+                  <Users size={40} className="mx-auto mb-3 text-gray-200" />
+                  <p className="text-sm font-medium">Chọn một chương trình KM</p>
+                  <p className="text-xs mt-1">để xem và quản lý khách hàng</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -588,7 +883,6 @@ export default function AdminPromotions() {
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
-            {/* Modal header */}
             <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
               <h3 className="font-bold text-gray-900">
                 {editingPromo ? 'Chỉnh sửa khuyến mãi' : 'Tạo khuyến mãi mới'}
@@ -598,8 +892,15 @@ export default function AdminPromotions() {
               </button>
             </div>
 
-            {/* Modal body */}
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+
+              {/* AI Content loading overlay */}
+              {aiContentLoading && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-violet-50 border border-violet-200 rounded-xl">
+                  <Loader2 size={14} className="text-violet-600 animate-spin shrink-0" />
+                  <p className="text-xs text-violet-700 font-semibold">AI đang viết nội dung...</p>
+                </div>
+              )}
 
               {/* Title */}
               <div>
@@ -641,7 +942,6 @@ export default function AdminPromotions() {
                       />
                     ))}
                   </div>
-                  {/* Preview */}
                   <div className="mt-2 px-2 py-1 rounded-lg text-xs font-medium"
                     style={{ backgroundColor: form.bgColor, color: form.color }}>
                     {form.emoji} {form.title || 'Xem trước'}
@@ -681,9 +981,21 @@ export default function AdminPromotions() {
                 />
               </div>
 
-              {/* Full content */}
+              {/* Full content + AI button */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Nội dung chi tiết</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-600">Nội dung chi tiết</label>
+                  <button
+                    onClick={callAiContent}
+                    disabled={!form.title.trim() || aiContentLoading}
+                    className="flex items-center gap-1 text-[11px] font-bold text-violet-600 hover:text-violet-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {aiContentLoading
+                      ? <Loader2 size={11} className="animate-spin" />
+                      : <Sparkles size={11} />}
+                    AI gợi ý nội dung
+                  </button>
+                </div>
                 <textarea
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   placeholder="Mô tả đầy đủ chương trình: điều kiện, gói áp dụng, cách đăng ký..."
@@ -706,19 +1018,15 @@ export default function AdminPromotions() {
 
               {/* Toggles */}
               <div className="flex gap-4">
-                <button
-                  onClick={() => setForm(f => ({ ...f, showOnWebsite: !f.showOnWebsite }))}
-                  className="flex items-center gap-2 text-sm"
-                >
+                <button onClick={() => setForm(f => ({ ...f, showOnWebsite: !f.showOnWebsite }))}
+                  className="flex items-center gap-2 text-sm">
                   <div className={`w-10 h-5 rounded-full transition-colors relative ${form.showOnWebsite ? 'bg-blue-500' : 'bg-gray-300'}`}>
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${form.showOnWebsite ? 'left-5' : 'left-0.5'}`} />
                   </div>
                   <span className="text-xs font-medium text-gray-600">Hiện trên website</span>
                 </button>
-                <button
-                  onClick={() => setForm(f => ({ ...f, enabled: !f.enabled }))}
-                  className="flex items-center gap-2 text-sm"
-                >
+                <button onClick={() => setForm(f => ({ ...f, enabled: !f.enabled }))}
+                  className="flex items-center gap-2 text-sm">
                   <div className={`w-10 h-5 rounded-full transition-colors relative ${form.enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${form.enabled ? 'left-5' : 'left-0.5'}`} />
                   </div>
@@ -727,7 +1035,6 @@ export default function AdminPromotions() {
               </div>
             </div>
 
-            {/* Modal footer */}
             <div className="flex gap-3 px-5 py-4 border-t shrink-0">
               <button onClick={() => setShowModal(false)}
                 className="flex-1 border border-gray-200 text-gray-600 text-sm font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors">
@@ -738,10 +1045,232 @@ export default function AdminPromotions() {
                 disabled={!form.title.trim() || !form.startDate || !form.endDate || saving}
                 className="flex-1 bg-primary text-white text-sm font-bold py-2.5 rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : <Save size={15} />}
+                {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={15} />}
                 {editingPromo ? 'Lưu thay đổi' : 'Tạo khuyến mãi'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ AI Bulk Create Modal ═══════════════════════════════════════════════ */}
+      {aiModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b shrink-0 bg-gradient-to-r from-violet-50 to-purple-50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-violet-600 rounded-xl flex items-center justify-center shrink-0">
+                  <Sparkles size={18} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">AI Tạo Lịch Khuyến Mãi</h3>
+                  <p className="text-xs text-gray-500">Ra lệnh bằng tiếng Việt — AI tạo hàng loạt ngay</p>
+                </div>
+              </div>
+              <button onClick={() => setAiModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-6 space-y-5">
+
+              {/* Command input */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">Lệnh của bạn</label>
+                <textarea
+                  value={aiCommand}
+                  onChange={e => setAiCommand(e.target.value)}
+                  placeholder="VD: tạo chương trình khuyến mãi cho tất cả ngày đặc biệt trong năm 2026"
+                  rows={3}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+                  onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) callAiBulk(); }}
+                />
+                {/* Example commands */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {EXAMPLE_COMMANDS.map((cmd, i) => (
+                    <button key={i}
+                      onClick={() => setAiCommand(cmd)}
+                      className="text-[11px] px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full hover:bg-violet-100 transition-colors font-medium"
+                    >
+                      {cmd}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generate button */}
+              {aiProposals.length === 0 && (
+                <button
+                  onClick={callAiBulk}
+                  disabled={!aiCommand.trim() || aiLoading}
+                  className="w-full py-3 bg-violet-600 text-white font-bold rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  {aiLoading
+                    ? <><Loader2 size={16} className="animate-spin" /> AI đang phân tích và tạo lịch KM...</>
+                    : <><Sparkles size={16} /> Tạo với AI (Ctrl+Enter)</>}
+                </button>
+              )}
+
+              {/* Error */}
+              {aiError && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                  <AlertCircle size={13} className="shrink-0" />
+                  {aiError}
+                  <button onClick={callAiBulk} className="ml-auto font-bold underline">Thử lại</button>
+                </div>
+              )}
+
+              {/* Proposals preview */}
+              {aiProposals.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-800">
+                        AI tạo được {aiProposals.length} chương trình
+                      </h4>
+                      <p className="text-xs text-gray-500">Đã chọn {selectedProposals.size}/{aiProposals.length}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (selectedProposals.size === aiProposals.length) setSelectedProposals(new Set());
+                          else setSelectedProposals(new Set(aiProposals.map((_, i) => i)));
+                        }}
+                        className="text-xs text-violet-600 font-semibold hover:underline"
+                      >
+                        {selectedProposals.size === aiProposals.length ? 'Bỏ tất cả' : 'Chọn tất cả'}
+                      </button>
+                      <button onClick={() => { setAiProposals([]); setAiError(''); }}
+                        className="text-xs text-gray-400 hover:text-gray-600 font-semibold hover:underline">
+                        ← Thử lại
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
+                    {aiProposals.map((p, i) => (
+                      <label key={i}
+                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                          selectedProposals.has(i) ? 'border-violet-300 bg-violet-50' : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input type="checkbox"
+                          checked={selectedProposals.has(i)}
+                          onChange={() => {
+                            const next = new Set(selectedProposals);
+                            if (next.has(i)) next.delete(i); else next.add(i);
+                            setSelectedProposals(next);
+                          }}
+                          className="mt-1 rounded accent-violet-600"
+                        />
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-lg shrink-0"
+                          style={{ backgroundColor: p.bgColor || '#FFF5F3' }}>
+                          {p.emoji || '🎉'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm text-gray-900 truncate">{p.title}</p>
+                            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color || '#A4756B' }} />
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">{p.startDate} → {p.endDate}</p>
+                          {p.shortDesc && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{p.shortDesc}</p>}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {aiProposals.length > 0 && (
+              <div className="flex gap-3 px-6 py-4 border-t shrink-0">
+                <button onClick={() => setAiModal(false)}
+                  className="flex-1 border border-gray-200 text-gray-600 text-sm font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors">
+                  Hủy
+                </button>
+                <button
+                  onClick={importAiProposals}
+                  disabled={selectedProposals.size === 0 || importingAi}
+                  className="flex-1 bg-violet-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {importingAi
+                    ? <><Loader2 size={15} className="animate-spin" /> Đang import...</>
+                    : <><Check size={15} /> Import {selectedProposals.size} chương trình</>}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ Assign Customer Modal ══════════════════════════════════════════════ */}
+      {showAssign && selectedPromoForCustomers && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+              <div>
+                <h3 className="font-bold text-gray-900">Gắn khách vào KM</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {selectedPromoForCustomers.emoji} {selectedPromoForCustomers.title}
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowAssign(false); setAssignSearch(''); }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 border-b shrink-0">
+              <input
+                autoFocus
+                value={assignSearch}
+                onChange={e => setAssignSearch(e.target.value)}
+                placeholder="Tìm theo tên hoặc số điện thoại..."
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+              {(() => {
+                const tag = `🎉 KM: ${selectedPromoForCustomers.title}`;
+                const searchLower = assignSearch.toLowerCase();
+                const unassigned = consultations.filter(c => {
+                  if ((c.tags || []).includes(tag)) return false;
+                  if (!assignSearch) return true;
+                  return c.name.toLowerCase().includes(searchLower) || c.phone.includes(assignSearch);
+                }).slice(0, 30);
+
+                if (unassigned.length === 0) return (
+                  <p className="text-center text-sm text-gray-400 py-8">
+                    {assignSearch ? 'Không tìm thấy khách phù hợp' : 'Tất cả khách đã được gắn KM này'}
+                  </p>
+                );
+
+                return unassigned.map(c => {
+                  const statusCfg = STATUS_CONFIG_MINI[c.status] || STATUS_CONFIG_MINI.new;
+                  return (
+                    <button key={c.id}
+                      onClick={() => assignToPromo(c.id, selectedPromoForCustomers)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-primary/5 border border-transparent hover:border-primary/20 transition-all text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm text-gray-900">{c.name}</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${statusCfg.cls}`}>
+                            {statusCfg.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 font-mono">{c.phone}</p>
+                      </div>
+                      <UserCheck size={14} className="text-gray-300 shrink-0" />
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -755,6 +1284,7 @@ export default function AdminPromotions() {
 interface PromoCardProps {
   promo: Promotion;
   onEdit: () => void;
+  onAiContent?: () => void;
   onDelete: () => void;
   onToggle: () => void;
   confirmDelete: string | null;
@@ -763,7 +1293,7 @@ interface PromoCardProps {
 }
 
 const PromoCard: React.FC<PromoCardProps> = ({
-  promo, onEdit, onDelete, onToggle, confirmDelete, onConfirmDelete, onCancelDelete,
+  promo, onEdit, onAiContent, onDelete, onToggle, confirmDelete, onConfirmDelete, onCancelDelete,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const status = promoStatus(promo);
@@ -791,6 +1321,13 @@ const PromoCard: React.FC<PromoCardProps> = ({
                 </div>
               </div>
               <div className="flex gap-1 shrink-0">
+                {onAiContent && (
+                  <button onClick={onAiContent}
+                    className="p-1.5 rounded-lg hover:bg-violet-50 text-gray-400 hover:text-violet-600 transition-colors"
+                    title="AI viết nội dung cho KM này">
+                    <Sparkles size={13} />
+                  </button>
+                )}
                 <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors">
                   <Edit3 size={14} />
                 </button>
@@ -809,9 +1346,7 @@ const PromoCard: React.FC<PromoCardProps> = ({
           </div>
         </div>
 
-        {promo.shortDesc && (
-          <p className="text-xs text-gray-600 mt-2">{promo.shortDesc}</p>
-        )}
+        {promo.shortDesc && <p className="text-xs text-gray-600 mt-2">{promo.shortDesc}</p>}
 
         {promo.content && (
           <div className="mt-2">
@@ -829,9 +1364,7 @@ const PromoCard: React.FC<PromoCardProps> = ({
       <div className="px-4 pb-3 flex items-center justify-between gap-2">
         <button onClick={onToggle}
           className={`text-[11px] font-semibold flex items-center gap-1 ${promo.enabled ? 'text-green-600' : 'text-gray-400'}`}>
-          {promo.enabled
-            ? <><ToggleRight size={13} /> Đang bật</>
-            : <><ToggleLeft size={13} /> Đang tắt</>}
+          {promo.enabled ? <><ToggleRight size={13} /> Đang bật</> : <><ToggleLeft size={13} /> Đang tắt</>}
         </button>
         {!promo.showOnWebsite && (
           <span className="text-[10px] text-yellow-600 flex items-center gap-1">
@@ -841,4 +1374,4 @@ const PromoCard: React.FC<PromoCardProps> = ({
       </div>
     </div>
   );
-}
+};

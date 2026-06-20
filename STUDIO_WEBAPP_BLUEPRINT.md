@@ -884,6 +884,66 @@ interface PromoCardProps { confirmDelete: string | null; ... }
 const PromoCard: React.FC<PromoCardProps> = ({ ... }) => { ... };
 ```
 
+### AdminPromotions — 4 tab (gồm 3 tính năng AI mới)
+
+Cập nhật: `tab` type mở rộng thành `'calendar' | 'list' | 'stats' | 'customers'`
+
+**Tính năng 1 — AI Bulk Create (nút "✨ AI tạo KM" trên header)**
+
+- Button tím `bg-violet-600` cạnh nút "Tạo KM" thủ công
+- Mở modal AI: textarea nhập lệnh tiếng Việt + example commands gợi ý
+- Gọi `POST /api/ai-promo` với `{ command, type: 'bulk' }`
+- API trả về JSON array `AiPromoProposal[]`
+- Preview list với checkbox chọn/bỏ → Import hàng loạt vào Supabase
+- Ví dụ lệnh: *"tạo KM cho tất cả ngày đặc biệt 2026"*, *"tạo KM Valentine, 8/3, Giáng Sinh"*
+
+```typescript
+interface AiPromoProposal {
+  title: string; shortDesc: string; content: string;
+  emoji: string; color: string; bgColor: string;
+  startDate: string; endDate: string; ctaText: string;
+}
+```
+
+**Tính năng 2 — AI Content per Promo (nút "✨" trong PromoCard + edit modal)**
+
+- Nút `<Sparkles size={13} />` trong PromoCard → gọi `openEditWithAi(p)`: mở edit modal + AI điền nội dung ngay
+- Trong edit modal: link "✨ AI gợi ý nội dung" cạnh label "Nội dung chi tiết"
+- Gọi `POST /api/ai-promo` với `{ type: 'content', context: '${title} (startDate đến endDate)' }`
+- API trả về `{ shortDesc, content, ctaText }` → setForm tự động điền vào form
+- Loader hiển thị khi AI đang xử lý: `aiContentLoading` state
+
+**Tính năng 3 — Tab "Khách hàng" (customer linking)**
+
+- Tab thứ 4 với icon `<Users />`
+- **Layout 2 cột:** trái = promo selector (có count badge mỗi KM), phải = customer cards
+- **Tự động:** khách tự được gắn khi đăng ký trong thời gian KM → tag `🎉 KM: ${promo.title}`
+- **Thủ công:** nút "Gắn thêm khách" → modal search → click để gắn tag
+- `getPromoCustomers(promo)`: `consultations.filter(c => c.tags?.includes('🎉 KM: ' + promo.title))`
+- `assignToPromo(consultationId, promo)`: gọi `updateConsultationTags(id, [...tags, tag])`
+- Customer card: hiện tên + trạng thái + nút gọi (tel:) + nút Zalo
+
+**API: `api/ai-promo.ts`**
+
+```typescript
+// POST body: { command?, type: 'bulk' | 'content', context? }
+// type 'bulk': returns { result: AiPromoProposal[] }
+// type 'content': returns { result: { shortDesc, content, ctaText } }
+// Dùng @google/genai, model gemini-3.5-flash, GEMINI_API_KEY (no VITE_ prefix)
+```
+
+**Các icon dùng trong AdminPromotions:**
+
+```typescript
+import { Sparkles, UserCheck, Phone, MessageCircle, Loader2, Users } from 'lucide-react';
+```
+
+**useApp() cần có `updateConsultationTags`:**
+
+```typescript
+const { isAdmin, isAuthReady, consultations, updateConsultationTags } = useApp();
+```
+
 ---
 
 ## 14. AppSettings Interface
