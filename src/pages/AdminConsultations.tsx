@@ -1089,6 +1089,7 @@ const SaleScriptPanel: React.FC<{
 const FunnelBar: React.FC<{ consultations: Consultation[] }> = ({ consultations }) => {
   const total = consultations.length;
   const registered = consultations.filter(c => c.status === 'registered').length;
+  const newCount = consultations.filter(c => c.status === 'new').length;
   const convRate = total > 0 ? Math.round((registered / total) * 100) : 0;
 
   return (
@@ -1098,12 +1099,13 @@ const FunnelBar: React.FC<{ consultations: Consultation[] }> = ({ consultations 
           const count = consultations.filter(c => stage.keys.includes(c.status)).length;
           const pct = total > 0 ? Math.round((count / total) * 100) : 0;
           const cfg = STATUS_CONFIG[stage.keys[0]];
+          const isBottleneck = i === 1 && count === 0 && newCount > 0;
           return (
             <React.Fragment key={stage.label}>
-              <div className={`flex flex-col items-center px-3 py-1.5 rounded-xl ${cfg.bgColor} border ${cfg.borderColor} min-w-[80px]`}>
-                <span className={`text-xl font-black ${cfg.color}`}>{count}</span>
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.color}`}>{stage.label}</span>
-                <span className="text-[9px] text-dark/40">{pct}%</span>
+              <div className={`flex flex-col items-center px-3 py-1.5 rounded-xl border min-w-[80px] ${isBottleneck ? 'bg-red-50 border-red-300' : `${cfg.bgColor} ${cfg.borderColor}`}`}>
+                <span className={`text-xl font-black ${isBottleneck ? 'text-red-500' : cfg.color}`}>{count}</span>
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${isBottleneck ? 'text-red-500' : cfg.color}`}>{stage.label}</span>
+                {isBottleneck ? <span className="text-[8px] text-red-500 font-bold animate-pulse">⚠ Cần gọi!</span> : <span className="text-[9px] text-dark/40">{pct}%</span>}
               </div>
               {i < PIPELINE_STAGES.length - 1 && (
                 <ArrowRight size={14} className="text-dark/20 shrink-0" />
@@ -1307,6 +1309,8 @@ const AdminConsultations: React.FC = () => {
     })
     .sort((a, b) => getLeadPriority(a) - getLeadPriority(b));
 
+  const showNgayDuKienCol = filteredConsultations.some(c => c.status === 'registered' || !!c.date);
+
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredConsultations.length) {
       setSelectedIds([]);
@@ -1437,7 +1441,7 @@ const AdminConsultations: React.FC = () => {
                 e.stopPropagation();
                 handleLogout();
               }}
-              className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all border border-red-100 flex items-center gap-2"
+              className="px-3 py-2 text-dark/40 hover:text-dark rounded-xl text-xs font-medium hover:bg-light-gray transition-all flex items-center gap-1.5 border border-transparent hover:border-light-gray"
               title="Đăng xuất khỏi hệ thống"
             >
               <LogOut size={14} />
@@ -1772,13 +1776,13 @@ const AdminConsultations: React.FC = () => {
                       )}
                       <th className="p-4 font-bold">Khách hàng</th>
                       <th className="p-4 font-bold">Liên hệ</th>
-                      <th className="p-4 font-bold">Nguồn</th>
-                      <th className="p-4 font-bold">Ngày dự kiến</th>
-                      <th className="p-4 font-bold">Lời nhắn</th>
-                      <th className="p-4 font-bold">Link tham khảo</th>
                       <th className="p-4 font-bold text-center">Trạng thái</th>
-                      <th className="p-4 font-bold w-48">Sale phụ trách & Hẹn gọi</th>
+                      <th className="p-4 font-bold w-44">Sale & Hẹn gọi</th>
+                      <th className="p-4 font-bold">Nguồn</th>
+                      <th className="p-4 font-bold max-w-xs">Lời nhắn</th>
                       <th className="p-4 font-bold w-48">Ghi chú & Tags</th>
+                      <th className="p-4 font-bold">Link tham khảo</th>
+                      {showNgayDuKienCol && <th className="p-4 font-bold">Ngày dự kiến</th>}
                       <th className="p-4 font-bold text-center">Thao tác</th>
                     </tr>
                   </thead>
@@ -1875,6 +1879,30 @@ const AdminConsultations: React.FC = () => {
                             </a>
                           </div>
                         </td>
+                        <td className="p-4 text-center">
+                          <StatusDropdown
+                            status={consult.status}
+                            onChange={(newStatus) => handleStatusChange(consult.id, newStatus)}
+                          />
+                        </td>
+                        <td className="p-4 align-top space-y-2">
+                          <div className="flex flex-col gap-2">
+                            <input
+                              type="text"
+                              placeholder="Tên Sale..."
+                              value={consult.assignedTo || ''}
+                              onChange={(e) => updateConsultationField(consult.id, 'assignedTo', e.target.value)}
+                              className="w-full text-xs p-2 bg-light-gray/50 border border-light-gray rounded-lg focus:outline-none focus:border-primary"
+                            />
+                            <input
+                              type="date"
+                              value={consult.followUpDate || ''}
+                              onChange={(e) => updateConsultationField(consult.id, 'followUpDate', e.target.value)}
+                              className="w-full text-xs p-2 bg-light-gray/50 border border-light-gray rounded-lg focus:outline-none focus:border-primary"
+                              title="Ngày hẹn gọi lại"
+                            />
+                          </div>
+                        </td>
                         <td className="p-4">
                           {consult.source === 'lucky_wheel' ? (
                             <div className="text-[10px] text-[#A4756B] font-bold uppercase mt-1 flex items-center gap-1">
@@ -1894,36 +1922,6 @@ const AdminConsultations: React.FC = () => {
                             </div>
                           )}
                         </td>
-                        <td className="p-4 text-sm text-dark/80">
-                          {consult.status === 'registered' ? (
-                            <div 
-                              className="space-y-1 cursor-pointer hover:bg-primary/10 p-1 rounded transition-colors" 
-                              onClick={() => setRegModalData(consult)}
-                              title="Bấm để sửa thông tin đăng ký"
-                            >
-                              <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase flex-wrap">
-                                <Camera size={10} /> Chụp: {consult.shootingDate ? format(new Date(consult.shootingDate), 'dd/MM') : '??'}
-                                {getShootingCountdown(consult.shootingDate) === 1 && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded animate-pulse">D-1!</span>}
-                                {getShootingCountdown(consult.shootingDate) === 3 && <span className="bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded">D-3</span>}
-                              </div>
-                              <div className="flex items-center gap-1.5 text-red-600 font-bold text-[10px] uppercase">
-                                <Calendar size={10} /> Cưới: {consult.weddingDate ? format(new Date(consult.weddingDate), 'dd/MM') : '??'}
-                              </div>
-                              {consult.contractValue && (
-                                <div className="flex items-center gap-1.5 text-green-600 font-bold text-[10px] uppercase">
-                                  <DollarSign size={10} /> {consult.contractValue.toLocaleString('vi-VN')}đ
-                                </div>
-                              )}
-                            </div>
-                          ) : consult.date ? (
-                            <div className="flex items-center gap-1.5 text-primary font-medium">
-                              <Calendar size={14} />
-                              {format(new Date(consult.date), 'dd/MM/yyyy')}
-                            </div>
-                          ) : (
-                            <span className="italic text-dark/30">Chưa chọn</span>
-                          )}
-                        </td>
                         <td className="p-4 max-w-xs">
                           {consult.luckyGift && (
                             <div className="mb-2 inline-flex items-center gap-1 bg-[#ECB697]/20 text-[#A4756B] px-2 py-1 rounded-lg text-xs font-bold border border-[#ECB697]/30">
@@ -1933,6 +1931,16 @@ const AdminConsultations: React.FC = () => {
                           <p className="text-sm text-dark/70 truncate" title={extractMessageContent(consult.message).message}>
                             {extractMessageContent(consult.message).message || <span className="italic text-dark/30">Không có lời nhắn</span>}
                           </p>
+                        </td>
+                        <td className="p-4 align-top space-y-2">
+                          <NoteInput
+                            initialNote={consult.notes || ''}
+                            onSave={(note) => updateConsultationNotes(consult.id, note)}
+                          />
+                          <TagsInput
+                            initialTags={consult.tags || []}
+                            onSave={(tags) => updateConsultationTags(consult.id, tags)}
+                          />
                         </td>
                         <td className="p-4">
                           {extractMessageContent(consult.message).links.length > 0 ? (
@@ -1957,40 +1965,38 @@ const AdminConsultations: React.FC = () => {
                             <span className="italic text-dark/30 text-xs">Không có</span>
                           )}
                         </td>
-                        <td className="p-4 text-center">
-                          <StatusDropdown 
-                            status={consult.status} 
-                            onChange={(newStatus) => handleStatusChange(consult.id, newStatus)} 
-                          />
-                        </td>
-                        <td className="p-4 align-top space-y-2">
-                          <div className="flex flex-col gap-2">
-                            <input
-                              type="text"
-                              placeholder="Tên Sale..."
-                              value={consult.assignedTo || ''}
-                              onChange={(e) => updateConsultationField(consult.id, 'assignedTo', e.target.value)}
-                              className="w-full text-xs p-2 bg-light-gray/50 border border-light-gray rounded-lg focus:outline-none focus:border-primary"
-                            />
-                            <input
-                              type="date"
-                              value={consult.followUpDate || ''}
-                              onChange={(e) => updateConsultationField(consult.id, 'followUpDate', e.target.value)}
-                              className="w-full text-xs p-2 bg-light-gray/50 border border-light-gray rounded-lg focus:outline-none focus:border-primary"
-                              title="Ngày hẹn gọi lại"
-                            />
-                          </div>
-                        </td>
-                        <td className="p-4 align-top space-y-2">
-                          <NoteInput 
-                            initialNote={consult.notes || ''} 
-                            onSave={(note) => updateConsultationNotes(consult.id, note)} 
-                          />
-                          <TagsInput 
-                            initialTags={consult.tags || []}
-                            onSave={(tags) => updateConsultationTags(consult.id, tags)}
-                          />
-                        </td>
+                        {showNgayDuKienCol && (
+                          <td className="p-4 text-sm text-dark/80">
+                            {consult.status === 'registered' ? (
+                              <div
+                                className="space-y-1 cursor-pointer hover:bg-primary/10 p-1 rounded transition-colors"
+                                onClick={() => setRegModalData(consult)}
+                                title="Bấm để sửa thông tin đăng ký"
+                              >
+                                <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase flex-wrap">
+                                  <Camera size={10} /> Chụp: {consult.shootingDate ? format(new Date(consult.shootingDate), 'dd/MM') : '??'}
+                                  {getShootingCountdown(consult.shootingDate) === 1 && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded animate-pulse">D-1!</span>}
+                                  {getShootingCountdown(consult.shootingDate) === 3 && <span className="bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded">D-3</span>}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-red-600 font-bold text-[10px] uppercase">
+                                  <Calendar size={10} /> Cưới: {consult.weddingDate ? format(new Date(consult.weddingDate), 'dd/MM') : '??'}
+                                </div>
+                                {consult.contractValue && (
+                                  <div className="flex items-center gap-1.5 text-green-600 font-bold text-[10px] uppercase">
+                                    <DollarSign size={10} /> {consult.contractValue.toLocaleString('vi-VN')}đ
+                                  </div>
+                                )}
+                              </div>
+                            ) : consult.date ? (
+                              <div className="flex items-center gap-1.5 text-primary font-medium">
+                                <Calendar size={14} />
+                                {format(new Date(consult.date), 'dd/MM/yyyy')}
+                              </div>
+                            ) : (
+                              <span className="italic text-dark/30">Chưa chọn</span>
+                            )}
+                          </td>
+                        )}
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <button
