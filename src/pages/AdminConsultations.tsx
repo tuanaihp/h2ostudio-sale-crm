@@ -9,6 +9,7 @@ import { motion } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
 import { Consultation, Style } from '../types';
+import { supabase } from '../supabase';
 
 type ConsultationStatus = Consultation['status'];
 
@@ -1179,6 +1180,43 @@ const AdminConsultations: React.FC = () => {
   const [saleScriptLead, setSaleScriptLead] = useState<Consultation | null>(null);
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
   const [chatInitialPhone, setChatInitialPhone] = useState<string | null>(null);
+  const [chatUnread, setChatUnread] = useState(0);
+  const [chatNotif, setChatNotif] = useState<{ text: string; from: string } | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    supabase.from('chat_sessions').select('unread_admin').then(({ data }) => {
+      setChatUnread((data || []).reduce((s, x: any) => s + (x.unread_admin || 0), 0));
+    });
+
+    const sessCh = supabase
+      .channel('admin_chat_unread')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sessions' }, async () => {
+        const { data } = await supabase.from('chat_sessions').select('unread_admin');
+        setChatUnread((data || []).reduce((s, x: any) => s + (x.unread_admin || 0), 0));
+      })
+      .subscribe();
+
+    const msgCh = supabase
+      .channel('admin_new_msgs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async (payload) => {
+        const msg = payload.new as any;
+        if (msg.sender !== 'customer') return;
+        const { data: sess } = await supabase.from('chat_sessions').select('name, phone').eq('id', msg.session_id).maybeSingle();
+        const from = (sess as any)?.name || ((sess as any)?.phone?.startsWith('anon_') ? 'Khách ẩn danh' : (sess as any)?.phone) || 'Khách';
+        setChatNotif({ text: msg.content, from });
+        setTimeout(() => setChatNotif(null), 5000);
+        if (document.hidden && Notification.permission === 'granted') {
+          new Notification(`${from} nhắn tin`, { body: msg.content, icon: '/favicon.ico' });
+        }
+      })
+      .subscribe();
+
+    if (Notification.permission === 'default') Notification.requestPermission();
+
+    return () => { sessCh.unsubscribe(); msgCh.unsubscribe(); };
+  }, [isAdmin]);
 
   useEffect(() => {
     if (isAdmin) markAllRead();
@@ -1478,11 +1516,16 @@ const AdminConsultations: React.FC = () => {
             )}
 
             <button
-              onClick={() => { setChatInitialPhone(null); setChatPanelOpen(true); }}
+              onClick={() => { setChatInitialPhone(null); setChatPanelOpen(true); setChatUnread(0); }}
               className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm hover:bg-blue-100 transition-all relative"
             >
               <MessageCircle size={16} />
               Chat khách
+              {chatUnread > 0 && !chatPanelOpen && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold px-1 animate-pulse">
+                  {chatUnread > 99 ? '99+' : chatUnread}
+                </span>
+              )}
             </button>
 
             <Link
@@ -2032,6 +2075,28 @@ const AdminConsultations: React.FC = () => {
         initialPhone={chatInitialPhone}
         consultations={consultations}
       />
+
+      {chatNotif && (
+        <div
+          className="fixed bottom-6 right-6 z-[70] bg-gray-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-start gap-3 max-w-[300px] cursor-pointer animate-fade-in"
+          onClick={() => { setChatNotif(null); setChatPanelOpen(true); setChatUnread(0); }}
+        >
+          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+            <MessageCircle size={15} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold text-blue-300 mb-0.5">{chatNotif.from} nhắn tin</p>
+            <p className="text-sm text-white truncate">{chatNotif.text}</p>
+            <p className="text-[10px] text-gray-400 mt-1">Nhấn để trả lời</p>
+          </div>
+          <button
+            onClick={e => { e.stopPropagation(); setChatNotif(null); }}
+            className="text-gray-500 hover:text-white shrink-0 mt-0.5"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </Layout>
   );
 };
