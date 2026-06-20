@@ -41,9 +41,6 @@ export const LiveChatWidget: React.FC = () => {
   const liveChatOpenRef       = useRef(false);
   useEffect(() => { liveChatOpenRef.current = liveChatOpen; }, [liveChatOpen]);
 
-  // Ẩn toàn bộ widget nếu admin đã tắt
-  if (settings?.liveChatEnabled === false) return null;
-
   const scheduleNextMessage = (index: number) => {
     if (index >= chatMessages.length) return;
     const delay = chatMessages[index].delaySeconds * 1000;
@@ -115,6 +112,9 @@ export const LiveChatWidget: React.FC = () => {
   const currentMessage = currentMessageIndex >= 0 && currentMessageIndex < chatMessages.length
     ? chatMessages[currentMessageIndex]
     : null;
+
+  // Ẩn toàn bộ widget (sau tất cả hooks)
+  if (settings?.liveChatEnabled === false) return null;
 
   return (
     <>
