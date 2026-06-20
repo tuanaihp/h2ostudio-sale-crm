@@ -15,7 +15,6 @@ const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const AdminTrash = lazy(() => import('./pages/AdminTrash'));
 const AdminContent = lazy(() => import('./pages/AdminContent'));
 const AdminScripts = lazy(() => import('./pages/AdminScripts'));
-const LiveChatBubble = lazy(() => import('./components/LiveChatBubble').then(m => ({ default: m.LiveChatBubble })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-white">
@@ -52,11 +51,6 @@ function AppContent() {
           <Route path="/admin/scripts" element={<AdminScripts />} />
         </Routes>
       </Suspense>
-      {!isAdmin && (
-        <Suspense fallback={null}>
-          <LiveChatBubble />
-        </Suspense>
-      )}
     </>
   );
 }
