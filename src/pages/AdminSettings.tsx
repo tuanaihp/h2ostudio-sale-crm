@@ -77,6 +77,7 @@ const AdminSettings: React.FC = () => {
   const [chatEnabled, setChatEnabled] = useState(settings.chatEnabled !== false);
   const [liveChatEnabled, setLiveChatEnabled] = useState(settings.liveChatEnabled !== false);
   const [chatBotEnabled, setChatBotEnabled] = useState(settings.chatBotEnabled === true);
+  const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings.chatBotTier2Enabled === true);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -231,7 +232,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { brandLogo: finalLogoUrl, watermarkOpacity: opacity, watermarkPosition: position };
       } 
       else if (section === 'chat') {
-        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled };
+        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled };
       } 
       else if (section === 'ai_consultant') {
         partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
@@ -507,8 +508,8 @@ const AdminSettings: React.FC = () => {
       case 'chat':
         return (
           <div className="space-y-6 flex flex-col h-full">
-            {/* --- 2 toggle controls --- */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* --- 3 toggle controls --- */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Toggle: Widget CHAT trên website */}
               <div className="bg-light-gray/60 rounded-2xl p-4 flex items-center justify-between gap-3">
                 <div>
@@ -527,11 +528,11 @@ const AdminSettings: React.FC = () => {
                 </label>
               </div>
 
-              {/* Toggle: Bot AI tự động */}
-              <div className="bg-light-gray/60 rounded-2xl p-4 flex items-center justify-between gap-3">
+              {/* Toggle: Bot Tầng 1 — kịch bản */}
+              <div className={`rounded-2xl p-4 flex items-center justify-between gap-3 border-2 transition-colors ${chatBotEnabled ? 'bg-primary/5 border-primary/30' : 'bg-light-gray/60 border-transparent'}`}>
                 <div>
-                  <p className="text-sm font-bold text-dark">Bot AI tư vấn 24/7</p>
-                  <p className="text-[11px] text-dark/50 mt-0.5">Bot tự trả lời theo kịch bản</p>
+                  <p className="text-sm font-bold text-dark">Bot Tầng 1 · Kịch bản</p>
+                  <p className="text-[11px] text-dark/50 mt-0.5">Khớp từ khóa kho kịch bản · miễn phí</p>
                 </div>
                 <label className="flex flex-col items-center cursor-pointer shrink-0">
                   <span className={`text-[10px] font-bold mb-1 ${chatBotEnabled ? 'text-primary' : 'text-gray-400'}`}>
@@ -544,7 +545,33 @@ const AdminSettings: React.FC = () => {
                   </div>
                 </label>
               </div>
+
+              {/* Toggle: Bot Tầng 2 — AI API */}
+              <div className={`rounded-2xl p-4 flex items-center justify-between gap-3 border-2 transition-colors ${chatBotTier2Enabled ? 'bg-purple-50 border-purple-300' : 'bg-light-gray/60 border-transparent'}`}>
+                <div>
+                  <p className="text-sm font-bold text-dark">Bot Tầng 2 · AI API</p>
+                  <p className="text-[11px] text-dark/50 mt-0.5">Gemini/ChatGPT + kịch bản · cần API</p>
+                </div>
+                <label className="flex flex-col items-center cursor-pointer shrink-0">
+                  <span className={`text-[10px] font-bold mb-1 ${chatBotTier2Enabled ? 'text-purple-600' : 'text-gray-400'}`}>
+                    {chatBotTier2Enabled ? 'BẬT' : 'TẮT'}
+                  </span>
+                  <div className="relative">
+                    <input type="checkbox" className="sr-only" checked={chatBotTier2Enabled} onChange={e => setChatBotTier2Enabled(e.target.checked)} />
+                    <div className={`block w-11 h-6 rounded-full transition-colors ${chatBotTier2Enabled ? 'bg-purple-500' : 'bg-gray-300'}`} />
+                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${chatBotTier2Enabled ? 'translate-x-5' : ''}`} />
+                  </div>
+                </label>
+              </div>
             </div>
+
+            {/* Info box — giải thích 2 tầng bot */}
+            {(chatBotEnabled || chatBotTier2Enabled) && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-[11px] text-blue-800 space-y-1">
+                {chatBotEnabled && <p>🤖 <b>Tầng 1</b>: Bot tự khớp từ khóa tin nhắn với kho kịch bản chốt sale, trả lời tức thì, không tốn chi phí API.</p>}
+                {chatBotTier2Enabled && <p>✨ <b>Tầng 2</b>: AI đọc toàn bộ kịch bản + lịch sử chat → phản hồi thông minh hơn. Cần cấu hình API tại tab <b>Cổng kết nối</b>. Khi Tầng 2 bật, Tầng 2 được ưu tiên.</p>}
+              </div>
+            )}
 
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl font-bold text-dark flex items-center gap-2">

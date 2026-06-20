@@ -516,15 +516,26 @@ CREATE TABLE sale_scripts (
 - **Controlled pattern**: button controls `liveChatOpen` state → passed to `<LiveChatBubble controlledOpen={...} onClose={...} />`
 - Auto-open `LiveChatBubble` sau 10 giây (chỉ 1 lần mỗi session, dùng `sessionStorage`)
 - Import `playNotifSound()` từ `LiveChatBubble` để phát sound khi auto-open
-- `if (settings?.liveChatEnabled === false) return null;` phải đặt **sau tất cả hooks**
+- **Independence**: khi `liveChatEnabled === false` nhưng bot đang BẬT → render `<LiveChatBubble>` standalone (có bubble button riêng) thay vì `return null` hoàn toàn
+- Nếu cả widget lẫn bot đều TẮT → `return null`
+
+```tsx
+if (settings?.liveChatEnabled === false) {
+  if (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true) {
+    return <LiveChatBubble chatBotEnabled={...} chatBotTier2Enabled={...} integrationConfig={...} />;
+  }
+  return null;
+}
+```
 
 ### LiveChatBubble.tsx — props
 
 ```typescript
 interface Props {
-  controlledOpen?: boolean;  // true = controlled mode (no own button rendered)
+  controlledOpen?: boolean;    // controlled mode: không render button riêng
   onClose?: () => void;
-  chatBotEnabled?: boolean;
+  chatBotEnabled?: boolean;    // Tầng 1: keyword match, không tốn API
+  chatBotTier2Enabled?: boolean; // Tầng 2: Gemini/ChatGPT + kịch bản context
   integrationConfig?: {
     chatApiEnabled?: boolean;
     chatApiUrl?: string;
@@ -537,23 +548,30 @@ interface Props {
 - **Standalone mode** (không có `controlledOpen`): tự render bubble button + panel
 - **Controlled mode** (`controlledOpen` có value): chỉ render panel, không render button
 - Export `playNotifSound()` (Web Audio API, không cần file âm thanh)
-- Khi `chatBotEnabled`: sau khi customer gửi tin → gọi `/api/live-chat-bot` (delay 1.2–2s để tự nhiên)
-- Tạo session Supabase nếu chưa có (`sessionStorage` lưu `lc_session_id`)
-- Màu sắc: `bg-gradient-to-br from-secondary via-primary to-primary`
+- **Tầng 2 ưu tiên hơn Tầng 1**: nếu cả hai bật → chạy Tầng 2
 
-### Bot AI — /api/live-chat-bot (server.ts)
+### Bot AI — 2 tầng
+
+**Tầng 1 — `callBotTier1()` (client-side, miễn phí):**
+- Fetch `sale_scripts` từ Supabase, score theo từ khóa trong `title` (+3), `tags` (+2), `content` (+1)
+- Trả về `content` của kịch bản khớp nhất (tối đa 450 ký tự); nếu không khớp → default message
+- Delay 0.8–1.5s để tự nhiên
+- **Không tốn API cost**
+
+**Tầng 2 — `callBotTier2()` (server-side API):**
+- Gọi `/api/live-chat-bot` với scripts + history
+- Endpoint dùng Gemini hoặc custom ChatGPT API (theo `integrationConfig`)
+- Delay 1.2–2s
+- Cần `GEMINI_API_KEY` hoặc cấu hình API tại tab "Cổng kết nối"
 
 ```typescript
-app.post("/api/live-chat-bot", async (req, res) => {
-  const { message, stage, scripts, history, integrationConfig } = req.body;
-  // Build system prompt từ kịch bản kho (scripts, tối đa 12 kịch bản)
-  // Delay 1.2–2s random để tự nhiên
-  // Gọi custom API nếu integrationConfig.chatApiEnabled, else Gemini 2.0 flash
-  // Lưu bot reply vào chat_messages với sender='admin'
-});
+// Trong send(): Tầng 2 ưu tiên
+if (chatBotTier2Enabled && sessionId) {
+  callBotTier2(content, nextMsgs, sessionId);
+} else if (chatBotEnabled && sessionId) {
+  callBotTier1(content, sessionId);
+}
 ```
-
-Biến môi trường cần thiết: `GEMINI_API_KEY`
 
 ### AdminChatPanel.tsx — tính năng
 
@@ -606,10 +624,14 @@ const insertAlbumLink = (style: Style, album: Album) => {
 | Setting | Key | Mặc định |
 |---------|-----|---------|
 | Widget CHAT website | `liveChatEnabled` | `true` |
-| Bot AI tư vấn 24/7 | `chatBotEnabled` | `false` |
+| Bot Tầng 1 · Kịch bản | `chatBotEnabled` | `false` |
+| Bot Tầng 2 · AI API | `chatBotTier2Enabled` | `false` |
 
-Khi `liveChatEnabled = false`: không hiển thị nút CHAT trên website.  
-Khi `chatBotEnabled = true`: Bot tự trả lời sau mỗi tin nhắn của khách.
+3 setting **độc lập nhau**:
+- `liveChatEnabled = false`: ẩn nút CHAT + widget (nhưng bot vẫn chạy standalone nếu bật)
+- `chatBotEnabled = true`: Bot Tầng 1 tự khớp kịch bản → trả lời miễn phí
+- `chatBotTier2Enabled = true`: Bot Tầng 2 gọi Gemini/ChatGPT → thông minh hơn, tốn API cost  
+  → Khi Tầng 2 bật, Tầng 2 ưu tiên hoàn toàn (Tầng 1 không chạy song song)
 
 ---
 
@@ -777,9 +799,10 @@ export interface AppSettings {
   telegramChatId?: string;
   telegramNotificationEnabled?: boolean;
 
-  // Live Chat & Bot AI
-  liveChatEnabled?: boolean;     // hiển thị widget CHAT trên website (default: true)
-  chatBotEnabled?: boolean;      // bot AI tự động trả lời 24/7 (default: false)
+  // Live Chat & Bot AI — 3 setting độc lập
+  liveChatEnabled?: boolean;        // hiển thị widget CHAT trên website (default: true)
+  chatBotEnabled?: boolean;         // Bot Tầng 1: keyword match kịch bản, miễn phí (default: false)
+  chatBotTier2Enabled?: boolean;    // Bot Tầng 2: Gemini/ChatGPT + kịch bản context (default: false)
 
   // AI tư vấn (legacy AiChatBubble)
   aiConsultantEnabled?: boolean;
@@ -1204,4 +1227,4 @@ pattern trong CLAUDE.md.
 ---
 
 *Blueprint này được tạo từ dự án H2O Studio Sale Album — production-tested.*  
-*Cập nhật lần cuối: 2026-06-20 — thêm mục 12 Lịch Khuyến Mãi*
+*Cập nhật lần cuối: 2026-06-20 — Bot AI 2 tầng (Tầng 1 kịch bản + Tầng 2 API) + Widget/Bot độc lập*

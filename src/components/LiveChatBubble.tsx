@@ -37,13 +37,14 @@ interface Props {
   controlledOpen?: boolean;
   onClose?: () => void;
   chatBotEnabled?: boolean;
+  chatBotTier2Enabled?: boolean;
   integrationConfig?: {
     chatApiEnabled?: boolean; chatApiUrl?: string;
     chatApiKey?: string; chatApiModelName?: string;
   };
 }
 
-export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, integrationConfig }: Props = {}) {
+export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, integrationConfig }: Props = {}) {
   const isControlled = controlledOpen !== undefined;
 
   const [_open, _setOpen] = useState(false);
@@ -147,15 +148,53 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, integr
     setTimeout(() => setShowForm(true), 1500);
   };
 
-  const callBot = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
+  // Tầng 1: khớp từ khóa với kho kịch bản, không tốn API
+  const callBotTier1 = async (customerMessage: string, sid: string) => {
     try {
-      // Lấy kịch bản + stage hiện tại
+      const { data: scriptData } = await supabase
+        .from('sale_scripts').select('id, phase, title, content, tags')
+        .eq('enabled', true).order('order_num', { ascending: true });
+
+      await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
+
+      const q = customerMessage.toLowerCase();
+      const words = q.split(/\s+/).filter(w => w.length >= 2);
+
+      const scored = (scriptData || []).map((s: any) => {
+        let score = 0;
+        words.forEach(w => {
+          if (s.title?.toLowerCase().includes(w)) score += 3;
+          if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) score += 2;
+          if (s.content?.toLowerCase().includes(w)) score += 1;
+        });
+        return { s, score };
+      }).sort((a: any, b: any) => b.score - a.score);
+
+      let text: string;
+      if (scored.length > 0 && scored[0].score > 0) {
+        const best = scored[0].s.content as string;
+        text = best.length > 450 ? best.slice(0, 450) + '...' : best;
+      } else {
+        text = 'Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Tư vấn viên sẽ phản hồi anh/chị sớm nhất có thể. Anh/chị vui lòng để lại số điện thoại để được hỗ trợ tốt hơn ạ 💕';
+      }
+
+      const botId  = crypto.randomUUID();
+      const botNow = new Date().toISOString();
+      await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
+      await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+    } catch (e) {
+      console.error('Bot Tầng 1 error:', e);
+    }
+  };
+
+  // Tầng 2: Gemini/ChatGPT + kịch bản làm context
+  const callBotTier2 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
+    try {
       const [{ data: sess }, { data: scriptData }] = await Promise.all([
         supabase.from('chat_sessions').select('stage').eq('id', sid).maybeSingle(),
         supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
       ]);
 
-      // Delay 1-2s để cảm giác tự nhiên
       await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
 
       const res = await fetch('/api/live-chat-bot', {
@@ -178,7 +217,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, integr
       await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
     } catch (e) {
-      console.error('Bot error:', e);
+      console.error('Bot Tầng 2 error:', e);
     }
   };
 
@@ -199,9 +238,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, integr
     if (isAnon && !formDone) setTimeout(() => setShowForm(true), 800);
     setSending(false);
 
-    // Gọi bot nếu được bật
-    if (chatBotEnabled && sessionId) {
-      callBot(content, nextMsgs, sessionId);
+    // Tầng 2 ưu tiên hơn Tầng 1; nếu cả hai đều bật thì chạy Tầng 2
+    if (chatBotTier2Enabled && sessionId) {
+      callBotTier2(content, nextMsgs, sessionId);
+    } else if (chatBotEnabled && sessionId) {
+      callBotTier1(content, sessionId);
     }
   };
 

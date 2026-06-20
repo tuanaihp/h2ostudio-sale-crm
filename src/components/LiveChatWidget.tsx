@@ -113,8 +113,24 @@ export const LiveChatWidget: React.FC = () => {
     ? chatMessages[currentMessageIndex]
     : null;
 
-  // Ẩn toàn bộ widget (sau tất cả hooks)
-  if (settings?.liveChatEnabled === false) return null;
+  // Ẩn widget nhưng vẫn hiện LiveChatBubble nếu bot đang bật (standalone mode)
+  if (settings?.liveChatEnabled === false) {
+    if (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true) {
+      return (
+        <LiveChatBubble
+          chatBotEnabled={settings?.chatBotEnabled === true}
+          chatBotTier2Enabled={settings?.chatBotTier2Enabled === true}
+          integrationConfig={{
+            chatApiEnabled: settings?.integrationChatApiEnabled,
+            chatApiUrl: settings?.integrationChatApiUrl,
+            chatApiKey: settings?.integrationChatApiKey,
+            chatApiModelName: settings?.integrationChatApiModelName,
+          }}
+        />
+      );
+    }
+    return null;
+  }
 
   return (
     <>
@@ -186,6 +202,7 @@ export const LiveChatWidget: React.FC = () => {
         controlledOpen={liveChatOpen}
         onClose={() => setLiveChatOpen(false)}
         chatBotEnabled={settings?.chatBotEnabled === true}
+        chatBotTier2Enabled={settings?.chatBotTier2Enabled === true}
         integrationConfig={{
           chatApiEnabled: settings?.integrationChatApiEnabled,
           chatApiUrl: settings?.integrationChatApiUrl,
