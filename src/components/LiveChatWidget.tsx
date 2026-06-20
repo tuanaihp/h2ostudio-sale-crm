@@ -41,6 +41,9 @@ export const LiveChatWidget: React.FC = () => {
   const liveChatOpenRef       = useRef(false);
   useEffect(() => { liveChatOpenRef.current = liveChatOpen; }, [liveChatOpen]);
 
+  // Ẩn toàn bộ widget nếu admin đã tắt
+  if (settings?.liveChatEnabled === false) return null;
+
   const scheduleNextMessage = (index: number) => {
     if (index >= chatMessages.length) return;
     const delay = chatMessages[index].delaySeconds * 1000;
@@ -182,6 +185,13 @@ export const LiveChatWidget: React.FC = () => {
       <LiveChatBubble
         controlledOpen={liveChatOpen}
         onClose={() => setLiveChatOpen(false)}
+        chatBotEnabled={settings?.chatBotEnabled === true}
+        integrationConfig={{
+          chatApiEnabled: settings?.integrationChatApiEnabled,
+          chatApiUrl: settings?.integrationChatApiUrl,
+          chatApiKey: settings?.integrationChatApiKey,
+          chatApiModelName: settings?.integrationChatApiModelName,
+        }}
       />
     </>
   );

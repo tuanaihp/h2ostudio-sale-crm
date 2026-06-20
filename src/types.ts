@@ -120,6 +120,8 @@ export interface AppSettings {
   aiConsultantEnabled?: boolean;
   aiConsultantName?: string;
   aiConsultantPrompt?: string;
+  liveChatEnabled?: boolean;
+  chatBotEnabled?: boolean;
   // Integrations settings ("Cổng kết nối")
   integrationChatApiEnabled?: boolean;
   integrationChatApiUrl?: string;

@@ -84,9 +84,12 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
   const [sending, setSending]         = useState(false);
   const [scriptsOpen, setScriptsOpen] = useState(false);
   const [scripts, setScripts]         = useState<Script[]>([]);
+  const [allScripts, setAllScripts]   = useState<Script[]>([]);
+  const [atQuery, setAtQuery]         = useState<string | null>(null);
   const [copied, setCopied]           = useState<string | null>(null);
 
   const bottomRef    = useRef<HTMLDivElement>(null);
+  const inputRef     = useRef<HTMLTextAreaElement>(null);
   const sessionCh    = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const messageCh    = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -94,6 +97,14 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
   const linkedConsultation = activeSession
     ? consultations.find(c => c.id === activeSession.consultation_id || c.phone === activeSession.phone)
     : null;
+
+  // Load ALL scripts once when panel opens (for @ search)
+  useEffect(() => {
+    if (!isOpen) return;
+    supabase.from('sale_scripts').select('id, phase, title, content, tags')
+      .eq('enabled', true).order('order_num', { ascending: true })
+      .then(({ data }) => setAllScripts((data || []) as Script[]));
+  }, [isOpen]);
 
   // Load sessions + realtime subscription
   useEffect(() => {
@@ -198,6 +209,37 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
     setInput(content);
     setScriptsOpen(false);
   };
+
+  // @ script search helpers
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInput(val);
+    const atIdx = val.lastIndexOf('@');
+    if (atIdx >= 0 && (atIdx === 0 || val[atIdx - 1] === ' ' || val[atIdx - 1] === '\n')) {
+      setAtQuery(val.slice(atIdx + 1));
+    } else {
+      setAtQuery(null);
+    }
+  };
+
+  const insertAtScript = (content: string) => {
+    const atIdx = input.lastIndexOf('@');
+    const newVal = atIdx >= 0 ? input.slice(0, atIdx) + content : content;
+    setInput(newVal);
+    setAtQuery(null);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const atResults = atQuery !== null
+    ? allScripts.filter(s => {
+        if (!atQuery) return true;
+        const q = atQuery.toLowerCase();
+        return s.title.toLowerCase().includes(q)
+          || s.phase.toLowerCase().includes(q)
+          || s.content.toLowerCase().includes(q)
+          || ((s as any).tags || []).some((t: string) => t.toLowerCase().includes(q));
+      }).slice(0, 6)
+    : [];
 
   const totalUnread = sessions.reduce((s, x) => s + (x.unread_admin || 0), 0);
 
@@ -407,15 +449,42 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
               </div>
             )}
 
+            {/* @ Script dropdown */}
+            {atQuery !== null && (
+              <div className="border-t bg-white px-3 pt-2 pb-1">
+                <p className="text-[10px] text-gray-400 mb-1.5 font-medium">
+                  {atQuery ? `Kịch bản khớp "@${atQuery}"` : 'Tất cả kịch bản — gõ thêm để lọc'}
+                </p>
+                {atResults.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-1">Không tìm thấy kịch bản nào</p>
+                ) : (
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {atResults.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => insertAtScript(s.content)}
+                        className="w-full text-left bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 transition-colors"
+                      >
+                        <p className="text-xs font-semibold text-amber-800">{s.title}</p>
+                        <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{s.content}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Reply input */}
             <div className="border-t bg-white p-3 flex gap-2 shrink-0">
               <textarea
+                ref={inputRef}
                 className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                placeholder="Nhập tin nhắn... (Enter để gửi, Shift+Enter xuống dòng)"
+                placeholder="Nhập tin nhắn... (@tên để tìm kịch bản · Enter gửi)"
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+                  if (e.key === 'Escape') { setAtQuery(null); return; }
+                  if (e.key === 'Enter' && !e.shiftKey && atQuery === null) { e.preventDefault(); send(); }
                 }}
                 rows={2}
                 disabled={sending}

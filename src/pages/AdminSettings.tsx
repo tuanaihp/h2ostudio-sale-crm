@@ -75,6 +75,8 @@ const AdminSettings: React.FC = () => {
   const [cropImage, setCropImage] = useState<{ url: string; field: 'partner1' | 'partner2' | 'logo' } | null>(null);
 
   const [chatEnabled, setChatEnabled] = useState(settings.chatEnabled !== false);
+  const [liveChatEnabled, setLiveChatEnabled] = useState(settings.liveChatEnabled !== false);
+  const [chatBotEnabled, setChatBotEnabled] = useState(settings.chatBotEnabled === true);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -229,7 +231,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { brandLogo: finalLogoUrl, watermarkOpacity: opacity, watermarkPosition: position };
       } 
       else if (section === 'chat') {
-        partialSettings = { chatEnabled, chatMessages };
+        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled };
       } 
       else if (section === 'ai_consultant') {
         partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
@@ -505,6 +507,45 @@ const AdminSettings: React.FC = () => {
       case 'chat':
         return (
           <div className="space-y-6 flex flex-col h-full">
+            {/* --- 2 toggle controls --- */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Toggle: Widget CHAT trên website */}
+              <div className="bg-light-gray/60 rounded-2xl p-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-dark">Widget CHAT website</p>
+                  <p className="text-[11px] text-dark/50 mt-0.5">Hiện/ẩn nút Chat dưới website</p>
+                </div>
+                <label className="flex flex-col items-center cursor-pointer shrink-0">
+                  <span className={`text-[10px] font-bold mb-1 ${liveChatEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                    {liveChatEnabled ? 'BẬT' : 'TẮT'}
+                  </span>
+                  <div className="relative">
+                    <input type="checkbox" className="sr-only" checked={liveChatEnabled} onChange={e => setLiveChatEnabled(e.target.checked)} />
+                    <div className={`block w-11 h-6 rounded-full transition-colors ${liveChatEnabled ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${liveChatEnabled ? 'translate-x-5' : ''}`} />
+                  </div>
+                </label>
+              </div>
+
+              {/* Toggle: Bot AI tự động */}
+              <div className="bg-light-gray/60 rounded-2xl p-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-dark">Bot AI tư vấn 24/7</p>
+                  <p className="text-[11px] text-dark/50 mt-0.5">Bot tự trả lời theo kịch bản</p>
+                </div>
+                <label className="flex flex-col items-center cursor-pointer shrink-0">
+                  <span className={`text-[10px] font-bold mb-1 ${chatBotEnabled ? 'text-primary' : 'text-gray-400'}`}>
+                    {chatBotEnabled ? 'BẬT' : 'TẮT'}
+                  </span>
+                  <div className="relative">
+                    <input type="checkbox" className="sr-only" checked={chatBotEnabled} onChange={e => setChatBotEnabled(e.target.checked)} />
+                    <div className={`block w-11 h-6 rounded-full transition-colors ${chatBotEnabled ? 'bg-primary' : 'bg-gray-300'}`} />
+                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${chatBotEnabled ? 'translate-x-5' : ''}`} />
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl font-bold text-dark flex items-center gap-2">
                 <MessageCircle size={24} className="text-primary" />

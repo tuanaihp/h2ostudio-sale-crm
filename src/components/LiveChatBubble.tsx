@@ -36,9 +36,14 @@ interface Props {
   /** Khi dùng standalone (không có props) → tự quản lý state + tự có nút bubble */
   controlledOpen?: boolean;
   onClose?: () => void;
+  chatBotEnabled?: boolean;
+  integrationConfig?: {
+    chatApiEnabled?: boolean; chatApiUrl?: string;
+    chatApiKey?: string; chatApiModelName?: string;
+  };
 }
 
-export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
+export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, integrationConfig }: Props = {}) {
   const isControlled = controlledOpen !== undefined;
 
   const [_open, _setOpen] = useState(false);
@@ -142,13 +147,49 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
     setTimeout(() => setShowForm(true), 1500);
   };
 
+  const callBot = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
+    try {
+      // Lấy kịch bản + stage hiện tại
+      const [{ data: sess }, { data: scriptData }] = await Promise.all([
+        supabase.from('chat_sessions').select('stage').eq('id', sid).maybeSingle(),
+        supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
+      ]);
+
+      // Delay 1-2s để cảm giác tự nhiên
+      await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
+
+      const res = await fetch('/api/live-chat-bot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: customerMessage,
+          stage: (sess as any)?.stage || 'new',
+          scripts: scriptData || [],
+          history: currentMessages.slice(-10),
+          integrationConfig,
+        }),
+      });
+      if (!res.ok) return;
+      const { text } = await res.json();
+      if (!text) return;
+
+      const botId  = crypto.randomUUID();
+      const botNow = new Date().toISOString();
+      await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
+      await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+    } catch (e) {
+      console.error('Bot error:', e);
+    }
+  };
+
   const send = async () => {
     if (!input.trim() || !sessionId || sending) return;
     setSending(true);
     const id      = crypto.randomUUID();
     const now     = new Date().toISOString();
     const content = input.trim();
-    setMessages(prev => [...prev, { id, sender: 'customer', content, created_at: now }]);
+    const nextMsgs = [...messages, { id, sender: 'customer' as const, content, created_at: now }];
+    setMessages(nextMsgs);
     setInput('');
     await supabase.from('chat_messages').insert({ id, session_id: sessionId, sender: 'customer', content, created_at: now });
     await supabase.from('chat_sessions').update({
@@ -157,6 +198,11 @@ export function LiveChatBubble({ controlledOpen, onClose }: Props = {}) {
     }).eq('id', sessionId);
     if (isAnon && !formDone) setTimeout(() => setShowForm(true), 800);
     setSending(false);
+
+    // Gọi bot nếu được bật
+    if (chatBotEnabled && sessionId) {
+      callBot(content, nextMsgs, sessionId);
+    }
   };
 
   const submitInfo = async () => {

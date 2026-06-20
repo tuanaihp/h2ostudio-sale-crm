@@ -122,6 +122,70 @@ async function startServer() {
     }
   });
 
+  // ── Bot tư vấn AI cho Live Chat ──────────────────────────────────────────
+  app.post("/api/live-chat-bot", async (req, res) => {
+    try {
+      const { message, stage, scripts, history, integrationConfig } = req.body;
+
+      // Build system prompt từ kịch bản kho
+      const scriptsText = (scripts || []).slice(0, 12).map((s: any) =>
+        `## ${s.title} [${s.phase}]\n${s.content}`
+      ).join('\n\n---\n\n');
+
+      const systemInstruction = `Bạn là tư vấn viên của H2O Studio, chuyên tư vấn chụp ảnh cưới.
+Giai đoạn hiện tại: ${stage || 'new'}
+
+KỊCH BẢN TƯ VẤN:
+${scriptsText || 'Chào khách, hỏi nhu cầu và tư vấn nhiệt tình.'}
+
+QUY TẮC QUAN TRỌNG:
+- Xưng "em", gọi khách là "anh/chị"
+- Trả lời ngắn gọn, tự nhiên (2-3 câu), tránh rườm rà
+- Bám sát nội dung kịch bản, không bịa giá hoặc thông tin ngoài kịch bản
+- Nếu khách hỏi ngoài phạm vi, mời để lại SĐT: "Anh/chị để lại SĐT để tư vấn viên gọi lại chi tiết hơn nhé ạ"
+- Không nhắc bạn là AI hay bot`;
+
+      const convMessages = [
+        ...(history || []).slice(-8).map((m: any) => ({
+          role: m.sender === 'customer' ? 'user' : 'model',
+          text: m.content
+        })),
+        { role: 'user' as const, text: message }
+      ];
+
+      // Dùng custom API nếu được cấu hình
+      if (integrationConfig?.chatApiEnabled && integrationConfig?.chatApiUrl) {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (integrationConfig.chatApiKey) headers['Authorization'] = `Bearer ${integrationConfig.chatApiKey}`;
+        const openAiMessages = [
+          { role: 'system', content: systemInstruction },
+          ...convMessages.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text }))
+        ];
+        const proxyRes = await fetch(integrationConfig.chatApiUrl, {
+          method: 'POST', headers,
+          body: JSON.stringify({ model: integrationConfig.chatApiModelName || 'gpt-3.5-turbo', messages: openAiMessages })
+        });
+        const proxyData: any = await proxyRes.json();
+        return res.json({ text: proxyData?.choices?.[0]?.message?.content || '' });
+      }
+
+      // Mặc định: Gemini
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: 'Thiếu GEMINI_API_KEY' });
+
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: convMessages.map(m => ({ role: m.role, parts: [{ text: m.text }] })),
+        config: { systemInstruction },
+      });
+      res.json({ text: response.text });
+    } catch (err: any) {
+      console.error('Bot error:', err);
+      res.status(500).json({ error: err?.message || 'Bot lỗi' });
+    }
+  });
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
