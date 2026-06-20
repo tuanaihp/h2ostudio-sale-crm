@@ -70,7 +70,7 @@ interface ConsultationContextType {
     date?: Date; favoriteIds?: string[]; source?: string; luckyGift?: string;
     favoriteAlbums?: { title: string; url: string; styleName?: string }[];
   }) => Promise<void>;
-  updateConsultationStatus: (id: string, status: 'new' | 'contacted' | 'registered') => Promise<void>;
+  updateConsultationStatus: (id: string, status: Consultation['status']) => Promise<void>;
   updateConsultationRegistration: (id: string, data: Partial<Consultation>) => Promise<void>;
   updateConsultationNotes: (id: string, notes: string) => Promise<void>;
   updateConsultationTags: (id: string, tags: string[]) => Promise<void>;
@@ -257,7 +257,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [settings?.larkWebhookUrl]);
 
   // ─── Update / Delete ───────────────────────────────────────────────────────
-  const updateConsultationStatus = useCallback(async (id: string, status: 'new' | 'contacted' | 'registered') => {
+  const updateConsultationStatus = useCallback(async (id: string, status: Consultation['status']) => {
     if (!isAdmin) return;
     await supabase.from('consultations').update({ status }).eq('id', id);
     syncLeadUpdateToSheets(id, { status });

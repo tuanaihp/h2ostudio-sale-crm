@@ -2,11 +2,101 @@ import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
-import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell } from 'lucide-react';
+import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
-import { Consultation } from '../types';
+import { Consultation, Style } from '../types';
+
+type ConsultationStatus = Consultation['status'];
+
+const STATUS_CONFIG: Record<ConsultationStatus, { label: string; shortLabel: string; color: string; bgColor: string; borderColor: string; dot: string }> = {
+  new:        { label: 'Chưa liên hệ', shortLabel: 'Mới',        color: 'text-red-600',    bgColor: 'bg-red-50',     borderColor: 'border-red-200',    dot: 'bg-red-500' },
+  called:     { label: 'Đã gọi',        shortLabel: 'Đã gọi',     color: 'text-yellow-700', bgColor: 'bg-yellow-50',  borderColor: 'border-yellow-200', dot: 'bg-yellow-500' },
+  contacted:  { label: 'Đã gọi',        shortLabel: 'Đã gọi',     color: 'text-yellow-700', bgColor: 'bg-yellow-50',  borderColor: 'border-yellow-200', dot: 'bg-yellow-500' },
+  consulting: { label: 'Đang tư vấn',   shortLabel: 'Tư vấn',     color: 'text-blue-700',   bgColor: 'bg-blue-50',    borderColor: 'border-blue-200',   dot: 'bg-blue-500' },
+  quoted:     { label: 'Đã báo giá',    shortLabel: 'Báo giá',    color: 'text-purple-700', bgColor: 'bg-purple-50',  borderColor: 'border-purple-200', dot: 'bg-purple-500' },
+  registered: { label: 'Đã chốt',       shortLabel: 'Đã chốt',    color: 'text-green-700',  bgColor: 'bg-green-50',   borderColor: 'border-green-200',  dot: 'bg-green-500' },
+};
+
+const PIPELINE_STAGES: { keys: ConsultationStatus[]; label: string; headerCls: string; colCls: string }[] = [
+  { keys: ['new'],                  label: 'Mới',         headerCls: 'bg-red-100 text-red-700',     colCls: 'bg-red-50/30 border-red-200' },
+  { keys: ['called', 'contacted'],  label: 'Đã gọi',      headerCls: 'bg-yellow-100 text-yellow-700', colCls: 'bg-yellow-50/30 border-yellow-200' },
+  { keys: ['consulting'],           label: 'Đang tư vấn', headerCls: 'bg-blue-100 text-blue-700',   colCls: 'bg-blue-50/30 border-blue-200' },
+  { keys: ['quoted'],               label: 'Đã báo giá',  headerCls: 'bg-purple-100 text-purple-700', colCls: 'bg-purple-50/30 border-purple-200' },
+  { keys: ['registered'],           label: 'Đã chốt',     headerCls: 'bg-green-100 text-green-700', colCls: 'bg-green-50/30 border-green-200' },
+];
+
+const getStageIndex = (status: ConsultationStatus): number => {
+  const map: Record<ConsultationStatus, number> = { new: 0, called: 1, contacted: 1, consulting: 2, quoted: 3, registered: 4 };
+  return map[status] ?? 0;
+};
+
+const getStatusLabel = (status: ConsultationStatus): string => STATUS_CONFIG[status]?.label ?? status;
+
+const generateSaleScript = (c: Consultation, styles: Style[]): { step: number; title: string; script: string; tips: string }[] => {
+  const favCount = c.favoriteIds?.length || 0;
+  const isHot = favCount >= 3 || !!c.luckyGift || c.source === 'lucky_wheel';
+  const favAlbumNames = c.favoriteIds
+    ? styles.flatMap(s => s.albums.filter(a => c.favoriteIds!.includes(a.id)).map(a => `${a.title} (${s.title})`))
+    : [];
+  const favAlbumLinks = c.favoriteIds
+    ? styles.flatMap(s => s.albums.filter(a => c.favoriteIds!.includes(a.id)).map(a => ({
+        name: `${a.title} (${s.title})`,
+        url: `${window.location.origin}/style/${s.slug}/album/${a.slug}`,
+      })))
+    : [];
+
+  return [
+    {
+      step: 1,
+      title: 'Gọi điện lần đầu',
+      script: `"Dạ em chào ${c.name || 'anh/chị'} ạ! Em là [Tên bạn] từ H2O Studio. Em thấy mình vừa để lại thông tin tìm hiểu về dịch vụ chụp ảnh cưới ạ. Anh/chị đang tiện nghe máy không ạ?"`,
+      tips: isHot
+        ? `🔥 Khách HOT — đã thích ${favCount} album${c.luckyGift ? `, có quà "${c.luckyGift}"` : ''}. Gọi ngay trong 1h đầu!`
+        : '💡 Gọi giờ vàng 9–11h hoặc 14–17h. Nếu không nghe, nhắn Zalo trước rồi gọi lại.',
+    },
+    {
+      step: 2,
+      title: 'Tư vấn album concept',
+      script: favAlbumLinks.length > 0
+        ? `"Bên em thấy anh/chị đã xem qua và thích ${favAlbumNames.slice(0, 2).join(', ')}${favAlbumNames.length > 2 ? ` và ${favAlbumNames.length - 2} album khác` : ''}. Em gửi anh/chị link xem lại chi tiết nhé, mình trao đổi thêm concept phù hợp ạ!"`
+        : `"Anh/chị đang nghiêng về phong cách nào không ạ — lãng mạn tự nhiên, Hàn Quốc hiện đại, hay Fine Art cổ điển? Em gửi anh/chị 2–3 bộ ảnh mẫu để tham khảo trực tiếp ạ."`,
+      tips: favAlbumLinks.length > 0
+        ? '💡 Copy link concept bên dưới và paste vào Zalo ngay sau cuộc gọi — tỷ lệ chốt tăng 3x khi khách xem được ảnh thật.'
+        : '💡 Gửi link album cụ thể, không gửi link trang chủ — khách cần xem ảnh thật ngay, không tìm kiếm.',
+    },
+    {
+      step: 3,
+      title: 'Tạo urgency — Chốt ngày',
+      script: c.luckyGift
+        ? `"Anh/chị được tặng "${c.luckyGift}" khi đăng ký gói hôm nay ạ. Bên em đang giữ slot tháng [X] — nếu anh/chị ưng concept nào, mình đặt trước cho chắc nhé? Ưu đãi chỉ áp dụng trong tuần này ạ."`
+        : `"Lịch chụp ${c.weddingDate ? 'quý ' + new Date(c.weddingDate).getMonth() / 3 + 1 : 'mùa cưới'} bên em đang khá kín anh/chị ơi. Nếu mình ưng concept rồi thì để em giữ slot trước cho yên tâm nhé ạ?"`,
+      tips: c.luckyGift
+        ? `💡 Nhấn mạnh quà "${c.luckyGift}" có hạn — tạo deadline giúp khách quyết định nhanh hơn.`
+        : '💡 Đừng ép — chỉ cần tạo cảm giác khan hiếm lịch. "Anh/chị cứ tham khảo thêm, em chỉ giữ được slot đến [ngày] thôi ạ."',
+    },
+    {
+      step: 4,
+      title: 'Xử lý từ chối',
+      script: `Nếu "Để nghĩ thêm đã":
+"Dạ ok anh/chị ạ. Anh/chị cho em biết mình đang phân vân điều gì không ạ — về concept, về ngày chụp, hay về chi phí? Em giải đáp luôn cho anh/chị nhé!"
+
+Nếu "Đắt quá":
+"Dạ bên em có nhiều gói từ [X]đ–[Y]đ ạ. Anh/chị cho em biết budget khoảng bao nhiêu, em tư vấn gói vừa vặn nhất nhé — không cần cắt bỏ những gì quan trọng ạ."
+
+Nếu "Đang so sánh chỗ khác":
+"Dạ anh/chị cứ so sánh ạ! Bên em tự tin nhất ở chất lượng ảnh và dịch vụ hậu kỳ. Anh/chị muốn em gửi thêm portfolio concept nào không?"`,
+      tips: '💡 Đừng phòng thủ khi nghe từ chối. Hỏi thêm để tìm rào cản thật sự — đa số là giá hoặc chưa thấy concept ưng.',
+    },
+    {
+      step: 5,
+      title: 'Chốt — Đặt cọc',
+      script: `"Dạ vậy bên em confirm lịch chụp ngày [ngày] cho anh/chị nhé ạ! Anh/chị đặt cọc [số tiền] để lock slot — mình nhận chuyển khoản qua [số TK / ngân hàng] hoặc thanh toán trực tiếp tại studio ạ. Em gửi thông tin hợp đồng và receipt qua Zalo luôn nhé!"`,
+      tips: '💡 Sau khi khách đồng ý: gửi số tài khoản + hợp đồng qua Zalo NGAY — để nguội 30 phút là mất 40% khả năng chốt.',
+    },
+  ];
+};
 
 const isStaleNew = (c: Consultation): boolean => {
   if (c.status !== 'new') return false;
@@ -47,8 +137,10 @@ const getLeadPriority = (c: Consultation): number => {
     if (isUrgentNew(c)) return 3;
     return 4;
   }
-  if (c.status === 'contacted') return 5;
-  return 6;
+  if (c.status === 'called' || c.status === 'contacted') return 5;
+  if (c.status === 'consulting') return 6;
+  if (c.status === 'quoted') return 7;
+  return 8; // registered
 };
 
 const RegistrationModal: React.FC<{ 
@@ -396,10 +488,11 @@ const BulkDeleteModal: React.FC<{
 const KanbanCard: React.FC<{
   consult: Consultation;
   isSuperAdmin: boolean;
-  onStatusChange: (id: string, status: 'new' | 'contacted' | 'registered') => void;
+  onStatusChange: (id: string, status: ConsultationStatus) => void;
   onDelete: (id: string) => void;
   onOpenReg: (c: Consultation) => void;
-}> = ({ consult, isSuperAdmin, onStatusChange, onDelete, onOpenReg }) => {
+  onOpenScript: (c: Consultation) => void;
+}> = ({ consult, isSuperAdmin, onStatusChange, onDelete, onOpenReg, onOpenScript }) => {
   const stale = isStaleNew(consult);
   const urgent = isUrgentNew(consult);
   const favCount = consult.favoriteIds?.length || 0;
@@ -477,6 +570,12 @@ const KanbanCard: React.FC<{
           </button>
         </div>
       )}
+      <button
+        onClick={() => onOpenScript(consult)}
+        className="mt-1 w-full py-1 text-[10px] text-amber-600 font-bold hover:bg-amber-50 rounded transition-colors flex items-center justify-center gap-1 border border-amber-100"
+      >
+        <Zap size={9} /> Kịch bản chốt sale
+      </button>
       {isSuperAdmin && (
         <button
           onClick={() => { if (window.confirm(`Xóa ${consult.name}?`)) onDelete(consult.id); }}
@@ -492,41 +591,40 @@ const KanbanCard: React.FC<{
 const KanbanView: React.FC<{
   consultations: Consultation[];
   isSuperAdmin: boolean;
-  onStatusChange: (id: string, status: 'new' | 'contacted' | 'registered') => void;
+  onStatusChange: (id: string, status: ConsultationStatus) => void;
   onDelete: (id: string) => void;
   onOpenReg: (c: Consultation) => void;
-}> = ({ consultations, isSuperAdmin, onStatusChange, onDelete, onOpenReg }) => {
-  const columns: { key: 'new' | 'contacted' | 'registered'; label: string; headerCls: string; colCls: string }[] = [
-    { key: 'new', label: 'Chưa liên hệ', headerCls: 'bg-red-100 text-red-700', colCls: 'bg-red-50/30 border-red-200' },
-    { key: 'contacted', label: 'Đã liên hệ', headerCls: 'bg-green-100 text-green-700', colCls: 'bg-green-50/30 border-green-200' },
-    { key: 'registered', label: 'Đã đăng ký', headerCls: 'bg-primary/10 text-primary', colCls: 'bg-primary/5 border-primary/20' },
-  ];
+  onOpenScript: (c: Consultation) => void;
+}> = ({ consultations, isSuperAdmin, onStatusChange, onDelete, onOpenReg, onOpenScript }) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {columns.map(col => {
-        const items = consultations.filter(c => c.status === col.key);
-        return (
-          <div key={col.key} className={`rounded-2xl border ${col.colCls} overflow-hidden flex flex-col`}>
-            <div className={`px-4 py-3 font-bold text-sm flex justify-between items-center shrink-0 ${col.headerCls}`}>
-              <span>{col.label}</span>
-              <span className="bg-white/80 rounded-full px-2 py-0.5 text-xs font-bold">{items.length}</span>
+    <div className="overflow-x-auto pb-2">
+      <div className="grid gap-3 min-w-[900px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        {PIPELINE_STAGES.map(col => {
+          const items = consultations.filter(c => col.keys.includes(c.status));
+          return (
+            <div key={col.label} className={`rounded-2xl border ${col.colCls} overflow-hidden flex flex-col`}>
+              <div className={`px-3 py-2.5 font-bold text-xs flex justify-between items-center shrink-0 ${col.headerCls}`}>
+                <span>{col.label}</span>
+                <span className="bg-white/80 rounded-full px-2 py-0.5 text-xs font-bold">{items.length}</span>
+              </div>
+              <div className="p-2 space-y-2 overflow-y-auto custom-scrollbar flex-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
+                {items.length === 0 && <p className="text-center text-xs text-dark/40 py-8">Trống</p>}
+                {items.map(c => (
+                  <KanbanCard
+                    key={c.id}
+                    consult={c}
+                    isSuperAdmin={isSuperAdmin}
+                    onStatusChange={onStatusChange}
+                    onDelete={onDelete}
+                    onOpenReg={onOpenReg}
+                    onOpenScript={onOpenScript}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="p-2 space-y-2 overflow-y-auto custom-scrollbar flex-1" style={{ maxHeight: 'calc(100vh - 320px)' }}>
-              {items.length === 0 && <p className="text-center text-xs text-dark/40 py-8">Trống</p>}
-              {items.map(c => (
-                <KanbanCard
-                  key={c.id}
-                  consult={c}
-                  isSuperAdmin={isSuperAdmin}
-                  onStatusChange={onStatusChange}
-                  onDelete={onDelete}
-                  onOpenReg={onOpenReg}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -749,60 +847,316 @@ const TagsInput: React.FC<{ initialTags: string[]; onSave: (tags: string[]) => v
   );
 };
 
-const StatusDropdown: React.FC<{ 
-  status: 'new' | 'contacted' | 'registered'; 
-  onChange: (status: 'new' | 'contacted' | 'registered') => void 
-}> = ({ status, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const SaleScriptPanel: React.FC<{
+  consultation: Consultation;
+  onClose: () => void;
+  styles: Style[];
+}> = ({ consultation, onClose, styles }) => {
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [copiedZalo, setCopiedZalo] = useState(false);
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
 
-  const getStatusConfig = () => {
-    switch (status) {
-      case 'new': return { label: 'Chưa liên hệ', color: 'bg-red-50 text-red-600 hover:bg-red-100', icon: <Circle size={12} fill="currentColor" /> };
-      case 'contacted': return { label: 'Đã liên hệ', color: 'bg-green-50 text-green-600 hover:bg-green-100', icon: <CheckCircle size={12} /> };
-      case 'registered': return { label: 'Đã đăng ký', color: 'bg-primary/10 text-primary hover:bg-primary/20', icon: <Calendar size={12} /> };
-    }
+  const stageIdx = getStageIndex(consultation.status);
+  const scripts = generateSaleScript(consultation, styles);
+
+  const favAlbumLinks = consultation.favoriteIds
+    ? styles.flatMap(s => s.albums
+        .filter(a => consultation.favoriteIds!.includes(a.id))
+        .map(a => ({ name: `${a.title} (${s.title})`, url: `${window.location.origin}/style/${s.slug}/album/${a.slug}` })))
+    : [];
+
+  const zaloMsg = [
+    `Dạ em chào ${consultation.name || 'anh/chị'} ạ! Em là [Tên] từ H2O Studio.`,
+    favAlbumLinks.length > 0
+      ? `Em gửi anh/chị link concept đã xem trên web để tham khảo:\n${favAlbumLinks.slice(0, 3).map((al, i) => `✨ ${i + 1}. ${al.name}: ${al.url}`).join('\n')}`
+      : 'Em thấy mình đang quan tâm đến dịch vụ chụp ảnh cưới. Em gửi anh/chị một số bộ ảnh mẫu để tham khảo nhé!',
+    '\nAnh/chị thấy concept nào ưng không ạ? Em tư vấn thêm cho mình nhé! 😊',
+  ].join('\n');
+
+  const copyScript = (text: string, idx: number) => {
+    const clean = text.replace(/^"|"$/gm, '');
+    navigator.clipboard.writeText(clean);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
   };
 
-  const config = getStatusConfig();
+  const stageLabels = ['Mới', 'Đã gọi', 'Tư vấn', 'Báo giá', 'Chốt'];
+  const isVisible = (idx: number) => idx === stageIdx || idx === expandedStep;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-dark/20 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-[420px] bg-white shadow-2xl flex flex-col overflow-hidden border-l border-light-gray">
+        {/* Header */}
+        <div className="px-5 py-3.5 bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-100 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-amber-400 rounded-xl flex items-center justify-center shrink-0">
+              <Zap size={16} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-black text-dark text-sm">Kịch bản chốt sale</h3>
+              <p className="text-[10px] text-dark/50">{consultation.name} · {consultation.phone}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-amber-100 rounded-full transition-colors text-dark/50">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Pipeline progress */}
+        <div className="px-4 py-3 bg-gray-50 border-b border-light-gray shrink-0">
+          <div className="flex items-center gap-1">
+            {stageLabels.map((label, i) => (
+              <React.Fragment key={label}>
+                <div className="flex flex-col items-center">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black border-2 ${
+                    i < stageIdx ? 'bg-green-500 border-green-500 text-white' :
+                    i === stageIdx ? 'bg-amber-400 border-amber-400 text-white' :
+                    'bg-white border-gray-200 text-gray-300'
+                  }`}>
+                    {i < stageIdx ? '✓' : i + 1}
+                  </div>
+                  <span className={`text-[8px] mt-0.5 font-bold whitespace-nowrap ${
+                    i === stageIdx ? 'text-amber-600' : i < stageIdx ? 'text-green-600' : 'text-gray-300'
+                  }`}>{label}</span>
+                </div>
+                {i < stageLabels.length - 1 && (
+                  <div className={`flex-1 h-0.5 mb-3.5 ${i < stageIdx ? 'bg-green-400' : 'bg-gray-200'}`} />
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+          {/* Customer data snapshot */}
+          <div className="bg-light-gray/40 rounded-xl p-3 text-xs space-y-1.5">
+            {(consultation.favoriteIds?.length || 0) > 0 && (
+              <div className="flex items-center gap-1.5 text-pink-600 font-bold">
+                <Heart size={11} fill="currentColor" />
+                Đã thích {consultation.favoriteIds!.length} album concept
+              </div>
+            )}
+            {consultation.luckyGift && (
+              <div className="flex items-center gap-1.5 text-amber-600 font-bold">
+                <Gift size={11} />
+                Quà vòng quay: {consultation.luckyGift}
+              </div>
+            )}
+            {consultation.weddingDate && (
+              <div className="flex items-center gap-1.5 text-red-600 font-bold">
+                <Calendar size={11} />
+                Ngày cưới: {format(new Date(consultation.weddingDate), 'dd/MM/yyyy')}
+              </div>
+            )}
+            {consultation.message && (
+              <p className="text-dark/50 pt-1.5 border-t border-light-gray italic">"{consultation.message}"</p>
+            )}
+          </div>
+
+          {/* Sale scripts */}
+          {scripts.map((s, idx) => {
+            const done = idx < stageIdx;
+            const current = idx === stageIdx;
+            const expanded = isVisible(idx);
+            return (
+              <div
+                key={s.step}
+                className={`rounded-xl border overflow-hidden transition-all ${
+                  current ? 'border-amber-300 shadow-sm shadow-amber-100' :
+                  done ? 'border-green-200 opacity-60' :
+                  'border-light-gray opacity-50'
+                }`}
+              >
+                <button
+                  className={`w-full px-3 py-2.5 flex items-center justify-between text-left ${
+                    current ? 'bg-amber-50' : done ? 'bg-green-50/50' : 'bg-light-gray/20'
+                  }`}
+                  onClick={() => setExpandedStep(expandedStep === idx ? null : idx)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-5 h-5 rounded-full text-[9px] font-black flex items-center justify-center shrink-0 ${
+                      done ? 'bg-green-500 text-white' : current ? 'bg-amber-400 text-white' : 'bg-gray-200 text-gray-400'
+                    }`}>
+                      {done ? '✓' : s.step}
+                    </span>
+                    <span className={`text-xs font-bold ${current ? 'text-amber-700' : done ? 'text-green-700' : 'text-dark/40'}`}>
+                      {s.title}
+                    </span>
+                    {current && <span className="text-[8px] bg-amber-400 text-white px-1.5 py-0.5 rounded-full font-black">HIỆN TẠI</span>}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {expanded && (
+                      <button
+                        onClick={e => { e.stopPropagation(); copyScript(s.script, idx); }}
+                        className={`p-1 rounded text-[9px] font-bold transition-all flex items-center gap-0.5 ${
+                          copiedIdx === idx ? 'bg-green-500 text-white' : 'bg-white border border-light-gray text-dark/50 hover:text-primary'
+                        }`}
+                      >
+                        {copiedIdx === idx ? <><Check size={9} />Copied</> : <><Copy size={9} />Copy</>}
+                      </button>
+                    )}
+                    <ChevronDown size={12} className={`text-dark/30 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+                {expanded && (
+                  <div className="px-3 pb-3 pt-1">
+                    <p className="text-[11px] text-dark/80 whitespace-pre-line leading-relaxed">{s.script}</p>
+                    {s.tips && (
+                      <p className="mt-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">{s.tips}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Concept links */}
+          {favAlbumLinks.length > 0 && (
+            <div className="rounded-xl border border-pink-100 overflow-hidden">
+              <div className="px-3 py-2 bg-pink-50 flex items-center gap-2">
+                <Heart size={11} fill="currentColor" className="text-pink-500" />
+                <span className="text-[11px] font-bold text-pink-700">Link concept khách thích — paste Zalo</span>
+              </div>
+              <div className="p-2 space-y-1.5 bg-white">
+                {favAlbumLinks.map((al, i) => (
+                  <div key={i} className="flex items-center gap-2 border border-pink-50 rounded-lg px-2 py-1.5">
+                    <span className="text-[10px] text-dark/60 flex-1 truncate">{al.name}</span>
+                    <a href={al.url} target="_blank" rel="noopener noreferrer" className="shrink-0 p-1 text-blue-400 hover:bg-blue-50 rounded">
+                      <ExternalLink size={10} />
+                    </a>
+                    <button onClick={() => navigator.clipboard.writeText(al.url)} className="shrink-0 p-1 text-dark/30 hover:text-green-600 hover:bg-green-50 rounded">
+                      <Copy size={10} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => navigator.clipboard.writeText(favAlbumLinks.map((al, i) => `${i + 1}. ${al.name}: ${al.url}`).join('\n'))}
+                  className="w-full py-1.5 text-[10px] font-bold text-pink-600 bg-pink-50 hover:bg-pink-100 rounded-lg border border-pink-100 flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Copy size={9} /> Copy tất cả link concept
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Zalo message template */}
+          <div className="rounded-xl border border-blue-100 overflow-hidden">
+            <div className="px-3 py-2 bg-blue-50 flex items-center gap-2">
+              <MessageCircle size={11} className="text-blue-500" />
+              <span className="text-[11px] font-bold text-blue-700">Tin nhắn Zalo mẫu</span>
+            </div>
+            <div className="p-3 bg-white">
+              <p className="text-[10px] text-dark/60 leading-relaxed bg-blue-50/30 rounded-lg p-2 border border-blue-50 whitespace-pre-line">{zaloMsg}</p>
+              <button
+                onClick={() => { navigator.clipboard.writeText(zaloMsg); setCopiedZalo(true); setTimeout(() => setCopiedZalo(false), 2000); }}
+                className={`mt-2 w-full py-1.5 text-[10px] font-bold rounded-lg border flex items-center justify-center gap-1 transition-colors ${
+                  copiedZalo ? 'bg-green-500 text-white border-green-500' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'
+                }`}
+              >
+                {copiedZalo ? <><Check size={9} />Đã copy!</> : <><Copy size={9} />Copy tin nhắn Zalo</>}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer quick actions */}
+        <div className="px-4 py-3 border-t border-light-gray bg-gray-50 flex gap-2 shrink-0">
+          <a
+            href={`tel:${consultation.phone}`}
+            className="flex-1 py-2.5 bg-primary text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-primary/90 transition-colors"
+          >
+            <Phone size={13} /> Gọi ngay
+          </a>
+          <a
+            href={`https://zalo.me/${consultation.phone}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 py-2.5 bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-blue-600 transition-colors"
+          >
+            <MessageCircle size={13} /> Nhắn Zalo
+          </a>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const FunnelBar: React.FC<{ consultations: Consultation[] }> = ({ consultations }) => {
+  const total = consultations.length;
+  const registered = consultations.filter(c => c.status === 'registered').length;
+  const convRate = total > 0 ? Math.round((registered / total) * 100) : 0;
+
+  return (
+    <div className="bg-white border border-light-gray rounded-2xl px-4 py-3 mb-4 overflow-x-auto">
+      <div className="flex items-center gap-1 min-w-max">
+        {PIPELINE_STAGES.map((stage, i) => {
+          const count = consultations.filter(c => stage.keys.includes(c.status)).length;
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+          const cfg = STATUS_CONFIG[stage.keys[0]];
+          return (
+            <React.Fragment key={stage.label}>
+              <div className={`flex flex-col items-center px-3 py-1.5 rounded-xl ${cfg.bgColor} border ${cfg.borderColor} min-w-[80px]`}>
+                <span className={`text-xl font-black ${cfg.color}`}>{count}</span>
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.color}`}>{stage.label}</span>
+                <span className="text-[9px] text-dark/40">{pct}%</span>
+              </div>
+              {i < PIPELINE_STAGES.length - 1 && (
+                <ArrowRight size={14} className="text-dark/20 shrink-0" />
+              )}
+            </React.Fragment>
+          );
+        })}
+        <div className="ml-3 pl-3 border-l border-light-gray flex flex-col items-center min-w-[70px]">
+          <span className="text-xl font-black text-primary">{convRate}%</span>
+          <span className="text-[9px] font-bold text-dark/50 uppercase tracking-wider text-center">Tỷ lệ chốt</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StatusDropdown: React.FC<{
+  status: ConsultationStatus;
+  onChange: (status: ConsultationStatus) => void;
+}> = ({ status, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.new;
+
+  const OPTIONS: { value: ConsultationStatus; icon: React.ReactNode }[] = [
+    { value: 'new',        icon: <Circle size={11} fill="currentColor" className="text-red-500" /> },
+    { value: 'called',     icon: <Phone size={11} className="text-yellow-600" /> },
+    { value: 'consulting', icon: <MessageCircle size={11} className="text-blue-600" /> },
+    { value: 'quoted',     icon: <Tag size={11} className="text-purple-600" /> },
+    { value: 'registered', icon: <CheckCircle size={11} className="text-green-600" /> },
+  ];
 
   return (
     <div className="relative inline-block text-left">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${config.color}`}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${cfg.bgColor} ${cfg.color} hover:opacity-80 border ${cfg.borderColor}`}
       >
-        {config.icon}
-        {config.label}
-        <ChevronDown size={12} className="ml-1" />
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+        {cfg.shortLabel}
+        <ChevronDown size={11} />
       </button>
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute right-0 z-20 mt-1 w-36 origin-top-right rounded-xl bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none overflow-hidden">
-            <div className="py-1">
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute right-0 z-20 mt-1 w-40 origin-top-right rounded-xl bg-white shadow-xl border border-light-gray overflow-hidden">
+            {OPTIONS.map(opt => (
               <button
-                onClick={() => { onChange('new'); setIsOpen(false); }}
-                className={`flex w-full items-center gap-2 px-4 py-2 text-xs hover:bg-light-gray ${status === 'new' ? 'bg-red-50/50 text-red-600 font-medium' : 'text-dark/80'}`}
+                key={opt.value}
+                onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-light-gray/60 ${status === opt.value || (opt.value === 'called' && status === 'contacted') ? `font-bold ${STATUS_CONFIG[opt.value].color}` : 'text-dark/70'}`}
               >
-                <Circle size={12} fill={status === 'new' ? 'currentColor' : 'none'} />
-                Chưa liên hệ
+                {opt.icon}
+                {STATUS_CONFIG[opt.value].label}
               </button>
-              <button
-                onClick={() => { onChange('contacted'); setIsOpen(false); }}
-                className={`flex w-full items-center gap-2 px-4 py-2 text-xs hover:bg-light-gray ${status === 'contacted' ? 'bg-green-50/50 text-green-600 font-medium' : 'text-dark/80'}`}
-              >
-                <CheckCircle size={12} />
-                Đã liên hệ
-              </button>
-              <button
-                onClick={() => { onChange('registered'); setIsOpen(false); }}
-                className={`flex w-full items-center gap-2 px-4 py-2 text-xs hover:bg-light-gray ${status === 'registered' ? 'bg-primary/10 text-primary font-medium' : 'text-dark/80'}`}
-              >
-                <Calendar size={12} />
-                Đã đăng ký
-              </button>
-            </div>
+            ))}
           </div>
         </>
       )}
@@ -812,7 +1166,7 @@ const StatusDropdown: React.FC<{
 
 const AdminConsultations: React.FC = () => {
   const { isAuthReady, consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations, updateConsultationStatus, updateConsultationRegistration, updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation, isAdmin, isSuperAdmin, styles, handleLogout, markAllRead } = useApp();
-  const [filter, setFilter] = useState<'all' | 'new' | 'contacted' | 'registered'>('all');
+  const [filter, setFilter] = useState<'all' | ConsultationStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list');
   const [regModalData, setRegModalData] = useState<Consultation | null>(null);
@@ -820,6 +1174,7 @@ const AdminConsultations: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [showFollowUpAlert, setShowFollowUpAlert] = useState(false);
+  const [saleScriptLead, setSaleScriptLead] = useState<Consultation | null>(null);
 
   useEffect(() => {
     if (isAdmin) markAllRead();
@@ -864,7 +1219,7 @@ const AdminConsultations: React.FC = () => {
     const rows = filteredConsultations.map(c => [
       `"${c.name}"`,
       `"${c.phone}"`,
-      `"${c.status === 'new' ? 'Mới' : c.status === 'contacted' ? 'Đã liên hệ' : 'Đã đăng ký'}"`,
+      `"${getStatusLabel(c.status)}"`,
       `"${formatDate(c.createdAt)}"`,
       `"${(c.message || '').replace(/"/g, '""')}"`,
       `"${(c.notes || '').replace(/"/g, '""')}"`,
@@ -885,7 +1240,11 @@ const AdminConsultations: React.FC = () => {
   };
 
   const filteredConsultations = consultations
-    .filter(c => filter === 'all' ? true : c.status === filter)
+    .filter(c => {
+      if (filter === 'all') return true;
+      if (filter === 'called') return c.status === 'called' || c.status === 'contacted';
+      return c.status === filter;
+    })
     .filter(c => {
       const search = searchTerm.toLowerCase();
       const tagsString = (c.tags || []).join(' ').toLowerCase();
@@ -929,7 +1288,7 @@ const AdminConsultations: React.FC = () => {
     }).format(date);
   };
 
-  const handleStatusChange = (id: string, newStatus: 'new' | 'contacted' | 'registered') => {
+  const handleStatusChange = (id: string, newStatus: ConsultationStatus) => {
     if (newStatus === 'registered') {
       const consult = consultations.find(c => c.id === id);
       if (consult) setRegModalData(consult);
@@ -941,8 +1300,11 @@ const AdminConsultations: React.FC = () => {
   // Analytics Data
   const totalLeads = consultations.length;
   const newLeads = consultations.filter(c => c.status === 'new').length;
-  const contactedLeads = consultations.filter(c => c.status === 'contacted').length;
+  const calledLeads = consultations.filter(c => c.status === 'called' || c.status === 'contacted').length;
+  const consultingLeads = consultations.filter(c => c.status === 'consulting').length;
+  const quotedLeads = consultations.filter(c => c.status === 'quoted').length;
   const registeredLeads = consultations.filter(c => c.status === 'registered').length;
+  const inProgressLeads = calledLeads + consultingLeads + quotedLeads;
   const conversionRate = totalLeads > 0 ? Math.round((registeredLeads / totalLeads) * 100) : 0;
   const totalContractValue = consultations.reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const avgContractValue = registeredLeads > 0 ? Math.round(totalContractValue / registeredLeads) : 0;
@@ -1079,16 +1441,23 @@ const AdminConsultations: React.FC = () => {
 
             {/* Filter Toggle (Only for list view) */}
             {view === 'list' && (
-              <div className="flex bg-white rounded-xl p-1 shadow-sm border border-light-gray">
-                {(['all', 'new', 'contacted', 'registered'] as const).map((f) => (
+              <div className="flex flex-wrap bg-white rounded-xl p-1 shadow-sm border border-light-gray gap-0.5">
+                {([
+                  { key: 'all', label: 'Tất cả' },
+                  { key: 'new', label: 'Mới' },
+                  { key: 'called', label: 'Đã gọi' },
+                  { key: 'consulting', label: 'Tư vấn' },
+                  { key: 'quoted', label: 'Báo giá' },
+                  { key: 'registered', label: 'Đã chốt' },
+                ] as const).map((f) => (
                   <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      filter === f ? 'bg-dark text-white' : 'text-dark/60 hover:bg-light-gray'
+                    key={f.key}
+                    onClick={() => setFilter(f.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      filter === f.key ? 'bg-dark text-white' : 'text-dark/60 hover:bg-light-gray'
                     }`}
                   >
-                    {f === 'all' ? 'Tất cả' : f === 'new' ? 'Mới' : f === 'contacted' ? 'Đã liên hệ' : 'Đã đăng ký'}
+                    {f.label}
                   </button>
                 ))}
               </div>
@@ -1139,12 +1508,13 @@ const AdminConsultations: React.FC = () => {
             </div>
           </div>
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-light-gray flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-50 text-green-500 rounded-xl flex items-center justify-center shrink-0">
-              <CheckCircle size={24} />
+            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center shrink-0">
+              <FileText size={24} />
             </div>
             <div>
-              <p className="text-xs text-dark/60 font-bold uppercase tracking-wider">Đã liên hệ</p>
-              <p className="text-2xl font-bold text-dark">{contactedLeads}</p>
+              <p className="text-xs text-dark/60 font-bold uppercase tracking-wider">Đang xử lý</p>
+              <p className="text-2xl font-bold text-dark">{inProgressLeads}</p>
+              <p className="text-[10px] text-dark/40">{calledLeads} gọi · {consultingLeads} tư vấn · {quotedLeads} báo giá</p>
             </div>
           </div>
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-light-gray flex items-center gap-4">
@@ -1227,6 +1597,7 @@ const AdminConsultations: React.FC = () => {
           )}
         </div>
 
+        <FunnelBar consultations={consultations} />
         <TodayPanel consultations={consultations} />
 
         {/* D1: Follow-up overdue alert modal */}
@@ -1282,6 +1653,7 @@ const AdminConsultations: React.FC = () => {
             onStatusChange={handleStatusChange}
             onDelete={(id) => { if (window.confirm('Xóa khách hàng này?')) deleteConsultation(id); }}
             onOpenReg={(c) => setRegModalData(c)}
+            onOpenScript={(c) => setSaleScriptLead(c)}
           />
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-light-gray overflow-hidden">
@@ -1530,6 +1902,13 @@ const AdminConsultations: React.FC = () => {
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <button
+                              onClick={() => setSaleScriptLead(consult)}
+                              className="p-2 rounded-xl transition-all flex items-center justify-center bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white"
+                              title="Kịch bản chốt sale"
+                            >
+                              <Zap size={16} />
+                            </button>
+                            <button
                               onClick={() => {
                                 let conceptName = '';
                                 if (consult.conceptId) {
@@ -1606,6 +1985,14 @@ const AdminConsultations: React.FC = () => {
           onConfirm={confirmBulkDelete}
           selectedIds={selectedIds}
           consultations={filteredConsultations}
+        />
+      )}
+
+      {saleScriptLead && (
+        <SaleScriptPanel
+          consultation={saleScriptLead}
+          onClose={() => setSaleScriptLead(null)}
+          styles={styles}
         />
       )}
     </Layout>

@@ -65,7 +65,7 @@ export interface Consultation {
   message?: string;
   date?: string;
   createdAt: any;
-  status: 'new' | 'contacted' | 'registered';
+  status: 'new' | 'called' | 'consulting' | 'quoted' | 'registered' | 'contacted';
   notes?: string;
   tags?: string[];
   conceptId?: string;
@@ -166,7 +166,7 @@ export interface DbPhotoRow {
 }
 export interface DbConsultationRow {
   id: string; name: string; phone: string; message?: string; date?: string;
-  created_at: string; status: 'new' | 'contacted' | 'registered'; notes?: string;
+  created_at: string; status: 'new' | 'called' | 'consulting' | 'quoted' | 'registered' | 'contacted'; notes?: string;
   tags?: string[]; concept_id?: string; shooting_date?: string;
   engagement_date?: string; wedding_date?: string; delivery_date?: string;
   favorite_ids?: string[]; source?: string; lucky_gift?: string;
