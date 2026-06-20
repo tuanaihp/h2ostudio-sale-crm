@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
+import * as XLSX from 'xlsx';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
 import { Consultation, Style } from '../types';
 
@@ -1209,34 +1210,44 @@ const AdminConsultations: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const exportToCSV = () => {
+  const exportToExcel = () => {
     if (consultations.length === 0) return;
 
-    // CSV Header
-    const headers = ['Tên khách hàng', 'Số điện thoại', 'Trạng thái', 'Ngày yêu cầu', 'Lời nhắn', 'Ghi chú Sale', 'Concept đăng ký', 'Ngày chụp', 'Ngày cưới'];
-    
-    // CSV Data
-    const rows = filteredConsultations.map(c => [
-      `"${c.name}"`,
-      `"${c.phone}"`,
-      `"${getStatusLabel(c.status)}"`,
-      `"${formatDate(c.createdAt)}"`,
-      `"${(c.message || '').replace(/"/g, '""')}"`,
-      `"${(c.notes || '').replace(/"/g, '""')}"`,
-      `"${c.conceptId || ''}"`,
-      `"${c.shootingDate || ''}"`,
-      `"${c.weddingDate || ''}"`
-    ]);
+    const sourceLabel = (s?: string) => {
+      const map: Record<string, string> = { zalo: 'Zalo', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', referral: 'Giới thiệu', lucky_wheel: 'Vòng quay', website: 'Website', other: 'Khác' };
+      return s ? (map[s] || s) : '';
+    };
 
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `H2O_Studio_KhachHang_${format(new Date(), 'ddMMyyyy')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const rows = consultations.map(c => ({
+      'Tên khách hàng':   c.name,
+      'Số điện thoại':    c.phone,
+      'Trạng thái':       getStatusLabel(c.status),
+      'Nguồn':            sourceLabel(c.source),
+      'Ngày đăng ký':     formatDate(c.createdAt),
+      'Ngày chụp':        c.shootingDate || '',
+      'Ngày ăn hỏi':      c.engagementDate || '',
+      'Ngày cưới':        c.weddingDate || '',
+      'Ngày giao ảnh':    c.deliveryDate || '',
+      'Giá trị HĐ (đ)':   c.contractValue || '',
+      'Quà tặng':         c.luckyGift || '',
+      'Người phụ trách':  c.assignedTo || '',
+      'Ngày follow-up':   c.followUpDate || '',
+      'Tags':             (c.tags || []).join(', '),
+      'Lời nhắn':         c.message || '',
+      'Ghi chú sale':     c.notes || '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 22 }, { wch: 15 }, { wch: 14 }, { wch: 12 },
+      { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 14 },
+      { wch: 20 }, { wch: 35 }, { wch: 45 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Khách hàng');
+    XLSX.writeFile(wb, `H2O_Studio_KhachHang_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
   };
 
   const filteredConsultations = consultations
@@ -1473,11 +1484,11 @@ const AdminConsultations: React.FC = () => {
 
             {isSuperAdmin && (
               <button
-                onClick={exportToCSV}
+                onClick={exportToExcel}
                 className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-600/20"
               >
                 <Download size={18} />
-                Xuất Excel (CSV)
+                Xuất Excel (.xlsx)
               </button>
             )}
           </div>
