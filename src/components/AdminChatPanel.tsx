@@ -207,8 +207,10 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
 
   if (!isOpen) return null;
 
-  const initials = (s: Session) =>
-    s.name ? s.name[0].toUpperCase() : s.phone.slice(-2);
+  const isAnon     = (s: Session) => s.phone.startsWith('anon_');
+  const displayName = (s: Session) => s.name || (isAnon(s) ? 'Khách ẩn danh' : s.phone);
+  const displayPhone = (s: Session) => isAnon(s) ? 'Chưa để lại SĐT' : s.phone;
+  const initials   = (s: Session) => s.name ? s.name[0].toUpperCase() : (isAnon(s) ? '?' : s.phone.slice(-2));
 
   return (
     <div
@@ -310,8 +312,13 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-sm text-gray-900">{activeSession?.name || 'Khách hàng'}</p>
-                  <p className="text-xs text-gray-500">{activeSession?.phone}</p>
+                  <p className="font-semibold text-sm text-gray-900">
+                    {activeSession ? displayName(activeSession) : 'Khách hàng'}
+                    {activeSession && isAnon(activeSession) && (
+                      <span className="ml-2 text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold align-middle">Chưa có SĐT</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500">{activeSession ? displayPhone(activeSession) : ''}</p>
                   {linkedConsultation && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${CRM_STATUS_STYLE[linkedConsultation.status] || 'bg-gray-100 text-gray-600'}`}>
                       CRM: {CRM_STATUS_LABEL[linkedConsultation.status] || linkedConsultation.status}
