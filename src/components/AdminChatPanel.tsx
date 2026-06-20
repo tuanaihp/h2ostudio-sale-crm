@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
+import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check, Camera } from 'lucide-react';
 import { supabase } from '../supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { Consultation } from '../types';
+import { Consultation, Style, Album } from '../types';
+import { useApp } from '../context/AppContext';
 
 interface Session {
   id: string;
@@ -76,17 +77,21 @@ interface Props {
 }
 
 export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }: Props) {
-  const [sessions, setSessions]       = useState<Session[]>([]);
-  const [activeId, setActiveId]       = useState<string | null>(null);
-  const [messages, setMessages]       = useState<Msg[]>([]);
-  const [input, setInput]             = useState('');
-  const [search, setSearch]           = useState('');
-  const [sending, setSending]         = useState(false);
-  const [scriptsOpen, setScriptsOpen] = useState(false);
-  const [scripts, setScripts]         = useState<Script[]>([]);
-  const [allScripts, setAllScripts]   = useState<Script[]>([]);
-  const [atQuery, setAtQuery]         = useState<string | null>(null);
-  const [copied, setCopied]           = useState<string | null>(null);
+  const { styles } = useApp();
+
+  const [sessions, setSessions]           = useState<Session[]>([]);
+  const [activeId, setActiveId]           = useState<string | null>(null);
+  const [messages, setMessages]           = useState<Msg[]>([]);
+  const [input, setInput]                 = useState('');
+  const [search, setSearch]               = useState('');
+  const [sending, setSending]             = useState(false);
+  const [scriptsOpen, setScriptsOpen]     = useState(false);
+  const [scripts, setScripts]             = useState<Script[]>([]);
+  const [allScripts, setAllScripts]       = useState<Script[]>([]);
+  const [atQuery, setAtQuery]             = useState<string | null>(null);
+  const [copied, setCopied]               = useState<string | null>(null);
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
+  const [albumSearch, setAlbumSearch]     = useState('');
 
   const bottomRef    = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLTextAreaElement>(null);
@@ -229,6 +234,26 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
     setAtQuery(null);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
+
+  const insertAlbumLink = (style: Style, album: Album) => {
+    const url = `${window.location.origin}/style/${style.slug}/album/${album.slug}`;
+    const link = `💕 Xem album này nhé anh/chị: ${url}`;
+    setInput(prev => prev ? prev + '\n' + link : link);
+    setShowAlbumPicker(false);
+    setAlbumSearch('');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const allAlbumsForPicker = styles
+    .filter((s: Style) => !s.deleted)
+    .flatMap((s: Style) => (s.albums || []).filter((a: Album) => !a.deleted).map((a: Album) => ({ style: s, album: a })));
+
+  const filteredAlbumsForPicker = albumSearch
+    ? allAlbumsForPicker.filter(({ style, album }) => {
+        const q = albumSearch.toLowerCase();
+        return album.title.toLowerCase().includes(q) || style.title.toLowerCase().includes(q);
+      })
+    : allAlbumsForPicker;
 
   const atResults = atQuery !== null
     ? allScripts.filter(s => {
@@ -474,8 +499,75 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
               </div>
             )}
 
+            {/* Album picker */}
+            {showAlbumPicker && (
+              <div className="border-t bg-white px-3 pt-3 pb-2 shrink-0">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-700">📷 Chọn album để gửi link</p>
+                  <button
+                    onClick={() => { setShowAlbumPicker(false); setAlbumSearch(''); }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="relative mb-2">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    className="w-full bg-gray-100 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder="Tìm album theo tên hoặc style..."
+                    value={albumSearch}
+                    onChange={e => setAlbumSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                {filteredAlbumsForPicker.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2 text-center">Không tìm thấy album nào</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-0.5">
+                    {filteredAlbumsForPicker.map(({ style, album }) => (
+                      <button
+                        key={album.id}
+                        onClick={() => insertAlbumLink(style, album)}
+                        className="text-left rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 hover:shadow-md transition-all group"
+                      >
+                        <div className="h-16 bg-gray-100 overflow-hidden">
+                          {album.coverImage ? (
+                            <img
+                              src={album.coverImage}
+                              alt={album.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Camera size={18} className="text-gray-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-1.5">
+                          <p className="text-[11px] font-semibold text-gray-800 truncate leading-tight">{album.title}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{style.title}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Reply input */}
-            <div className="border-t bg-white p-3 flex gap-2 shrink-0">
+            <div className="border-t bg-white p-3 flex gap-2 items-end shrink-0">
+              <button
+                onClick={() => { setShowAlbumPicker(v => !v); setAlbumSearch(''); }}
+                title="Chọn album để gửi link"
+                className={`p-2.5 rounded-xl border transition-colors shrink-0 ${
+                  showAlbumPicker
+                    ? 'bg-blue-50 border-blue-300 text-blue-600'
+                    : 'border-gray-200 text-gray-400 hover:text-blue-500 hover:border-blue-300'
+                }`}
+              >
+                <Camera size={16} />
+              </button>
               <textarea
                 ref={inputRef}
                 className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -483,7 +575,7 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={e => {
-                  if (e.key === 'Escape') { setAtQuery(null); return; }
+                  if (e.key === 'Escape') { setAtQuery(null); setShowAlbumPicker(false); return; }
                   if (e.key === 'Enter' && !e.shiftKey && atQuery === null) { e.preventDefault(); send(); }
                 }}
                 rows={2}
@@ -492,7 +584,7 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
               <button
                 onClick={send}
                 disabled={!input.trim() || sending}
-                className="bg-blue-600 text-white rounded-xl px-4 disabled:opacity-40 hover:bg-blue-700 transition-colors self-end py-2.5"
+                className="bg-blue-600 text-white rounded-xl px-4 disabled:opacity-40 hover:bg-blue-700 transition-colors py-2.5 shrink-0"
               >
                 <Send size={16} />
               </button>
