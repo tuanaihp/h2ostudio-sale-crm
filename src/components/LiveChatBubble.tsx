@@ -1,15 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Send, User } from 'lucide-react';
+import { X, Send, User } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabase';
 import { format } from 'date-fns';
 
-const SESSION_KEY = 'h2o_live_session_id';
+const SESSION_KEY   = 'h2o_live_session_id';
+const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
 
 interface Msg {
   id: string;
   sender: 'customer' | 'admin';
   content: string;
   created_at: string;
+}
+
+function playNotifSound() {
+  try {
+    const ctx  = new AudioContext();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.55);
+    setTimeout(() => ctx.close(), 1000);
+  } catch {}
 }
 
 export function LiveChatBubble() {
@@ -28,8 +48,22 @@ export function LiveChatBubble() {
 
   const bottomRef  = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const openRef    = useRef(false);
+  useEffect(() => { openRef.current = open; }, [open]);
 
-  // Init session on open
+  // Auto-open sau 10 giây (chỉ 1 lần mỗi session trình duyệt)
+  useEffect(() => {
+    if (sessionStorage.getItem(AUTO_OPEN_KEY)) return;
+    const timer = setTimeout(() => {
+      if (openRef.current) return;
+      sessionStorage.setItem(AUTO_OPEN_KEY, '1');
+      playNotifSound();
+      setOpen(true);
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Khởi tạo session khi mở chat
   useEffect(() => {
     if (!open) return;
     initSession();
@@ -50,7 +84,10 @@ export function LiveChatBubble() {
       }, (payload) => {
         const msg = payload.new as Msg;
         setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
-        if (msg.sender === 'admin' && !open) setHasNew(true);
+        if (msg.sender === 'admin' && !openRef.current) {
+          setHasNew(true);
+          playNotifSound();
+        }
       })
       .subscribe();
   };
@@ -68,20 +105,16 @@ export function LiveChatBubble() {
         const anon = (data.phone as string).startsWith('anon_');
         setIsAnon(anon);
         setFormDone(!anon);
-
         const { data: msgs } = await supabase
           .from('chat_messages').select('id, sender, content, created_at')
           .eq('session_id', data.id).order('created_at', { ascending: true });
         setMessages((msgs || []) as Msg[]);
         subscribe(data.id);
-
-        // Show form if still anon and has messages already
         if (anon && (msgs || []).length > 0) setShowForm(true);
         return;
       }
     }
 
-    // Create new anonymous session
     const sid  = crypto.randomUUID();
     const anon = `anon_${sid.slice(0, 8)}`;
     localStorage.setItem(SESSION_KEY, sid);
@@ -97,8 +130,6 @@ export function LiveChatBubble() {
     setIsAnon(true);
     setMessages([]);
     subscribe(sid);
-
-    // Show info form after 1.5s (give time to read greeting)
     setTimeout(() => setShowForm(true), 1500);
   };
 
@@ -115,8 +146,6 @@ export function LiveChatBubble() {
       last_message: content, last_message_at: now, status: 'waiting',
       unread_admin: messages.filter(m => m.sender === 'customer').length + 1,
     }).eq('id', sessionId);
-
-    // Show info form after first message if still anon
     if (isAnon && !formDone) setTimeout(() => setShowForm(true), 800);
     setSending(false);
   };
@@ -127,38 +156,29 @@ export function LiveChatBubble() {
     if (phone.length < 9 || !sessionId) return;
     setFormSaving(true);
 
-    // Update session with real info
     await supabase.from('chat_sessions').update({ phone, name, status: 'waiting' }).eq('id', sessionId);
 
-    // Find or create consultation
     const { data: existing } = await supabase
       .from('consultations').select('id').eq('phone', phone).limit(1).maybeSingle();
 
     if (!existing) {
       const consultId = crypto.randomUUID();
       await supabase.from('consultations').insert({
-        id: consultId,
-        name: name || phone,
-        phone,
-        status: 'new',
-        source: 'website_chat',
+        id: consultId, name: name || phone, phone,
+        status: 'new', source: 'website_chat',
         message: 'Khách liên hệ qua Live Chat trên website',
         created_at: new Date().toISOString(),
       });
       await supabase.from('chat_sessions').update({ consultation_id: consultId }).eq('id', sessionId);
     } else {
-      await supabase.from('chat_sessions').update({ consultation_id: existing.id }).eq('id', sessionId);
+      await supabase.from('chat_sessions').update({ consultation_id: (existing as any).id }).eq('id', sessionId);
     }
 
-    // Save to localStorage for future sessions
     localStorage.setItem('h2o_user_phone', phone);
 
-    // Send a system message confirming info saved
     const confirmId = crypto.randomUUID();
     await supabase.from('chat_messages').insert({
-      id: confirmId,
-      session_id: sessionId,
-      sender: 'customer',
+      id: confirmId, session_id: sessionId, sender: 'customer',
       content: `📋 Thông tin của tôi: ${name ? name + ' — ' : ''}${phone}`,
       created_at: new Date().toISOString(),
     });
@@ -172,92 +192,114 @@ export function LiveChatBubble() {
   const handleOpen = () => { setOpen(true); setHasNew(false); };
 
   return (
-    <>
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+      {/* Bubble button — chỉ hiện khi chat đóng */}
       {!open && (
-        <button
+        <motion.button
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           onClick={handleOpen}
-          className="fixed bottom-6 left-4 z-40 bg-blue-600 text-white rounded-full shadow-xl hover:bg-blue-700 transition-all flex items-center gap-2 px-4 py-3"
+          className="w-14 h-14 bg-dark text-white rounded-full shadow-lg shadow-dark/20 flex items-center justify-center relative hover:bg-dark/90 transition-colors"
         >
-          <MessageCircle size={18} />
-          <span className="text-sm font-semibold">Tư vấn viên</span>
+          <User size={24} />
+          {/* Green online dot */}
+          <span className="absolute top-0 right-0 flex h-3.5 w-3.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 border-2 border-white" />
+          </span>
+          {/* Unread dot */}
           {hasNew && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold animate-pulse">!</span>
+            <span className="absolute -top-1 -left-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold animate-pulse">!</span>
           )}
-        </button>
+        </motion.button>
       )}
 
-      {open && (
-        <div
-          className="fixed bottom-4 left-4 z-50 w-[340px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col"
-          style={{ height: 500 }}
-        >
-          {/* Header */}
-          <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between rounded-t-2xl shrink-0">
-            <div>
-              <p className="font-bold text-sm">Chat với tư vấn viên</p>
-              <p className="text-xs text-blue-100 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block animate-pulse" />
-                H2O Studio · phản hồi trong vài phút
-              </p>
+      {/* Chat window */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden w-[90vw] max-w-[340px] sm:w-[340px] flex flex-col origin-bottom-right"
+            style={{ height: 500 }}
+          >
+            {/* Header */}
+            <div className="bg-dark text-white px-4 py-3 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center">
+                    <User size={18} />
+                  </div>
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-dark rounded-full" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">Chat với tư vấn viên</p>
+                  <p className="text-xs text-white/70">H2O Studio · phản hồi trong vài phút</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <button onClick={() => setOpen(false)} className="hover:bg-blue-700 rounded-full p-1 transition-colors">
-              <X size={18} />
-            </button>
-          </div>
 
-          {/* Messages area */}
-          <div className="flex-1 overflow-y-auto bg-gray-50">
-            <div className="p-3 space-y-2">
-              {/* Greeting */}
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto bg-gray-50 p-3 space-y-2">
+              {/* Lời chào tĩnh */}
               <div className="flex justify-start">
-                <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold mr-1.5 shrink-0 self-end">H</div>
+                <div className="w-7 h-7 bg-dark rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
                 <div className="bg-white text-gray-800 rounded-2xl rounded-bl-sm border border-gray-100 px-3 py-2 text-sm shadow-sm max-w-[78%]">
                   <p>Xin chào! Tư vấn viên H2O Studio sẵn sàng hỗ trợ anh/chị 💕</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">H2O Studio</p>
                 </div>
               </div>
 
-              {/* Messages */}
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
                   {msg.sender === 'admin' && (
-                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold mr-1.5 shrink-0 self-end">H</div>
+                    <div className="w-7 h-7 bg-dark rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
                   )}
                   <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
                     msg.sender === 'customer'
-                      ? 'bg-blue-600 text-white rounded-br-sm'
+                      ? 'bg-dark text-white rounded-br-sm'
                       : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
                   }`}>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
-                    <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-blue-200' : 'text-gray-400'}`}>
+                    <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-white/60' : 'text-gray-400'}`}>
                       {format(new Date(msg.created_at), 'HH:mm')}
                     </p>
                   </div>
                 </div>
               ))}
 
-              {/* Info collection form — shown inline in chat flow */}
+              {/* Form thu thập thông tin */}
               {showForm && !formDone && (
-                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 mx-1">
+                <div className="bg-gray-100 border border-gray-200 rounded-2xl p-3 mx-1">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-1.5">
-                      <User size={14} className="text-blue-600" />
-                      <p className="text-xs font-semibold text-blue-700">Để lại thông tin để nhận tư vấn</p>
+                      <User size={13} className="text-gray-600" />
+                      <p className="text-xs font-semibold text-gray-700">Để lại thông tin nhận tư vấn</p>
                     </div>
                     <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
                       <X size={13} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-blue-600 mb-2">Tư vấn viên sẽ gọi lại xác nhận lịch cho anh/chị 😊</p>
+                  <p className="text-[11px] text-gray-500 mb-2">Tư vấn viên sẽ gọi lại xác nhận lịch cho anh/chị 😊</p>
                   <div className="space-y-1.5">
                     <input
-                      className="w-full border border-blue-200 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-dark/30"
                       placeholder="Tên anh/chị (không bắt buộc)"
                       value={formName}
                       onChange={e => setFormName(e.target.value)}
                     />
                     <input
-                      className="w-full border border-blue-200 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-dark/30"
                       placeholder="Số điện thoại *"
                       value={formPhone}
                       onChange={e => setFormPhone(e.target.value)}
@@ -267,7 +309,7 @@ export function LiveChatBubble() {
                     <button
                       onClick={submitInfo}
                       disabled={formPhone.trim().length < 9 || formSaving}
-                      className="w-full bg-blue-600 text-white rounded-lg py-1.5 text-xs font-bold hover:bg-blue-700 transition-colors disabled:opacity-40"
+                      className="w-full bg-dark text-white rounded-lg py-1.5 text-xs font-bold hover:bg-dark/90 transition-colors disabled:opacity-40"
                     >
                       {formSaving ? 'Đang lưu...' : 'Gửi thông tin'}
                     </button>
@@ -277,29 +319,29 @@ export function LiveChatBubble() {
 
               <div ref={bottomRef} />
             </div>
-          </div>
 
-          {/* Input */}
-          <div className="border-t bg-white p-3 flex gap-2 rounded-b-2xl shrink-0">
-            <input
-              className="flex-1 border border-gray-200 rounded-full px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Nhắn tin với tư vấn viên..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && send()}
-              disabled={sending}
-              autoFocus={open}
-            />
-            <button
-              onClick={send}
-              disabled={!input.trim() || sending}
-              className="bg-blue-600 text-white rounded-full p-2.5 disabled:opacity-40 hover:bg-blue-700 transition-colors"
-            >
-              <Send size={15} />
-            </button>
-          </div>
-        </div>
-      )}
-    </>
+            {/* Input */}
+            <div className="border-t bg-white p-3 flex gap-2 shrink-0">
+              <input
+                className="flex-1 border border-gray-200 rounded-full px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dark/30"
+                placeholder="Nhắn tin với tư vấn viên..."
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && send()}
+                disabled={sending}
+                autoFocus={open}
+              />
+              <button
+                onClick={send}
+                disabled={!input.trim() || sending}
+                className="bg-dark text-white rounded-full p-2.5 disabled:opacity-40 hover:bg-dark/90 transition-colors"
+              >
+                <Send size={15} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
