@@ -460,6 +460,42 @@ const getLeadPriority = (c) => {
 
 Hiển thị khi có: lead chưa gọi >4h / hẹn gọi hôm nay / chụp D-1 / chụp D-3.
 
+### Bảng CRM — Thứ tự cột & UX
+
+**Thứ tự cột** (Trạng thái và Sale đặt ngay sau Liên hệ — tối ưu thao tác cho team sale):
+
+| # | Cột | Ghi chú |
+|---|-----|---------|
+| 1 | Khách hàng | Tên, HOT/WARM badge, urgency timer |
+| 2 | Liên hệ | Phone + nút Gọi/Zalo |
+| 3 | **Trạng thái** | StatusDropdown — cột hành động đặt sớm, không bị khuất |
+| 4 | **Sale & Hẹn gọi** | Input tên sale + date picker hẹn gọi |
+| 5 | Nguồn | Website/Facebook/Vòng quay |
+| 6 | Lời nhắn | Truncate, URL tách sang cột Link |
+| 7 | Ghi chú & Tags | NoteInput + TagsInput inline |
+| 8 | Link tham khảo | Links extracted từ message |
+| 9 | Ngày dự kiến | **Auto-ẩn** khi không có row nào có data hợp lệ |
+| 10 | Thao tác | Kịch bản / Zalo / Xóa |
+
+**Cột "Ngày dự kiến" tự ẩn khi không có data:**
+```tsx
+const showNgayDuKienCol = filteredConsultations.some(c => c.status === 'registered' || !!c.date);
+// Render <th> và <td> chỉ khi showNgayDuKienCol === true
+{showNgayDuKienCol && <th className="p-4 font-bold">Ngày dự kiến</th>}
+{showNgayDuKienCol && (<td className="p-4 text-sm text-dark/80">...</td>)}
+```
+
+**FunnelBar — cảnh báo tắc nghẽn pipeline:**
+```tsx
+const newCount = consultations.filter(c => c.status === 'new').length;
+// Trong PIPELINE_STAGES.map():
+const isBottleneck = i === 1 && count === 0 && newCount > 0;
+// Stage "Đã gọi" = 0 nhưng có leads Mới → highlight đỏ + "⚠ Cần gọi!" animate-pulse
+<div className={`... ${isBottleneck ? 'bg-red-50 border-red-300' : `${cfg.bgColor} ${cfg.borderColor}`}`}>
+```
+
+**Nút Đăng xuất:** luôn dùng màu xám nhẹ (`text-dark/40 hover:bg-light-gray`) — không dùng đỏ để tránh nhầm với nút xóa.
+
 ### Team Sale — Xem concept khách đã chọn
 
 Trong CRM, khi mở chi tiết lead → tab "Khách thích" hiển thị:
