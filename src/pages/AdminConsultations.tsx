@@ -3,6 +3,7 @@ import { Navigate, Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
 import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen } from 'lucide-react';
+import { AdminChatPanel } from '../components/AdminChatPanel';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -1176,6 +1177,8 @@ const AdminConsultations: React.FC = () => {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [showFollowUpAlert, setShowFollowUpAlert] = useState(false);
   const [saleScriptLead, setSaleScriptLead] = useState<Consultation | null>(null);
+  const [chatPanelOpen, setChatPanelOpen] = useState(false);
+  const [chatInitialPhone, setChatInitialPhone] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAdmin) markAllRead();
@@ -1473,6 +1476,14 @@ const AdminConsultations: React.FC = () => {
                 ))}
               </div>
             )}
+
+            <button
+              onClick={() => { setChatInitialPhone(null); setChatPanelOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm hover:bg-blue-100 transition-all relative"
+            >
+              <MessageCircle size={16} />
+              Chat khách
+            </button>
 
             <Link
               to="/admin/scripts"
@@ -2014,6 +2025,13 @@ const AdminConsultations: React.FC = () => {
           styles={styles}
         />
       )}
+
+      <AdminChatPanel
+        isOpen={chatPanelOpen}
+        onClose={() => setChatPanelOpen(false)}
+        initialPhone={chatInitialPhone}
+        consultations={consultations}
+      />
     </Layout>
   );
 };

@@ -160,6 +160,48 @@ export interface DbSaleScriptRow {
   updated_at?: string;
 }
 
+export interface ChatSession {
+  id: string;
+  consultationId?: string;
+  phone: string;
+  name: string;
+  status: 'waiting' | 'open' | 'closed';
+  stage: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadAdmin: number;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  sessionId: string;
+  sender: 'customer' | 'admin';
+  content: string;
+  createdAt: string;
+}
+
+export interface DbChatSessionRow {
+  id: string;
+  consultation_id?: string;
+  phone: string;
+  name: string;
+  status: 'waiting' | 'open' | 'closed';
+  stage: string;
+  last_message: string;
+  last_message_at: string;
+  unread_admin: number;
+  created_at: string;
+}
+
+export interface DbChatMessageRow {
+  id: string;
+  session_id: string;
+  sender: 'customer' | 'admin';
+  content: string;
+  created_at: string;
+}
+
 export interface AppConfig {
   brandName: string;
   zaloUrl: string;

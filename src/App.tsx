@@ -16,6 +16,7 @@ const AdminTrash = lazy(() => import('./pages/AdminTrash'));
 const AdminContent = lazy(() => import('./pages/AdminContent'));
 const AdminScripts = lazy(() => import('./pages/AdminScripts'));
 const AiChatBubble = lazy(() => import('./components/AiChatBubble').then(m => ({ default: m.AiChatBubble })));
+const LiveChatBubble = lazy(() => import('./components/LiveChatBubble').then(m => ({ default: m.LiveChatBubble })));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-white">
@@ -55,6 +56,7 @@ function AppContent() {
       {!isAdmin && (
         <Suspense fallback={null}>
           <AiChatBubble />
+          <LiveChatBubble />
         </Suspense>
       )}
     </>
