@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext';
 import { validateVietnamesePhone } from '../utils/phone';
 
 export const LuckyWheelWidget: React.FC = () => {
-  const { favorites, settings, submitConsultation } = useApp();
+  const { favorites, settings, submitConsultation, checkPhoneDuplicate } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -35,6 +35,7 @@ export const LuckyWheelWidget: React.FC = () => {
     : defaultGifts;
 
   const [isSubmittingData, setIsSubmittingData] = useState(false);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
   useEffect(() => {
     if (settings.luckyWheelEnabled === false || settings.luckyWheelNotificationEnabled === false || favorites.length === 0 || isDismissed) return;
@@ -64,14 +65,16 @@ export const LuckyWheelWidget: React.FC = () => {
       return;
     }
 
-    // Check if phone already played on this device
-    const playedPhones = JSON.parse(localStorage.getItem('h2o_lucky_wheel_played') || '[]');
-    if (playedPhones.includes(phone)) {
+    // Client + server duplicate check (SĐT đã chơi rồi)
+    setIsCheckingDuplicate(true);
+    const alreadyPlayed = await checkPhoneDuplicate(phone, 'lucky_wheel');
+    setIsCheckingDuplicate(false);
+    if (alreadyPlayed) {
       setWonGift('Bạn đã nhận quà rồi');
       setStep('result');
       return;
     }
-    
+
     setStep('wheel');
   };
 
@@ -273,11 +276,12 @@ export const LuckyWheelWidget: React.FC = () => {
                     </div>
                     {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
                     
-                    <button 
+                    <button
                       type="submit"
-                      className="w-full py-4 bg-gradient-to-r from-[#ECB697] to-[#A4756B] text-white font-bold rounded-xl hover:opacity-90 transition-opacity shadow-lg shadow-[#ECB697]/30 flex items-center justify-center gap-2 mt-2 text-lg"
+                      disabled={isCheckingDuplicate}
+                      className="w-full py-4 bg-gradient-to-r from-[#ECB697] to-[#A4756B] text-white font-bold rounded-xl hover:opacity-90 transition-opacity shadow-lg shadow-[#ECB697]/30 flex items-center justify-center gap-2 mt-2 text-lg disabled:opacity-70"
                     >
-                      Vào Quay Ngay <ChevronRight size={20} />
+                      {isCheckingDuplicate ? 'Đang kiểm tra...' : <><span>Vào Quay Ngay</span> <ChevronRight size={20} /></>}
                     </button>
                   </form>
                 </div>

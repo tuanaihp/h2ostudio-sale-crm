@@ -16,10 +16,11 @@ interface ConsultationModalProps {
 }
 
 export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, onClose, initialMessage }) => {
-  const { submitConsultation, favorites, consultations, styles } = useApp();
+  const { submitConsultation, checkPhoneDuplicate, favorites, consultations, styles } = useApp();
   const [consultForm, setConsultForm] = useState({ name: '', phone: '', message: '', date: undefined as Date | undefined, source: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [phoneError, setPhoneError] = useState('');
@@ -67,6 +68,11 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
 
     setIsSubmitting(true);
     try {
+      const duplicate = await checkPhoneDuplicate(consultForm.phone);
+      if (duplicate) {
+        setIsDuplicate(true);
+        return;
+      }
       await submitConsultation({
         ...consultForm,
         favoriteIds: favorites,
@@ -82,6 +88,7 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
 
   const handleClose = () => {
     setIsSuccess(false);
+    setIsDuplicate(false);
     setConsultForm({ name: '', phone: '', message: '', date: undefined, source: '' });
     setShowCalendar(false);
     setPhoneError('');
@@ -125,7 +132,36 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-secondary to-primary opacity-20" />
         )}
 
-        {isSuccess ? (
+        {isDuplicate ? (
+          <div className="text-center py-6">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle size={36} className="text-amber-500" />
+            </div>
+            <h3 className="text-xl font-bold text-dark mb-2">H2O đã có thông tin của bạn!</h3>
+            <p className="text-dark/60 mb-8 text-sm leading-relaxed">
+              Số điện thoại <b>{consultForm.phone}</b> đã được đăng ký trước đó.
+              <br/>Nhân viên H2O sẽ liên hệ với bạn sớm nhất có thể.
+              <br/><br/>Bạn cũng có thể nhắn tin trực tiếp để được tư vấn nhanh hơn:
+            </p>
+            <div className="flex flex-col gap-3">
+              <a
+                href={zaloLink} target="_blank" rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-[#0068FF] hover:bg-[#0054cc] text-white rounded-2xl font-bold transition-all shadow-lg shadow-blue-500/20"
+              >
+                <MessageCircle size={20} />Nhắn Zalo ngay!
+              </a>
+              <a
+                href={messengerLink} target="_blank" rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-[#0866FF] hover:bg-[#0054cc] text-white rounded-2xl font-bold transition-all shadow-lg shadow-blue-600/20"
+              >
+                <Facebook size={20} />Nhắn Fanpage ngay!
+              </a>
+              <button onClick={handleClose} className="w-full px-6 py-3 rounded-xl text-sm font-bold text-dark/40 hover:bg-light-gray transition-colors mt-2">
+                Đóng
+              </button>
+            </div>
+          </div>
+        ) : isSuccess ? (
           <div className="text-center py-6">
             <CheckCircle size={64} className="text-green-500 mx-auto mb-6" />
             <h3 className="text-2xl font-bold text-dark mb-2">Gửi thành công!</h3>

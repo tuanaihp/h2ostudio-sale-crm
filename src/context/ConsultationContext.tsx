@@ -65,6 +65,7 @@ interface ConsultationContextType {
   loadMoreConsultations: () => Promise<void>;
   unreadCount: number;
   markAllRead: () => void;
+  checkPhoneDuplicate: (phone: string, source?: string) => Promise<boolean>;
   submitConsultation: (data: {
     name: string; phone: string; email?: string; message?: string;
     date?: Date; favoriteIds?: string[]; source?: string; luckyGift?: string;
@@ -171,6 +172,28 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }).catch(err => console.error('Error syncing to Sheets:', err));
   }, []);
 
+  // ─── Duplicate check (client localStorage → server fallback) ─────────────
+  const checkPhoneDuplicate = useCallback(async (phone: string, source?: string): Promise<boolean> => {
+    const localKey = source === 'lucky_wheel' ? 'h2o_lucky_wheel_played' : 'h2o_submitted_phones';
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem(localKey) || '[]');
+      if (stored.includes(phone)) return true;
+    } catch {}
+
+    let query = supabase.from('consultations').select('id').eq('phone', phone);
+    if (source === 'lucky_wheel') query = query.eq('source', 'lucky_wheel');
+    const { data: existing } = await (query as any).limit(1).maybeSingle();
+
+    if (existing) {
+      try {
+        const stored: string[] = JSON.parse(localStorage.getItem(localKey) || '[]');
+        if (!stored.includes(phone)) { stored.push(phone); localStorage.setItem(localKey, JSON.stringify(stored)); }
+      } catch {}
+      return true;
+    }
+    return false;
+  }, []);
+
   // ─── Submit ────────────────────────────────────────────────────────────────
   const submitConsultation = useCallback(async (data: {
     name: string; phone: string; email?: string; message?: string;
@@ -210,6 +233,12 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const { error } = await supabase.from('consultations').insert(row);
     if (error) throw new Error(error.message);
+
+    // Lưu SĐT vào localStorage để tránh DB call lần sau
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem('h2o_submitted_phones') || '[]');
+      if (!stored.includes(data.phone)) { stored.push(data.phone); localStorage.setItem('h2o_submitted_phones', JSON.stringify(stored)); }
+    } catch {}
 
     // Tạo live chat session để nhân viên thấy ngay trong AdminChatPanel
     try {
@@ -358,7 +387,8 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     <ConsultationContext.Provider value={{
       consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations,
       unreadCount, markAllRead,
-      submitConsultation, updateConsultationStatus, updateConsultationRegistration,
+      checkPhoneDuplicate, submitConsultation,
+      updateConsultationStatus, updateConsultationRegistration,
       updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation,
     }}>
       {children}

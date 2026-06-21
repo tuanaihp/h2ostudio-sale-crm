@@ -121,14 +121,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setUserPhone = useCallback((phone: string, customerName?: string) => {
     localStorage.setItem('h2o_user_phone', phone);
     setUserPhoneState(phone);
-    // Direct insert — avoids circular dependency with ConsultationContext
-    supabase.from('consultations').insert({
-      id: `consult-${Date.now()}`,
-      name: customerName || `Khách mới (${phone})`,
-      phone,
-      status: 'new',
-      message: 'Khách hàng vượt qua màn hình đăng ký xem ảnh (PhoneGate) và cung cấp thông tin để trải nghiệm.',
-    }).then(({ error }) => { if (error) console.warn('PhoneGate insert failed:', error.message); });
+    // Server check trước khi insert — tránh tạo bản ghi trùng SĐT
+    supabase.from('consultations').select('id').eq('phone', phone).limit(1).maybeSingle()
+      .then(({ data: existing }) => {
+        if (existing) return; // SĐT đã tồn tại, bỏ qua
+        supabase.from('consultations').insert({
+          id: `consult-${Date.now()}`,
+          name: customerName || `Khách mới (${phone})`,
+          phone,
+          status: 'new',
+          message: 'Khách hàng vượt qua màn hình đăng ký xem ảnh (PhoneGate) và cung cấp thông tin để trải nghiệm.',
+        }).then(({ error }) => { if (error) console.warn('PhoneGate insert failed:', error.message); });
+      });
   }, []);
 
   const login = useCallback(async () => {
