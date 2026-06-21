@@ -303,35 +303,18 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     setFormSaving(false);
   };
 
-  // Panel chat — dùng chung cho cả controlled và standalone
+  // Panel chat — Compact Bubble (không che màn hình)
   const chatPanel = (
-    <>
-      {/* Backdrop — chỉ hiện trên mobile */}
-      <motion.div
-        key="chat-backdrop"
-        className="fixed inset-0 bg-black/50 z-40 sm:hidden"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.25 }}
-        onClick={() => setOpen(false)}
-      />
-
-      <motion.div
-        key="chat-panel"
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 32, stiffness: 300 }}
-        className="fixed z-50 bg-white flex flex-col shadow-2xl overflow-hidden
-                   bottom-0 left-0 right-0 rounded-t-3xl max-h-[78vh]
-                   sm:bottom-8 sm:right-8 sm:left-auto sm:w-[340px] sm:rounded-2xl sm:max-h-none sm:h-[500px]
-                   border border-gray-100"
-      >
-        {/* Drag handle — mobile only */}
-        <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
-        </div>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92, y: 16 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.92, y: 16 }}
+      transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+      className="fixed z-50 bg-white flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-gray-100
+                 bottom-24 right-3 w-[calc(100vw-24px)] max-w-[320px] max-h-[min(420px,62vh)]
+                 sm:bottom-8 sm:right-8 sm:w-[340px] sm:max-h-none sm:h-[500px]"
+      style={{ transformOrigin: 'bottom right' }}
+    >
 
       {/* Header — gradient đồng bộ nút CHAT */}
       <div className="bg-gradient-to-br from-secondary via-primary to-primary text-white px-4 py-3 flex items-center justify-between shrink-0">
@@ -436,7 +419,6 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         </button>
       </div>
     </motion.div>
-    </>
   );
 
   // Standalone mode: có nút bubble riêng
