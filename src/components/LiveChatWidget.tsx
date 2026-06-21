@@ -68,9 +68,10 @@ export const LiveChatWidget: React.FC = () => {
     const currentMessage = chatMessages[currentMessageIndex];
     if (isTyping && showBubble) {
       if (typedMessage.length < currentMessage.content.length) {
+        const speed = settings?.chatTypingSpeed ?? 50;
         typingTimeoutRef.current = setTimeout(() => {
           setTypedMessage(currentMessage.content.slice(0, typedMessage.length + 1));
-        }, 50);
+        }, speed);
       } else {
         setIsTyping(false);
         closeTimeoutRef.current = setTimeout(() => {

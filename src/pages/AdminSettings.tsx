@@ -151,6 +151,8 @@ const AdminSettings: React.FC = () => {
   const [liveChatEnabled, setLiveChatEnabled] = useState(settings.liveChatEnabled !== false);
   const [chatBotEnabled, setChatBotEnabled] = useState(settings.chatBotEnabled === true);
   const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings.chatBotTier2Enabled === true);
+  const [chatTypingSpeed, setChatTypingSpeed] = useState(settings.chatTypingSpeed ?? 50);
+  const [chatBotThinkingDelay, setChatBotThinkingDelay] = useState(settings.chatBotThinkingDelay ?? 1200);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -305,7 +307,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { brandLogo: finalLogoUrl, watermarkOpacity: opacity, watermarkPosition: position };
       } 
       else if (section === 'chat') {
-        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled };
+        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled, chatTypingSpeed, chatBotThinkingDelay };
       } 
       else if (section === 'ai_consultant') {
         partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
@@ -751,6 +753,42 @@ const AdminSettings: React.FC = () => {
                   <p className="text-sm text-dark/40">Chưa có kịch bản tin nhắn nào.</p>
                 </div>
               )}
+            </div>
+
+            {/* Cấu hình tốc độ */}
+            <div className="mt-6 p-4 bg-blue-50 rounded-2xl border border-blue-100 space-y-4">
+              <p className="text-sm font-bold text-blue-700 flex items-center gap-2">⚡ Tốc độ & Độ trễ phản hồi</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-dark mb-1">
+                    Tốc độ gõ chữ: <span className="text-primary">{chatTypingSpeed}ms/ký tự</span>
+                  </label>
+                  <input
+                    type="range" min={10} max={200} step={5}
+                    value={chatTypingSpeed}
+                    onChange={e => setChatTypingSpeed(Number(e.target.value))}
+                    className="w-full accent-primary"
+                  />
+                  <div className="flex justify-between text-[10px] text-dark/40 mt-0.5">
+                    <span>Nhanh (10ms)</span><span>Chậm (200ms)</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-dark mb-1">
+                    Độ trễ bot suy nghĩ: <span className="text-primary">{(chatBotThinkingDelay/1000).toFixed(1)}s</span>
+                  </label>
+                  <input
+                    type="range" min={300} max={5000} step={100}
+                    value={chatBotThinkingDelay}
+                    onChange={e => setChatBotThinkingDelay(Number(e.target.value))}
+                    className="w-full accent-primary"
+                  />
+                  <div className="flex justify-between text-[10px] text-dark/40 mt-0.5">
+                    <span>Nhanh (0.3s)</span><span>Chậm (5s)</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-blue-600/70">Tốc độ gõ áp dụng cho bong bóng preview. Độ trễ là thời gian bot "suy nghĩ" trước khi trả lời khách.</p>
             </div>
             </div>
           </div>

@@ -139,6 +139,8 @@ export interface AppSettings {
   integrationScriptNotes?: string;
   welcomeMessage?: string;
   secondWelcomeMessage?: string;
+  chatTypingSpeed?: number;   // ms/ký tự, mặc định 50
+  chatBotThinkingDelay?: number; // ms trước khi bot trả lời, mặc định 1200
 }
 
 export interface CustomerFaq {

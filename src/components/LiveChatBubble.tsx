@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabase';
 import { format } from 'date-fns';
 import { expandQuery } from '../utils/synonyms';
+import { useApp } from '../context/AppContext';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -46,6 +47,7 @@ interface Props {
 }
 
 export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, integrationConfig }: Props = {}) {
+  const { settings } = useApp();
   const isControlled = controlledOpen !== undefined;
 
   const [_open, _setOpen] = useState(false);
@@ -219,7 +221,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
       ]);
 
-      await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
+      const thinkingDelay = settings?.chatBotThinkingDelay ?? 1200;
+      await new Promise(r => setTimeout(r, thinkingDelay + Math.random() * 400));
 
       const res = await fetch('/api/live-chat-bot', {
         method: 'POST',
