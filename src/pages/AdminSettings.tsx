@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
-import { Save, Upload, Image as ImageIcon, Trash2, Settings as SettingsIcon, MessageCircle, Plus, Gift, Bell, LogOut, Users, Link as LinkIcon, CheckCircle, AlertCircle, X, Cpu, Database, Globe } from 'lucide-react';
+import { Save, Upload, Image as ImageIcon, Trash2, Settings as SettingsIcon, MessageCircle, Plus, Gift, Bell, LogOut, Users, Link as LinkIcon, CheckCircle, AlertCircle, X, Cpu, Database, Globe, Megaphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChatMessageConfig } from '../types';
+import { ChatMessageConfig, BannerItem } from '../types';
+import { BANNER_DEFAULT_ITEMS } from '../components/PromoMarquee';
 import { uploadImageToStorage, deleteImageFromStorage, getDisplayImageUrl } from '../utils/image';
 import { ImageCropperModal } from '../components/ImageCropperModal';
 
@@ -72,6 +73,7 @@ const TABS = [
   { id: 'ai_consultant', label: 'AI Tư Vấn', icon: MessageCircle },
   { id: 'integrations', label: 'Cổng kết nối', icon: Cpu },
   { id: 'wheel', label: 'Vòng quay May mắn', icon: Gift },
+  { id: 'banner', label: 'Banner QC', icon: Megaphone },
   { id: 'partners', label: 'Hệ sinh thái', icon: LinkIcon },
   { id: 'notification', label: 'Thông báo', icon: Bell },
   { id: 'staff', label: 'Truy cập nhân viên', icon: Users },
@@ -158,6 +160,10 @@ const AdminSettings: React.FC = () => {
   const [newStaffName, setNewStaffName] = useState('');
   const [chatAutoOpenEnabled, setChatAutoOpenEnabled] = useState(settings.chatAutoOpenEnabled !== false);
   const [chatAutoOpenDelay, setChatAutoOpenDelay] = useState(settings.chatAutoOpenDelay ?? 20);
+
+  // Banner quảng cáo
+  const [bannerItems, setBannerItems] = useState<BannerItem[]>(settings.bannerItems ?? BANNER_DEFAULT_ITEMS);
+  const [bannerSpeed, setBannerSpeed] = useState(settings.bannerSpeed ?? 40);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -339,7 +345,10 @@ const AdminSettings: React.FC = () => {
       }
       else if (section === 'wheel') {
         partialSettings = { luckyWheelEnabled, luckyWheelGifts, luckyWheelCTA, luckyWheelSubCTA, luckyWheelNotificationText, luckyWheelNotificationEnabled };
-      } 
+      }
+      else if (section === 'banner') {
+        partialSettings = { bannerItems, bannerSpeed };
+      }
       else if (section === 'partners') {
         let finalPartner1Image = partnerBrand1.image;
         if (finalPartner1Image.startsWith('data:image')) {
@@ -1392,6 +1401,146 @@ const AdminSettings: React.FC = () => {
             </div>
           </div>
         );
+
+      case 'banner': {
+        const COLORS = [
+          { label: 'Hồng', value: 'from-rose-400 to-pink-600' },
+          { label: 'Cam', value: 'from-orange-400 to-red-500' },
+          { label: 'Vàng', value: 'from-yellow-400 to-amber-500' },
+          { label: 'Xanh lá', value: 'from-emerald-400 to-teal-500' },
+          { label: 'Xanh dương', value: 'from-blue-400 to-cyan-500' },
+          { label: 'Tím', value: 'from-violet-400 to-purple-500' },
+          { label: 'H2O', value: 'from-secondary to-primary' },
+        ];
+        const updateItem = (idx: number, field: keyof BannerItem, val: any) =>
+          setBannerItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+
+        return (
+          <div className="space-y-6 flex flex-col h-full">
+            <div className="flex items-center justify-between border-b border-light-gray pb-4">
+              <h2 className="text-xl font-bold text-dark flex items-center gap-2">
+                <Megaphone size={24} className="text-secondary" /> Banner Quảng Cáo
+              </h2>
+              <button onClick={() => handleSaveSection('banner')} disabled={isSaving}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition disabled:opacity-50">
+                <Save size={16} />{isSaving ? 'Đang lưu...' : 'Lưu'}
+              </button>
+            </div>
+
+            {/* Speed */}
+            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+              <p className="text-sm font-bold text-amber-700 mb-3">⚡ Tốc độ cuộn</p>
+              <label className="block text-xs font-bold text-dark mb-1">
+                Thời gian 1 vòng: <span className="text-amber-600">{bannerSpeed}s</span>
+                <span className="text-dark/40 font-normal ml-1">({bannerSpeed <= 20 ? 'Nhanh' : bannerSpeed <= 50 ? 'Vừa' : 'Chậm'})</span>
+              </label>
+              <input type="range" min={10} max={120} step={5} value={bannerSpeed}
+                onChange={e => setBannerSpeed(Number(e.target.value))}
+                className="w-full accent-amber-500" />
+              <div className="flex justify-between text-[10px] text-dark/40 mt-0.5">
+                <span>Nhanh (10s)</span><span>Chậm (120s)</span>
+              </div>
+              <p className="text-[11px] text-amber-600/70 mt-2">
+                Khi hover chuột vào banner, cuộn tự dừng để khách đọc. Khuyến nghị: 35–50s.
+              </p>
+            </div>
+
+            {/* Live promo note */}
+            <div className="p-3 bg-green-50 rounded-xl border border-green-100 text-[11px] text-green-700">
+              🎉 <b>Khuyến mãi đang chạy</b> (bật <code>Hiển thị website</code> trong AdminPromotions) sẽ tự động xuất hiện đầu banner — không cần cấu hình thêm.
+            </div>
+
+            {/* Static items */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-dark">Các thẻ tĩnh ({bannerItems.length}/8)</p>
+                {bannerItems.length < 8 && (
+                  <button
+                    onClick={() => setBannerItems(prev => [...prev, {
+                      id: `item-${Date.now()}`, emoji: '✨', tag: 'Dịch vụ',
+                      title: 'Tiêu đề mới', description: 'Mô tả ngắn',
+                      link: '', color: 'from-secondary to-primary', enabled: true,
+                    }])}
+                    className="flex items-center gap-1 text-xs font-bold text-primary bg-primary/5 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition">
+                    <Plus size={13} /> Thêm thẻ
+                  </button>
+                )}
+              </div>
+
+              {bannerItems.map((item, idx) => (
+                <div key={item.id}
+                  className={`rounded-2xl border p-4 space-y-3 transition-colors ${item.enabled ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+                  {/* Row 1: enable toggle + color + delete */}
+                  <div className="flex items-center gap-2">
+                    {/* Color strip preview */}
+                    <div className={`w-6 h-6 rounded-lg bg-gradient-to-br flex-shrink-0 ${item.color}`} />
+                    <select value={item.color} onChange={e => updateItem(idx, 'color', e.target.value)}
+                      className="text-xs border border-gray-100 rounded-lg px-2 py-1 bg-white flex-1">
+                      {COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                    <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
+                      <span className="text-[10px] font-bold text-dark/50">{item.enabled ? 'Bật' : 'Tắt'}</span>
+                      <div className="relative">
+                        <input type="checkbox" className="sr-only" checked={item.enabled}
+                          onChange={e => updateItem(idx, 'enabled', e.target.checked)} />
+                        <div className={`w-9 h-5 rounded-full transition-colors ${item.enabled ? 'bg-primary' : 'bg-gray-300'}`} />
+                        <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.enabled ? 'translate-x-4' : ''}`} />
+                      </div>
+                    </label>
+                    <button onClick={() => setBannerItems(prev => prev.filter((_, i) => i !== idx))}
+                      className="p-1.5 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
+                  {/* Row 2: emoji + tag */}
+                  <div className="grid grid-cols-[64px_1fr] gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-dark/50 mb-1">Icon</label>
+                      <input value={item.emoji} onChange={e => updateItem(idx, 'emoji', e.target.value)}
+                        className="w-full text-center text-xl border border-gray-100 rounded-xl py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" maxLength={2} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-dark/50 mb-1">Nhãn (tag)</label>
+                      <input value={item.tag} onChange={e => updateItem(idx, 'tag', e.target.value)}
+                        placeholder="Khuyến mãi / Dịch vụ / Hậu trường..."
+                        className="w-full text-sm border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    </div>
+                  </div>
+
+                  {/* Row 3: title */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-dark/50 mb-1">Tiêu đề</label>
+                    <input value={item.title} onChange={e => updateItem(idx, 'title', e.target.value)}
+                      className="w-full text-sm font-bold border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+
+                  {/* Row 4: description */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-dark/50 mb-1">Mô tả ngắn</label>
+                    <textarea value={item.description} onChange={e => updateItem(idx, 'description', e.target.value)}
+                      rows={2} className="w-full text-xs border border-gray-100 rounded-xl px-3 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+
+                  {/* Row 5: link */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-dark/50 mb-1">Link (để trống nếu không cần)</label>
+                    <input value={item.link ?? ''} onChange={e => updateItem(idx, 'link', e.target.value)}
+                      placeholder="https://... hoặc /promotions"
+                      className="w-full text-xs border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                </div>
+              ))}
+
+              {bannerItems.length === 0 && (
+                <div className="text-center py-8 text-sm text-dark/40">
+                  Chưa có thẻ nào. Nhấn "Thêm thẻ" để bắt đầu.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
 
       case 'partners':
         return (

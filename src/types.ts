@@ -96,6 +96,17 @@ export interface PartnerBrand {
   ctaText?: string;
 }
 
+export interface BannerItem {
+  id: string;
+  emoji: string;
+  tag: string;
+  title: string;
+  description: string;
+  link?: string;
+  color: string; // gradient Tailwind string e.g. "from-rose-400 to-pink-600"
+  enabled: boolean;
+}
+
 export interface AppSettings {
   brandLogo?: string;
   watermarkOpacity?: number;
@@ -143,8 +154,10 @@ export interface AppSettings {
   chatBotThinkingDelay?: number;
   chatStaffName?: string;
   chatStaffNames?: string[];
-  chatAutoOpenEnabled?: boolean; // tự động mở chat sau X giây
-  chatAutoOpenDelay?: number;    // số giây chờ trước khi mở, mặc định 20
+  chatAutoOpenEnabled?: boolean;
+  chatAutoOpenDelay?: number;
+  bannerItems?: BannerItem[];    // banner quảng cáo tĩnh
+  bannerSpeed?: number;          // giây/vòng, mặc định 40
 }
 
 export interface CustomerFaq {

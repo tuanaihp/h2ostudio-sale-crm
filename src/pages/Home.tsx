@@ -5,6 +5,7 @@ import { QuickViewModal } from '../components/QuickViewModal';
 import { AddPlaceholder } from '../components/AddPlaceholder';
 import { ImageEditorModal } from '../components/ImageEditorModal';
 import { ConsultationModal } from '../components/ConsultationModal';
+import { PromoMarquee } from '../components/PromoMarquee';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'motion/react';
 import { EditorState, Style } from '../types';
@@ -173,25 +174,7 @@ const Home: React.FC = () => {
           onClose={() => setQuickViewStyle(null)}
         />
 
-        <div className="mt-16 p-8 bg-light-gray rounded-3xl text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-secondary to-primary opacity-20" />
-          <h3 className="text-xl font-bold bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent mb-2">Tư Vấn Concept Nhanh 24/7</h3>
-          <p className="text-sm text-dark/60 mb-6">
-            Gửi thông tin hoặc ý tưởng của bạn đến H2O STUDIO ngay!
-          </p>
-          <button 
-            onClick={() => {
-              setConsultInitialMessage(`Chào H2O STUDIO, mình cần tư vấn về dịch vụ chụp ảnh cưới.\nLink: ${window.location.href}`);
-              setIsConsultModalOpen(true);
-            }}
-            className="btn-primary mx-auto relative group"
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              Nhận tư vấn ngay
-            </span>
-            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-          </button>
-        </div>
+        <PromoMarquee />
       </div>
     </Layout>
   );
