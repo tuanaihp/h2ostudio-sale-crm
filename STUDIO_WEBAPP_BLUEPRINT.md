@@ -238,6 +238,7 @@ src/
 │   ├── LiveChatBubble.tsx      ← customer chat panel + Bot Tầng 1/2 (callBotTier1/2)
 │   ├── AdminChatPanel.tsx      ← admin side-drawer: session list + reply + @kịch bản + 📷 album + 📌 FAQ
 │   ├── PromoBanner.tsx         ← banner KM trên website (dismiss to sessionStorage)
+│   ├── PromoGrid.tsx           ← grid dịch vụ trang chủ: trái=KM nổi bật Supabase, phải=2×3 thẻ dịch vụ cấu hình được
 │   ├── LuckyWheelWidget.tsx
 │   ├── ImageCropperModal.tsx
 │   └── PartnerBrandsIcons.tsx
