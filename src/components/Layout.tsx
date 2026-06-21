@@ -38,7 +38,7 @@ export const Layout: React.FC<LayoutProps> = ({
     logoTapCount.current += 1;
     if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
     logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 2000);
-    if (logoTapCount.current >= 5) {
+    if (logoTapCount.current >= 3) {
       e.preventDefault();
       logoTapCount.current = 0;
       navigate('/admin/login');
