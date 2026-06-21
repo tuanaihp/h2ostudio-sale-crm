@@ -113,23 +113,24 @@ export const LiveChatWidget: React.FC = () => {
     ? chatMessages[currentMessageIndex]
     : null;
 
-  // Ẩn widget nhưng vẫn hiện LiveChatBubble nếu bot đang bật
-  if (settings?.liveChatEnabled === false) {
-    if (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true) {
-      return (
-        <LiveChatBubble
-          chatBotEnabled={settings?.chatBotEnabled === true}
-          chatBotTier2Enabled={settings?.chatBotTier2Enabled === true}
-          integrationConfig={{
-            chatApiEnabled: settings?.integrationChatApiEnabled,
-            chatApiUrl: settings?.integrationChatApiUrl,
-            chatApiKey: settings?.integrationChatApiKey,
-            chatApiModelName: settings?.integrationChatApiModelName,
-          }}
-        />
-      );
-    }
+  // Ẩn widget chỉ khi admin đã TẮT RÕ RÀNG liveChatEnabled = false
+  // (undefined = chưa set = vẫn hiện)
+  if (settings?.liveChatEnabled === false && settings?.chatBotEnabled !== true && settings?.chatBotTier2Enabled !== true) {
     return null;
+  }
+  if (settings?.liveChatEnabled === false) {
+    return (
+      <LiveChatBubble
+        chatBotEnabled={settings?.chatBotEnabled === true}
+        chatBotTier2Enabled={settings?.chatBotTier2Enabled === true}
+        integrationConfig={{
+          chatApiEnabled: settings?.integrationChatApiEnabled,
+          chatApiUrl: settings?.integrationChatApiUrl,
+          chatApiKey: settings?.integrationChatApiKey,
+          chatApiModelName: settings?.integrationChatApiModelName,
+        }}
+      />
+    );
   }
 
   return (
@@ -143,9 +144,9 @@ export const LiveChatWidget: React.FC = () => {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 60, y: -20, scale: 0.88, transition: { duration: 0.5, ease: 'easeIn' } }}
             transition={{ type: 'spring', damping: 22, stiffness: 280 }}
-            className="fixed right-4 z-50 bg-white rounded-[1.4rem] shadow-2xl border border-gray-100 text-sm font-medium cursor-pointer max-w-[260px] sm:max-w-[300px]"
+            className="fixed right-4 z-[9999] bg-white rounded-[1.4rem] shadow-2xl border border-gray-100 text-sm font-medium cursor-pointer max-w-[260px] sm:max-w-[300px]"
             style={{
-              bottom: 'max(180px, calc(env(safe-area-inset-bottom) + 136px))',
+              bottom: 'max(220px, calc(env(safe-area-inset-bottom) + 220px))',
               color: currentMessage.textColor || '#1a1a1a',
             }}
             onClick={openLiveChat}
@@ -170,8 +171,8 @@ export const LiveChatWidget: React.FC = () => {
 
       {/* Nút bấm cố định — luôn hiển thị */}
       <div
-        className="fixed right-4 z-50 flex flex-col items-center gap-3 sm:right-6"
-        style={{ bottom: 'max(72px, calc(env(safe-area-inset-bottom) + 24px))' }}
+        className="fixed right-4 z-[9999] flex flex-col items-center gap-3 sm:right-6"
+        style={{ bottom: 'max(80px, calc(env(safe-area-inset-bottom) + 80px))' }}
       >
         {/* Nút gọi điện */}
         <motion.a
