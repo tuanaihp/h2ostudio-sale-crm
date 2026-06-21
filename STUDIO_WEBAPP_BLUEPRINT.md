@@ -787,6 +787,7 @@ CREATE TABLE promotions (
   cta_text text NOT NULL DEFAULT 'Đăng ký nhận ưu đãi',
   show_on_website boolean NOT NULL DEFAULT true,
   enabled boolean NOT NULL DEFAULT true,
+  image_url text NOT NULL DEFAULT '',       -- ảnh banner AI tạo (DALL-E), lưu URL R2
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -794,13 +795,17 @@ CREATE TABLE promotions (
 ALTER TABLE promotions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read promotions" ON promotions FOR SELECT USING (true);
 CREATE POLICY "Admin manage promotions" ON promotions FOR ALL USING (true);
+
+-- Migration (thêm cột nếu bảng đã tồn tại):
+-- ALTER TABLE promotions ADD COLUMN IF NOT EXISTS image_url text NOT NULL DEFAULT '';
 ```
 
 ### Files
 
 | File | Mô tả |
 |------|-------|
-| `src/pages/AdminPromotions.tsx` | Trang admin quản lý KM — 3 tab |
+| `src/pages/AdminPromotions.tsx` | Trang admin quản lý KM — 4 tab + AI features |
+| `api/ai-image.ts` | DALL-E 3 image generation endpoint |
 | `src/components/PromoBanner.tsx` | Banner KM hiển thị trên website |
 
 Route: `/admin/promotions` — thêm trong `App.tsx`.
@@ -938,11 +943,55 @@ interface AiPromoProposal {
 import { Sparkles, UserCheck, Phone, MessageCircle, Loader2, Users } from 'lucide-react';
 ```
 
-**useApp() cần có `updateConsultationTags`:**
+**useApp() cần có `updateConsultationTags` và `settings`:**
 
 ```typescript
-const { isAdmin, isAuthReady, consultations, updateConsultationTags } = useApp();
+const { isAdmin, isAuthReady, consultations, updateConsultationTags, settings } = useApp();
 ```
+
+### AI Tạo Ảnh Banner (DALL-E 3) — `api/ai-image.ts`
+
+- Button "🎨 AI tạo ảnh" trong edit modal của mỗi KM
+- Gọi `/api/ai-image` với `{ promoTitle, shortDesc, emoji, color, apiKey, model, quality }`
+- Dùng `integrationChatApiKey` từ settings làm OpenAI API key
+- Trả về `{ b64: string }` (base64 PNG 1792×1024)
+- Frontend gọi `uploadImageToStorage(dataUrl, 'promotions/xxx.png')` → upload R2 → lưu URL vào `promotion.image_url`
+
+**Model image:**
+```typescript
+const IMAGE_MODELS = [
+  { id: 'dall-e-3',    label: 'DALL-E 3 standard', quality: 'standard', note: '$0.04/ảnh' },
+  { id: 'dall-e-3-hd', label: 'DALL-E 3 HD',       quality: 'hd',       note: '$0.08/ảnh' },
+  { id: 'dall-e-2',    label: 'DALL-E 2',           quality: undefined,  note: '$0.02/ảnh' },
+];
+```
+
+**Flow tạo ảnh:**
+1. Chọn model (dropdown trong modal)
+2. Click "Tạo ảnh" → `callAiImage()` → `/api/ai-image` → nhận base64
+3. Hiện preview — banner vàng cảnh báo "Chưa lưu"
+4. Hover ảnh → click "Dùng ảnh này" → `useGeneratedImage()` → upload R2 → lưu URL vào form
+5. Lưu KM → URL vào `image_url` Supabase
+
+**Thumbnail hiển thị trong PromoCard** nếu `promo.imageUrl` có giá trị.
+
+### Model Selector — Cổng kết nối (AdminSettings)
+
+Thay text input "Model Name" bằng UI thông minh:
+
+```typescript
+const MODEL_PRESETS = [
+  { id: 'openai',    url: 'https://api.openai.com/v1/chat/completions',        models: ['gpt-4o', 'gpt-4o-mini', ...] },
+  { id: 'deepseek',  url: 'https://api.deepseek.com/v1/chat/completions',      models: ['deepseek-chat', 'deepseek-reasoner'] },
+  { id: 'groq',      url: 'https://api.groq.com/openai/v1/chat/completions',   models: ['llama-3.3-70b-versatile', ...] },
+  { id: 'anthropic', url: 'https://api.anthropic.com/v1/messages',             models: ['claude-opus-4-8', ...] },
+  { id: 'custom',    url: '',                                                   models: [] },
+];
+```
+
+- Click provider chip → auto-fill URL + chọn model mặc định
+- Dropdown model thay text input khi provider đã biết
+- `selectedProvider` state được derive từ URL hiện tại khi load
 
 ---
 
@@ -995,11 +1044,11 @@ export interface AppSettings {
   aiConsultantName?: string;
   aiConsultantPrompt?: string;
 
-  // Cổng kết nối
+  // Cổng kết nối — Model selector (OpenAI / DeepSeek / Groq / Claude / Custom)
   integrationChatApiEnabled?: boolean;
-  integrationChatApiUrl?: string;
-  integrationChatApiKey?: string;
-  integrationChatApiModelName?: string;
+  integrationChatApiUrl?: string;      // auto-fill khi chọn provider preset
+  integrationChatApiKey?: string;      // dùng cho cả chat lẫn DALL-E image gen
+  integrationChatApiModelName?: string; // chọn từ dropdown theo provider
   integrationChatApiHeaders?: string;
   integrationSheetEnabled?: boolean;
   integrationSheetId?: string;

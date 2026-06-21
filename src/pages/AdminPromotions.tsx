@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
+import { uploadImageToStorage } from '../utils/image';
 import {
   ChevronLeft, ChevronRight, Plus, Edit3, Trash2, Save, X,
   Calendar, List, TrendingUp, Eye, EyeOff, Megaphone,
   ToggleLeft, ToggleRight, Users, ArrowLeft, Check, AlertCircle,
-  Sparkles, UserCheck, Phone, MessageCircle, Loader2,
+  Sparkles, UserCheck, Phone, MessageCircle, Loader2, Image as ImageIcon, Palette,
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, getDay,
@@ -59,7 +60,14 @@ const BLANK_FORM = {
   ctaText: 'Đăng ký nhận ưu đãi',
   showOnWebsite: true,
   enabled: true,
+  imageUrl: '',
 };
+
+const IMAGE_MODELS = [
+  { id: 'dall-e-3', label: 'DALL-E 3 — Chất lượng cao ⭐', quality: 'standard', note: '$0.04/ảnh' },
+  { id: 'dall-e-3-hd', label: 'DALL-E 3 HD — Sắc nét tối đa', quality: 'hd', note: '$0.08/ảnh' },
+  { id: 'dall-e-2', label: 'DALL-E 2 — Nhanh & Rẻ', quality: undefined, note: '$0.02/ảnh' },
+] as const;
 
 const STATUS_CONFIG_MINI: Record<string, { label: string; cls: string }> = {
   new:        { label: 'Mới',     cls: 'bg-red-100 text-red-600' },
@@ -93,6 +101,7 @@ const dbToPromo = (row: DbPromotionRow): Promotion => ({
   showOnWebsite: row.show_on_website !== false,
   enabled: row.enabled !== false,
   createdAt: row.created_at,
+  imageUrl: row.image_url || '',
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -125,7 +134,7 @@ const STATUS_LABEL: Record<string, string> = {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminPromotions() {
-  const { isAdmin, isAuthReady, consultations, updateConsultationTags } = useApp();
+  const { isAdmin, isAuthReady, consultations, updateConsultationTags, settings } = useApp();
 
   // ── Existing state ──────────────────────────────────────────────────────────
   const [promos, setPromos]               = useState<Promotion[]>([]);
@@ -151,6 +160,12 @@ export default function AdminPromotions() {
 
   // ── AI Content state ────────────────────────────────────────────────────────
   const [aiContentLoading, setAiContentLoading] = useState(false);
+
+  // ── AI Image state ───────────────────────────────────────────────────────────
+  const [imageGenLoading, setImageGenLoading] = useState(false);
+  const [imageGenModel, setImageGenModel] = useState<'dall-e-3' | 'dall-e-3-hd' | 'dall-e-2'>('dall-e-3');
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageGenError, setImageGenError] = useState('');
 
   // ── Customers tab state ─────────────────────────────────────────────────────
   const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
@@ -187,6 +202,8 @@ export default function AdminPromotions() {
     const d = prefillDate ? format(prefillDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
     setEditingPromo(null);
     setForm({ ...BLANK_FORM, startDate: d, endDate: d });
+    setImagePreview('');
+    setImageGenError('');
     setShowModal(true);
   };
 
@@ -197,7 +214,10 @@ export default function AdminPromotions() {
       emoji: p.emoji, color: p.color, bgColor: p.bgColor,
       startDate: p.startDate, endDate: p.endDate,
       ctaText: p.ctaText, showOnWebsite: p.showOnWebsite, enabled: p.enabled,
+      imageUrl: p.imageUrl || '',
     });
+    setImagePreview(p.imageUrl || '');
+    setImageGenError('');
     setShowModal(true);
   };
 
@@ -209,6 +229,7 @@ export default function AdminPromotions() {
       emoji: form.emoji, color: form.color, bg_color: form.bgColor,
       start_date: form.startDate, end_date: form.endDate,
       cta_text: form.ctaText, show_on_website: form.showOnWebsite, enabled: form.enabled,
+      image_url: form.imageUrl || '',
       updated_at: new Date().toISOString(),
     };
     if (editingPromo) {
@@ -219,6 +240,60 @@ export default function AdminPromotions() {
     await loadPromos();
     setShowModal(false);
     setSaving(false);
+  };
+
+  // ── AI Image Generation ───────────────────────────────────────────────────
+
+  const callAiImage = async () => {
+    if (!form.title.trim()) return;
+    const apiKey = settings?.integrationChatApiKey;
+    if (!apiKey) {
+      setImageGenError('Cần API Key OpenAI. Vào Settings → Cổng kết nối → nhập OpenAI API Key.');
+      return;
+    }
+    setImageGenLoading(true);
+    setImageGenError('');
+    setImagePreview('');
+    try {
+      const actualModel = imageGenModel === 'dall-e-3-hd' ? 'dall-e-3' : imageGenModel;
+      const quality = imageGenModel === 'dall-e-3-hd' ? 'hd' : 'standard';
+      const res = await fetch('/api/ai-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          promoTitle: form.title,
+          shortDesc: form.shortDesc,
+          emoji: form.emoji,
+          color: form.color,
+          apiKey,
+          model: actualModel,
+          quality,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setImageGenError(data.error); return; }
+      if (data.b64) {
+        const dataUrl = `data:image/png;base64,${data.b64}`;
+        setImagePreview(dataUrl);
+      }
+    } catch (e: any) {
+      setImageGenError(e?.message || 'Lỗi kết nối');
+    }
+    setImageGenLoading(false);
+  };
+
+  const useGeneratedImage = async () => {
+    if (!imagePreview || !imagePreview.startsWith('data:')) return;
+    setImageGenLoading(true);
+    try {
+      const path = `promotions/${Date.now()}.png`;
+      const url = await uploadImageToStorage(imagePreview, path);
+      setForm(f => ({ ...f, imageUrl: url }));
+      setImagePreview(url);
+    } catch (e: any) {
+      setImageGenError(e?.message || 'Lỗi upload ảnh');
+    }
+    setImageGenLoading(false);
   };
 
   const deletePromo = async (id: string) => {
@@ -1016,6 +1091,87 @@ export default function AdminPromotions() {
                 />
               </div>
 
+              {/* ── AI Image Generation ── */}
+              <div className="border border-violet-200 bg-violet-50/50 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Palette size={14} className="text-violet-600" />
+                    <span className="text-xs font-bold text-violet-800">AI Tạo Ảnh Banner (DALL-E)</span>
+                  </div>
+                  {/* Model selector */}
+                  <select
+                    value={imageGenModel}
+                    onChange={e => setImageGenModel(e.target.value as typeof imageGenModel)}
+                    className="text-[11px] border border-violet-200 bg-white rounded-lg px-2 py-1 text-violet-700 font-semibold focus:outline-none focus:ring-1 focus:ring-violet-300"
+                  >
+                    {IMAGE_MODELS.map(m => (
+                      <option key={m.id} value={m.id}>{m.label} ({m.note})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Preview area */}
+                {(imagePreview || form.imageUrl) ? (
+                  <div className="relative group rounded-xl overflow-hidden">
+                    <img
+                      src={imagePreview || form.imageUrl}
+                      alt="AI generated banner"
+                      className="w-full h-36 object-cover rounded-xl"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      {imagePreview.startsWith('data:') && (
+                        <button
+                          onClick={useGeneratedImage}
+                          disabled={imageGenLoading}
+                          className="flex items-center gap-1.5 bg-white text-violet-700 text-xs font-bold px-3 py-2 rounded-xl hover:bg-violet-50 transition-colors"
+                        >
+                          {imageGenLoading ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                          Dùng ảnh này
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setImagePreview(''); setForm(f => ({ ...f, imageUrl: '' })); }}
+                        className="flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-red-700 transition-colors"
+                      >
+                        <X size={12} /> Xóa
+                      </button>
+                    </div>
+                    {imagePreview.startsWith('data:') && (
+                      <div className="absolute bottom-0 inset-x-0 bg-amber-500/90 text-white text-[10px] font-bold text-center py-1.5">
+                        ⚠ Chưa lưu — Hover vào ảnh và click "Dùng ảnh này" để upload
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed border-violet-200 rounded-xl h-24 flex items-center justify-center text-violet-400">
+                    <div className="text-center">
+                      <ImageIcon size={24} className="mx-auto mb-1 opacity-50" />
+                      <p className="text-[11px]">Chưa có ảnh banner</p>
+                    </div>
+                  </div>
+                )}
+
+                {imageGenError && (
+                  <div className="flex items-start gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                    <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                    {imageGenError}
+                  </div>
+                )}
+
+                <button
+                  onClick={callAiImage}
+                  disabled={!form.title.trim() || imageGenLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                >
+                  {imageGenLoading
+                    ? <><Loader2 size={13} className="animate-spin" /> AI đang vẽ ảnh...</>
+                    : <><Sparkles size={13} /> {imagePreview || form.imageUrl ? 'Tạo lại ảnh mới' : 'Tạo ảnh banner bằng AI'}</>}
+                </button>
+                <p className="text-[10px] text-violet-500 text-center">
+                  Cần API Key OpenAI (cấu hình tại Settings → Cổng kết nối)
+                </p>
+              </div>
+
               {/* Toggles */}
               <div className="flex gap-4">
                 <button onClick={() => setForm(f => ({ ...f, showOnWebsite: !f.showOnWebsite }))}
@@ -1345,6 +1501,12 @@ const PromoCard: React.FC<PromoCardProps> = ({
             </div>
           </div>
         </div>
+
+        {promo.imageUrl && (
+          <div className="mt-3 -mx-0 rounded-xl overflow-hidden">
+            <img src={promo.imageUrl} alt={promo.title} className="w-full h-28 object-cover" />
+          </div>
+        )}
 
         {promo.shortDesc && <p className="text-xs text-gray-600 mt-2">{promo.shortDesc}</p>}
 

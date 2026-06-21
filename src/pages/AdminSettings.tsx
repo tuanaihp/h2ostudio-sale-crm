@@ -8,6 +8,64 @@ import { ChatMessageConfig } from '../types';
 import { uploadImageToStorage, deleteImageFromStorage, getDisplayImageUrl } from '../utils/image';
 import { ImageCropperModal } from '../components/ImageCropperModal';
 
+const MODEL_PRESETS = [
+  {
+    id: 'openai', label: 'OpenAI', icon: '🧠',
+    url: 'https://api.openai.com/v1/chat/completions',
+    badge: null,
+    note: 'GPT-4o-mini đề xuất cho chat. API Key: platform.openai.com/api-keys',
+    badgeCls: '',
+    models: [
+      { id: 'gpt-4o', label: 'GPT-4o — Mạnh nhất' },
+      { id: 'gpt-4o-mini', label: 'GPT-4o Mini — Nhanh & Rẻ ⭐' },
+      { id: 'o3-mini', label: 'o3-mini — Lý luận sâu' },
+      { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo — Rẻ nhất' },
+    ],
+  },
+  {
+    id: 'deepseek', label: 'DeepSeek', icon: '🐋',
+    url: 'https://api.deepseek.com/v1/chat/completions',
+    badge: 'Siêu rẻ',
+    badgeCls: 'bg-green-100 text-green-700',
+    note: '1/30 giá OpenAI, chất lượng tương đương GPT-4o. API Key: platform.deepseek.com',
+    models: [
+      { id: 'deepseek-chat', label: 'DeepSeek V3 Chat ⭐' },
+      { id: 'deepseek-reasoner', label: 'DeepSeek R1 — Lý luận' },
+    ],
+  },
+  {
+    id: 'groq', label: 'Groq', icon: '⚡',
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    badge: 'Siêu nhanh',
+    badgeCls: 'bg-purple-100 text-purple-700',
+    note: 'Tốc độ nhanh nhất, có gói miễn phí. API Key: console.groq.com',
+    models: [
+      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B ⭐' },
+      { id: 'gemma2-9b-it', label: 'Gemma2 9B — Nhẹ' },
+      { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+    ],
+  },
+  {
+    id: 'anthropic', label: 'Claude', icon: '🔷',
+    url: 'https://api.anthropic.com/v1/messages',
+    badge: null, badgeCls: '',
+    note: 'Format API khác OpenAI — cần adapter tùy chỉnh. API Key: console.anthropic.com',
+    models: [
+      { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 — Mạnh nhất' },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — Nhanh' },
+    ],
+  },
+  {
+    id: 'custom', label: 'Tùy chỉnh', icon: '🔧',
+    url: '', badge: null, badgeCls: '',
+    note: 'Nhập URL endpoint và model tùy ý (phải tuân theo OpenAI API format)',
+    models: [],
+  },
+] as const;
+
+type ProviderId = typeof MODEL_PRESETS[number]['id'];
+
 const TABS = [
   { id: 'general', label: 'Logo & Hiển thị', icon: ImageIcon },
   { id: 'chat', label: 'Kịch bản Chatbot', icon: MessageCircle },
@@ -63,6 +121,21 @@ const AdminSettings: React.FC = () => {
   const [integrationChatApiKey, setIntegrationChatApiKey] = useState(settings.integrationChatApiKey || '');
   const [integrationChatApiModelName, setIntegrationChatApiModelName] = useState(settings.integrationChatApiModelName || '');
   const [integrationChatApiHeaders, setIntegrationChatApiHeaders] = useState(settings.integrationChatApiHeaders || '');
+  const [selectedProvider, setSelectedProvider] = useState<ProviderId | ''>(() => {
+    const url = settings.integrationChatApiUrl || '';
+    if (url.includes('openai.com')) return 'openai';
+    if (url.includes('deepseek.com')) return 'deepseek';
+    if (url.includes('groq.com')) return 'groq';
+    if (url.includes('anthropic.com')) return 'anthropic';
+    return url ? 'custom' : '';
+  });
+
+  const handleProviderSelect = (preset: typeof MODEL_PRESETS[number]) => {
+    setSelectedProvider(preset.id);
+    if (preset.url) setIntegrationChatApiUrl(preset.url);
+    if (preset.models.length > 0) setIntegrationChatApiModelName(preset.models[0].id);
+    else setIntegrationChatApiModelName('');
+  };
   const [integrationSheetEnabled, setIntegrationSheetEnabled] = useState(settings.integrationSheetEnabled || false);
   const [integrationSheetId, setIntegrationSheetId] = useState(settings.integrationSheetId || '');
   const [integrationSheetName, setIntegrationSheetName] = useState(settings.integrationSheetName || '');
@@ -789,46 +862,103 @@ const AdminSettings: React.FC = () => {
               </div>
               
               {integrationChatApiEnabled && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-dark/70 mb-1">API Endpoint URL</label>
-                    <input 
-                      type="text" 
-                      value={integrationChatApiUrl} 
-                      onChange={(e) => setIntegrationChatApiUrl(e.target.value)}
-                      placeholder="VD: https://api.deepseek.com/v1/chat/completions hoặc URL API tự dựng"
-                      className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
-                    />
-                  </div>
+                <div className="space-y-4 pt-2">
+                  {/* Provider preset chips */}
                   <div>
-                    <label className="block text-xs font-bold text-dark/70 mb-1">API Key / Token</label>
-                    <input 
-                      type="password" 
-                      value={integrationChatApiKey} 
-                      onChange={(e) => setIntegrationChatApiKey(e.target.value)}
-                      placeholder="Nhập API Key của nền tảng..."
-                      className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
-                    />
+                    <label className="block text-xs font-bold text-dark/70 mb-2">Chọn nền tảng AI</label>
+                    <div className="flex flex-wrap gap-2">
+                      {MODEL_PRESETS.map(preset => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleProviderSelect(preset)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                            selectedProvider === preset.id
+                              ? 'border-secondary bg-secondary/10 text-secondary shadow-sm'
+                              : 'border-light-gray text-dark/60 hover:border-secondary/40 hover:text-dark bg-white'
+                          }`}
+                        >
+                          <span>{preset.icon}</span>
+                          <span>{preset.label}</span>
+                          {preset.badge && (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${preset.badgeCls}`}>{preset.badge}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Provider note */}
+                    {selectedProvider && (
+                      <p className="text-[11px] text-dark/50 mt-1.5 pl-1">
+                        {MODEL_PRESETS.find(p => p.id === selectedProvider)?.note}
+                      </p>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-dark/70 mb-1">Model Name</label>
-                    <input 
-                      type="text" 
-                      value={integrationChatApiModelName} 
-                      onChange={(e) => setIntegrationChatApiModelName(e.target.value)}
-                      placeholder="VD: deepseek-chat, gpt-4o-mini"
-                      className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-dark/70 mb-1">Custom Headers (Định dạng JSON - Tùy chọn)</label>
-                    <textarea 
-                      value={integrationChatApiHeaders} 
-                      onChange={(e) => setIntegrationChatApiHeaders(e.target.value)}
-                      placeholder='VD: { "Custom-Header": "Giá trị" }'
-                      rows={2}
-                      className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm font-mono"
-                    />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* URL */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-dark/70 mb-1">API Endpoint URL</label>
+                      <input
+                        type="text"
+                        value={integrationChatApiUrl}
+                        onChange={(e) => { setIntegrationChatApiUrl(e.target.value); setSelectedProvider('custom'); }}
+                        placeholder="VD: https://api.openai.com/v1/chat/completions"
+                        className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm font-mono"
+                      />
+                    </div>
+
+                    {/* API Key */}
+                    <div>
+                      <label className="block text-xs font-bold text-dark/70 mb-1">API Key / Token</label>
+                      <input
+                        type="password"
+                        value={integrationChatApiKey}
+                        onChange={(e) => setIntegrationChatApiKey(e.target.value)}
+                        placeholder="Nhập API Key của nền tảng..."
+                        className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
+                      />
+                    </div>
+
+                    {/* Model selector */}
+                    <div>
+                      <label className="block text-xs font-bold text-dark/70 mb-1">Model AI</label>
+                      {selectedProvider && selectedProvider !== 'custom' && MODEL_PRESETS.find(p => p.id === selectedProvider)!.models.length > 0 ? (
+                        <div>
+                          <select
+                            value={integrationChatApiModelName}
+                            onChange={(e) => setIntegrationChatApiModelName(e.target.value)}
+                            className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
+                          >
+                            {(MODEL_PRESETS.find(p => p.id === selectedProvider)!.models as readonly { id: string; label: string }[]).map(m => (
+                              <option key={m.id} value={m.id}>{m.label}</option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-dark/40 font-mono mt-1 pl-1">{integrationChatApiModelName}</p>
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={integrationChatApiModelName}
+                          onChange={(e) => setIntegrationChatApiModelName(e.target.value)}
+                          placeholder="VD: deepseek-chat, gpt-4o-mini, llama-3..."
+                          className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm"
+                        />
+                      )}
+                    </div>
+
+                    {/* Custom Headers */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-dark/70 mb-1">
+                        Custom Headers <span className="font-normal text-dark/40">(JSON — tùy chọn)</span>
+                      </label>
+                      <textarea
+                        value={integrationChatApiHeaders}
+                        onChange={(e) => setIntegrationChatApiHeaders(e.target.value)}
+                        placeholder='VD: { "X-Custom-Header": "value" }'
+                        rows={2}
+                        className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm font-mono"
+                      />
+                    </div>
                   </div>
                 </div>
               )}

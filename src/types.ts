@@ -244,6 +244,7 @@ export interface Promotion {
   showOnWebsite: boolean;
   enabled: boolean;
   createdAt: string;
+  imageUrl?: string;
 }
 
 export interface DbPromotionRow {
@@ -261,6 +262,7 @@ export interface DbPromotionRow {
   enabled: boolean;
   created_at: string;
   updated_at?: string;
+  image_url?: string;
 }
 
 export interface AppConfig {
