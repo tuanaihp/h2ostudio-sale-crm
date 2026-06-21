@@ -153,6 +153,9 @@ const AdminSettings: React.FC = () => {
   const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings.chatBotTier2Enabled === true);
   const [chatTypingSpeed, setChatTypingSpeed] = useState(settings.chatTypingSpeed ?? 50);
   const [chatBotThinkingDelay, setChatBotThinkingDelay] = useState(settings.chatBotThinkingDelay ?? 1200);
+  const [chatStaffName, setChatStaffName] = useState(settings.chatStaffName ?? '');
+  const [chatStaffNames, setChatStaffNames] = useState<string[]>(settings.chatStaffNames ?? ['Lan Nguyễn', 'Tuấn Nguyễn', 'Quang An', 'Chung Nguyễn']);
+  const [newStaffName, setNewStaffName] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -307,7 +310,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { brandLogo: finalLogoUrl, watermarkOpacity: opacity, watermarkPosition: position };
       } 
       else if (section === 'chat') {
-        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled, chatTypingSpeed, chatBotThinkingDelay };
+        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled, chatTypingSpeed, chatBotThinkingDelay, chatStaffName, chatStaffNames };
       } 
       else if (section === 'ai_consultant') {
         partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
@@ -752,6 +755,59 @@ const AdminSettings: React.FC = () => {
                   <MessageCircle size={32} className="text-dark/20 mb-2 mx-auto" />
                   <p className="text-sm text-dark/40">Chưa có kịch bản tin nhắn nào.</p>
                 </div>
+              )}
+            </div>
+
+            {/* Cấu hình tên nhân viên */}
+            <div className="mt-6 p-4 bg-rose-50 rounded-2xl border border-rose-100 space-y-4">
+              <p className="text-sm font-bold text-rose-700 flex items-center gap-2">👤 Tên nhân viên tư vấn hiển thị trong chat</p>
+              {/* Danh sách tên preset */}
+              <div className="flex flex-wrap gap-2">
+                {chatStaffNames.map(name => (
+                  <button
+                    key={name}
+                    onClick={() => setChatStaffName(chatStaffName === name ? '' : name)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                      chatStaffName === name
+                        ? 'bg-rose-600 text-white border-rose-600'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-rose-300'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-gradient-to-br from-secondary to-primary text-white text-[9px] font-bold flex items-center justify-center">
+                      {name.split(' ').map(w => w[0]).slice(-2).join('').toUpperCase()}
+                    </span>
+                    {name}
+                    {chatStaffName === name && <span className="ml-0.5">✓</span>}
+                    <span
+                      onClick={e => { e.stopPropagation(); setChatStaffNames(ns => ns.filter(n => n !== name)); if (chatStaffName === name) setChatStaffName(''); }}
+                      className="ml-1 text-current opacity-50 hover:opacity-100 cursor-pointer"
+                    >×</span>
+                  </button>
+                ))}
+              </div>
+              {/* Thêm tên mới */}
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+                  placeholder="Thêm tên mới VD: Lan Nguyễn"
+                  value={newStaffName}
+                  onChange={e => setNewStaffName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newStaffName.trim()) {
+                      setChatStaffNames(ns => [...ns, newStaffName.trim()]);
+                      setNewStaffName('');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => { if (newStaffName.trim()) { setChatStaffNames(ns => [...ns, newStaffName.trim()]); setNewStaffName(''); } }}
+                  className="px-3 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:opacity-90"
+                >+ Thêm</button>
+              </div>
+              {chatStaffName ? (
+                <p className="text-[11px] text-rose-600 font-medium">✅ Đang hiển thị tên <b>{chatStaffName}</b> trong khung chat với khách hàng</p>
+              ) : (
+                <p className="text-[11px] text-gray-400">Bấm vào tên để chọn nhân viên đang trực chat. Chưa chọn sẽ hiện "Tư vấn viên H2O Studio".</p>
               )}
             </div>
 

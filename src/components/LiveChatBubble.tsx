@@ -50,6 +50,12 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const { settings } = useApp();
   const isControlled = controlledOpen !== undefined;
 
+  // Tên nhân viên từ settings
+  const staffName = settings?.chatStaffName?.trim() || '';
+  const staffInitials = staffName
+    ? staffName.split(' ').map((w: string) => w[0]).slice(-2).join('').toUpperCase()
+    : 'H';
+
   const [_open, _setOpen] = useState(false);
   const open    = isControlled ? (controlledOpen ?? false) : _open;
   const setOpen = (v: boolean) => {
@@ -319,18 +325,18 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       style={{ transformOrigin: 'bottom right', bottom: 'max(96px, calc(env(safe-area-inset-bottom) + 92px))' }}
     >
 
-      {/* Header — gradient đồng bộ nút CHAT */}
+      {/* Header */}
       <div className="bg-gradient-to-br from-secondary via-primary to-primary text-white px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
-              <User size={18} />
+            <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">
+              {staffName ? staffInitials : <User size={18} />}
             </div>
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 border-2 border-primary rounded-full" />
           </div>
           <div>
-            <p className="font-bold text-sm">Chat với tư vấn viên</p>
-            <p className="text-xs text-white/80">H2O Studio · phản hồi trong vài phút</p>
+            <p className="font-bold text-sm">{staffName || 'Tư vấn viên H2O Studio'}</p>
+            <p className="text-xs text-white/80">H2O Studio · đang trực tuyến 🟢</p>
           </div>
         </div>
         <button
@@ -344,7 +350,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-gray-50 p-3 space-y-2">
         <div className="flex justify-start">
-          <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
+          <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">{staffInitials}</div>
           <div className="bg-white text-gray-800 rounded-2xl rounded-bl-sm border border-gray-100 px-3 py-2 text-sm shadow-sm max-w-[78%]">
             <p>Xin chào! Tư vấn viên H2O Studio sẵn sàng hỗ trợ anh/chị 💕</p>
             <p className="text-[10px] text-gray-400 mt-0.5">H2O Studio</p>
@@ -354,7 +360,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
             {msg.sender === 'admin' && (
-              <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">H</div>
+              <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">{staffInitials}</div>
             )}
             <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
               msg.sender === 'customer'

@@ -152,10 +152,26 @@ export const LiveChatWidget: React.FC = () => {
             }}
             onClick={openLiveChat}
           >
+            {/* Typing indicator với tên nhân viên */}
+            {isTyping && typedMessage.length === 0 && (
+              <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                <div className="w-6 h-6 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                  {settings?.chatStaffName ? settings.chatStaffName.split(' ').map((w: string) => w[0]).slice(-2).join('').toUpperCase() : 'H'}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-gray-500 font-medium">{settings?.chatStaffName || 'H2O Studio'}</span>
+                  <span className="flex gap-0.5 ml-1">
+                    {[0, 1, 2].map(i => (
+                      <span key={i} className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="px-4 py-3 pr-9 relative">
               <span className="whitespace-pre-line leading-relaxed block text-[13px]">
                 {typedMessage}
-                {isTyping && <span className="inline-block w-1 h-3.5 ml-0.5 bg-primary animate-pulse align-middle rounded-sm" />}
+                {isTyping && typedMessage.length > 0 && <span className="inline-block w-1 h-3.5 ml-0.5 bg-primary animate-pulse align-middle rounded-sm" />}
               </span>
               <button
                 onClick={handleCloseBubble}
