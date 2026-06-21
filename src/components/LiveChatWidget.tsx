@@ -145,7 +145,7 @@ export const LiveChatWidget: React.FC = () => {
             transition={{ type: 'spring', damping: 22, stiffness: 280 }}
             className="fixed right-4 z-50 bg-white rounded-[1.4rem] shadow-2xl border border-gray-100 text-sm font-medium cursor-pointer max-w-[260px] sm:max-w-[300px]"
             style={{
-              bottom: 'max(108px, calc(env(safe-area-inset-bottom) + 104px))',
+              bottom: 'max(180px, calc(env(safe-area-inset-bottom) + 136px))',
               color: currentMessage.textColor || '#1a1a1a',
             }}
             onClick={openLiveChat}
@@ -171,7 +171,7 @@ export const LiveChatWidget: React.FC = () => {
       {/* Nút bấm cố định — luôn hiển thị */}
       <div
         className="fixed right-4 z-50 flex flex-col items-center gap-3 sm:right-6"
-        style={{ bottom: 'max(20px, calc(env(safe-area-inset-bottom) + 16px))' }}
+        style={{ bottom: 'max(72px, calc(env(safe-area-inset-bottom) + 24px))' }}
       >
         {/* Nút gọi điện */}
         <motion.a
