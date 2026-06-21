@@ -4,9 +4,10 @@ import { Phone, ArrowRight, Lock, ChevronLeft, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { validateVietnamesePhone } from '../utils/phone';
+import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 
 export const PhoneGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { userPhone, setUserPhone, isAdmin, login, isAuthReady } = useApp();
+  const { userPhone, setUserPhone, isAdmin, login, isAuthReady, settings } = useApp();
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
@@ -40,6 +41,7 @@ export const PhoneGate: React.FC<{ children: React.ReactNode }> = ({ children })
       return;
     }
     setUserPhone(phone, name);
+    sendLeadNotifications({ name: name.trim(), phone, source: 'phone_gate', settings });
   };
 
   // If auth is not ready, show nothing or a subtle loader to prevent flash

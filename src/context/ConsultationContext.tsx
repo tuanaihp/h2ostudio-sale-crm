@@ -211,6 +211,43 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const { error } = await supabase.from('consultations').insert(row);
     if (error) throw new Error(error.message);
 
+    // Tạo live chat session để nhân viên thấy ngay trong AdminChatPanel
+    try {
+      const chatSessionId = crypto.randomUUID();
+      const hasAlbums = (data.favoriteAlbums?.length ?? 0) > 0;
+      const msgLines: string[] = [
+        hasAlbums ? '🔔 Khách hàng gửi yêu cầu báo giá!' : '🔔 Khách hàng yêu cầu tư vấn!',
+        '',
+        `👤 Tên: ${data.name}`,
+        `📱 SĐT: ${data.phone}`,
+      ];
+      if (data.source) msgLines.push(`📋 Nguồn: ${data.source}`);
+      if (data.luckyGift) msgLines.push(`🎁 Quà: ${data.luckyGift}`);
+      if (hasAlbums) {
+        msgLines.push('', `💝 Album yêu thích (${data.favoriteAlbums!.length} album):`);
+        data.favoriteAlbums!.forEach(a => {
+          msgLines.push(`• ${a.title}${a.styleName ? ` [${a.styleName}]` : ''}`);
+          if (a.url) msgLines.push(`  ${a.url}`);
+        });
+      }
+      if (data.message) msgLines.push('', `📝 Ghi chú: ${data.message.slice(0, 300)}`);
+      const chatContent = msgLines.join('\n');
+      const now = new Date().toISOString();
+
+      supabase.from('chat_sessions').insert({
+        id: chatSessionId, phone: data.phone, name: data.name,
+        status: 'waiting', stage: 'new', consultation_id: id,
+        last_message: chatContent, last_message_at: now, unread_admin: 1, created_at: now,
+      }).then(({ error: e }) => { if (e) console.error('chat_session create:', e.message); });
+
+      supabase.from('chat_messages').insert({
+        id: crypto.randomUUID(), session_id: chatSessionId,
+        sender: 'customer', content: chatContent, created_at: now,
+      }).catch(() => {});
+
+      localStorage.setItem('h2o_live_session_id', chatSessionId);
+    } catch { /* non-critical */ }
+
     // Lark + Telegram — gửi song song, không block submit
     if (settings?.larkNotificationEnabled !== false) {
       fetch('/api/lark-notify', {

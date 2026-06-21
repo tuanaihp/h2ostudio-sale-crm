@@ -5,6 +5,7 @@ import { supabase } from '../supabase';
 import { format } from 'date-fns';
 import { expandQuery } from '../utils/synonyms';
 import { useApp } from '../context/AppContext';
+import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -314,6 +315,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       content: `📋 Thông tin của tôi: ${name ? name + ' — ' : ''}${phone}`,
       created_at: new Date().toISOString(),
     });
+    // Gửi thông báo Telegram + Lark
+    sendLeadNotifications({ name: name || phone, phone, source: 'website_chat', settings });
     setIsAnon(false);
     setFormDone(true);
     setShowForm(false);
