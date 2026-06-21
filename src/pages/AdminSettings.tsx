@@ -156,6 +156,8 @@ const AdminSettings: React.FC = () => {
   const [chatStaffName, setChatStaffName] = useState(settings.chatStaffName ?? '');
   const [chatStaffNames, setChatStaffNames] = useState<string[]>(settings.chatStaffNames ?? ['Lan Nguyễn', 'Tuấn Nguyễn', 'Quang An', 'Chung Nguyễn']);
   const [newStaffName, setNewStaffName] = useState('');
+  const [chatAutoOpenEnabled, setChatAutoOpenEnabled] = useState(settings.chatAutoOpenEnabled !== false);
+  const [chatAutoOpenDelay, setChatAutoOpenDelay] = useState(settings.chatAutoOpenDelay ?? 20);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -310,7 +312,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { brandLogo: finalLogoUrl, watermarkOpacity: opacity, watermarkPosition: position };
       } 
       else if (section === 'chat') {
-        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled, chatTypingSpeed, chatBotThinkingDelay, chatStaffName, chatStaffNames };
+        partialSettings = { chatEnabled, chatMessages, liveChatEnabled, chatBotEnabled, chatBotTier2Enabled, chatTypingSpeed, chatBotThinkingDelay, chatStaffName, chatStaffNames, chatAutoOpenEnabled, chatAutoOpenDelay };
       } 
       else if (section === 'ai_consultant') {
         partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
@@ -845,6 +847,39 @@ const AdminSettings: React.FC = () => {
                 </div>
               </div>
               <p className="text-[11px] text-blue-600/70">Tốc độ gõ áp dụng cho bong bóng preview. Độ trễ là thời gian bot "suy nghĩ" trước khi trả lời khách.</p>
+            </div>
+
+            {/* Tự động mở chat */}
+            <div className="mt-6 p-4 bg-emerald-50 rounded-2xl border border-emerald-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-emerald-700 flex items-center gap-2">⏱️ Tự động mở chat</p>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only" checked={chatAutoOpenEnabled} onChange={e => setChatAutoOpenEnabled(e.target.checked)} />
+                  <div className={`block w-11 h-6 rounded-full transition-colors ${chatAutoOpenEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                  <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${chatAutoOpenEnabled ? 'translate-x-5' : ''}`} />
+                </label>
+              </div>
+              {chatAutoOpenEnabled && (
+                <div>
+                  <label className="block text-xs font-bold text-dark mb-1">
+                    Mở sau: <span className="text-emerald-600">{chatAutoOpenDelay} giây</span>
+                  </label>
+                  <input
+                    type="range" min={5} max={120} step={5}
+                    value={chatAutoOpenDelay}
+                    onChange={e => setChatAutoOpenDelay(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                  <div className="flex justify-between text-[10px] text-dark/40 mt-0.5">
+                    <span>Sớm (5s)</span><span>Muộn (120s)</span>
+                  </div>
+                </div>
+              )}
+              <p className="text-[11px] text-emerald-600/70">
+                {chatAutoOpenEnabled
+                  ? `Khung chat sẽ tự động mở sau ${chatAutoOpenDelay}s khi khách vào trang (chỉ 1 lần/phiên).`
+                  : 'Chat không tự động mở — khách phải bấm nút chat thủ công.'}
+              </p>
             </div>
             </div>
           </div>

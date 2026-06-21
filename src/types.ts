@@ -141,8 +141,10 @@ export interface AppSettings {
   secondWelcomeMessage?: string;
   chatTypingSpeed?: number;
   chatBotThinkingDelay?: number;
-  chatStaffName?: string;       // tên nhân viên đang active hiện trong chat
-  chatStaffNames?: string[];    // danh sách tên preset để chọn nhanh
+  chatStaffName?: string;
+  chatStaffNames?: string[];
+  chatAutoOpenEnabled?: boolean; // tự động mở chat sau X giây
+  chatAutoOpenDelay?: number;    // số giây chờ trước khi mở, mặc định 20
 }
 
 export interface CustomerFaq {

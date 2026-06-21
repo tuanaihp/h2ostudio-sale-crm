@@ -82,17 +82,19 @@ export const LiveChatWidget: React.FC = () => {
     }
   }, [typedMessage, isTyping, showBubble, currentMessageIndex, chatMessages]);
 
-  // Auto-mở live chat sau 10 giây (chỉ 1 lần)
+  // Auto-mở live chat sau N giây (cấu hình trong AdminSettings, mặc định 20s)
   useEffect(() => {
+    if (settings?.chatAutoOpenEnabled === false) return;
     if (sessionStorage.getItem(AUTO_OPEN_KEY)) return;
+    const delayMs = (settings?.chatAutoOpenDelay ?? 20) * 1000;
     const timer = setTimeout(() => {
       if (liveChatOpenRef.current) return;
       sessionStorage.setItem(AUTO_OPEN_KEY, '1');
       playNotifSound();
       setLiveChatOpen(true);
-    }, 10000);
+    }, delayMs);
     return () => clearTimeout(timer);
-  }, []);
+  }, [settings?.chatAutoOpenEnabled, settings?.chatAutoOpenDelay]);
 
   const handleCloseBubble = (e: React.MouseEvent) => {
     e.stopPropagation();
