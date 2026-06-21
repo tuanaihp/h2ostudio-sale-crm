@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Edit2, Trash2, BookOpen, X, TrendingUp, MessageSquare, CheckCircle, Filter } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Edit2, Trash2, BookOpen, X, TrendingUp, MessageSquare, CheckCircle, BookMarked, ChevronRight } from 'lucide-react';
 import { supabase } from '../supabase';
 import type { CustomerFaq, DbCustomerFaqRow } from '../types';
 
@@ -43,7 +43,20 @@ const dbToFaq = (row: DbCustomerFaqRow): CustomerFaq => ({
   createdAt: row.created_at,
 });
 
-const EMPTY_FORM = { question: '', answer: '', category: 'khac', tags: '' };
+const EMPTY_FORM = { question: '', answer: '', category: 'faq', tags: '' };
+
+// Các phase của Kho Kịch Bản (khớp với AdminScripts PHASES)
+const SCRIPT_PHASES = [
+  { key: 'opening',    emoji: '💌', label: 'Mở đầu' },
+  { key: 'discovery',  emoji: '📌', label: 'Khơi gợi nhu cầu' },
+  { key: 'value_prop', emoji: '💎', label: 'Giá trị – USP' },
+  { key: 'offer',      emoji: '🔥', label: 'Ưu đãi đặc biệt' },
+  { key: 'fomo',       emoji: '⏳', label: 'Tạo FOMO' },
+  { key: 'closing',    emoji: '💳', label: 'Chốt cọc' },
+  { key: 'pre_shoot',  emoji: '🌈', label: 'Trước ngày chụp' },
+  { key: 'followup',   emoji: '🔔', label: 'Follow-up' },
+  { key: 'faq',        emoji: '❓', label: 'Q&A – Từ chối' },
+];
 
 export default function AdminKnowledgeBase() {
   const [faqs, setFaqs]                   = useState<CustomerFaq[]>([]);
@@ -56,6 +69,11 @@ export default function AdminKnowledgeBase() {
   const [saving, setSaving]               = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
+
+  // Push to script modal
+  const [pushModal, setPushModal]         = useState<{ faq: CustomerFaq; phase: string } | null>(null);
+  const [pushSaving, setPushSaving]       = useState(false);
+  const [pushedIds, setPushedIds]         = useState<Set<string>>(new Set());
 
   useEffect(() => { loadFaqs(); }, []);
 
@@ -106,6 +124,34 @@ export default function AdminKnowledgeBase() {
     await supabase.from('customer_faqs').delete().eq('id', id);
     setConfirmDelete(null);
     setFaqs(prev => prev.filter(f => f.id !== id));
+  };
+
+  const openPushModal = (faq: CustomerFaq) => {
+    // Tự động chọn phase tương ứng với category; khac → faq
+    const autoPhase = SCRIPT_PHASES.find(p => p.key === faq.category)?.key ?? 'faq';
+    setPushModal({ faq, phase: autoPhase });
+  };
+
+  const confirmPush = async () => {
+    if (!pushModal) return;
+    setPushSaving(true);
+    const { faq, phase } = pushModal;
+    const phaseLabel = SCRIPT_PHASES.find(p => p.key === phase)?.label ?? phase;
+    const { data: existing } = await supabase
+      .from('sale_scripts').select('id').eq('phase', phase).order('order_num', { ascending: false }).limit(1);
+    const nextOrder = existing && existing.length > 0 ? ((existing[0] as any).order_num ?? 0) + 1 : 0;
+    await supabase.from('sale_scripts').insert({
+      id: crypto.randomUUID(),
+      title: faq.question.slice(0, 80),
+      phase,
+      content: `❓ Câu hỏi: ${faq.question}\n\n💬 Trả lời:\n${faq.answer}`,
+      tags: [...faq.tags, 'from_faq'],
+      order_num: nextOrder,
+      enabled: true,
+    });
+    setPushSaving(false);
+    setPushModal(null);
+    setPushedIds(prev => new Set([...prev, faq.id]));
   };
 
   const filtered = faqs.filter(f => {
@@ -243,6 +289,19 @@ export default function AdminKnowledgeBase() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    {/* Push to script */}
+                    {pushedIds.has(faq.id) ? (
+                      <span className="text-[10px] bg-green-50 text-green-600 px-2 py-1 rounded-lg font-bold">✅ Đã thêm</span>
+                    ) : (
+                      <button
+                        onClick={() => openPushModal(faq)}
+                        className="flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors border border-amber-200"
+                        title="Thêm vào Kho Kịch Bản Chốt Sale"
+                      >
+                        <BookMarked size={12} />
+                        <span className="hidden sm:inline">→ Kịch bản</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => openEdit(faq)}
                       className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
@@ -259,7 +318,7 @@ export default function AdminKnowledgeBase() {
                       <button
                         onClick={() => setConfirmDelete(faq.id)}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Xoá"
+                        title="Xoá (chỉ xoá khỏi Kho Câu Hỏi)"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -293,6 +352,85 @@ export default function AdminKnowledgeBase() {
         </div>
 
       </div>
+
+      {/* ── Push to Script Modal ── */}
+      {pushModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div className="flex items-center gap-2">
+                <BookMarked size={18} className="text-amber-600" />
+                <h3 className="font-bold text-dark">Thêm vào Kho Kịch Bản Chốt Sale</h3>
+              </div>
+              <button onClick={() => setPushModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Preview Q&A */}
+              <div className="bg-gray-50 rounded-xl p-3 text-sm">
+                <p className="font-semibold text-dark mb-1">❓ {pushModal.faq.question}</p>
+                <p className="text-gray-500 text-xs line-clamp-3">💬 {pushModal.faq.answer}</p>
+              </div>
+
+              {/* Phase picker */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2">
+                  📂 Chọn giai đoạn trong Kho Kịch Bản
+                  <span className="ml-1 text-gray-400 font-normal">(tự động theo nhóm câu hỏi)</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SCRIPT_PHASES.map(p => (
+                    <button
+                      key={p.key}
+                      onClick={() => setPushModal(m => m ? { ...m, phase: p.key } : m)}
+                      className={`text-left px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                        pushModal.phase === p.key
+                          ? 'bg-amber-50 border-amber-400 text-amber-800'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>{p.emoji}</span> <span>{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 bg-blue-50 rounded-xl px-3 py-2.5 text-[11px] text-blue-700">
+                <span className="shrink-0 mt-0.5">ℹ️</span>
+                <span>
+                  Câu hỏi sẽ được thêm vào giai đoạn <b>{SCRIPT_PHASES.find(p => p.key === pushModal.phase)?.label}</b> trong Kho Kịch Bản.
+                  Xóa trong Kho Câu Hỏi <b>không ảnh hưởng</b> đến kịch bản đã thêm.
+                </span>
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button
+                onClick={() => setPushModal(null)}
+                className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+              >
+                Huỷ
+              </button>
+              <button
+                onClick={confirmPush}
+                disabled={pushSaving}
+                className="flex-1 bg-amber-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {pushSaving ? 'Đang thêm...' : (
+                  <><BookMarked size={15} /> Xác nhận thêm vào Kịch Bản</>
+                )}
+              </button>
+            </div>
+            <div className="px-5 pb-4 text-center">
+              <Link
+                to="/admin/scripts"
+                className="text-xs text-amber-600 hover:underline flex items-center justify-center gap-1"
+                target="_blank"
+              >
+                Xem Kho Kịch Bản <ChevronRight size={12} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Add/Edit Modal ── */}
       {showModal && (
