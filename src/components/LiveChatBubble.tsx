@@ -68,6 +68,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const [messages, setMessages]     = useState<Msg[]>([]);
   const [input, setInput]           = useState('');
   const [sending, setSending]       = useState(false);
+  const [isThinking, setIsThinking] = useState(false); // bot đang gõ...
   const [hasNew, setHasNew]         = useState(false);
   const [showForm, setShowForm]     = useState(false);
   const [formName, setFormName]     = useState('');
@@ -160,12 +161,14 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   // Tầng 1: tìm trong customer_faqs (Q&A thực tế) + sale_scripts, dùng từ điển đồng nghĩa
   const callBotTier1 = async (customerMessage: string, sid: string) => {
     try {
+      setIsThinking(true);
       const [{ data: faqData }, { data: scriptData }] = await Promise.all([
         supabase.from('customer_faqs').select('id, question, answer, tags, usage_count').eq('is_approved', true),
         supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
       ]);
 
-      await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
+      const thinkingDelay1 = settings?.chatBotThinkingDelay ?? 1200;
+      await new Promise(r => setTimeout(r, thinkingDelay1 + Math.random() * 500));
 
       // Mở rộng từ khóa bằng từ điển đồng nghĩa
       const words = expandQuery(customerMessage);
@@ -216,12 +219,15 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
     } catch (e) {
       console.error('Bot Tầng 1 error:', e);
+    } finally {
+      setIsThinking(false);
     }
   };
 
   // Tầng 2: Gemini/ChatGPT + kịch bản làm context
   const callBotTier2 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
     try {
+      setIsThinking(true);
       const [{ data: sess }, { data: scriptData }] = await Promise.all([
         supabase.from('chat_sessions').select('stage').eq('id', sid).maybeSingle(),
         supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
@@ -251,6 +257,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
     } catch (e) {
       console.error('Bot Tầng 2 error:', e);
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -405,6 +413,25 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
                 {formSaving ? 'Đang lưu...' : 'Gửi thông tin'}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Typing indicator — nhân viên đang gõ */}
+        {isThinking && (
+          <div className="flex justify-start items-end gap-1.5">
+            <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+              {staffInitials}
+            </div>
+            <div className="bg-white rounded-2xl rounded-bl-sm border border-gray-100 px-4 py-3 shadow-sm flex items-center gap-1">
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  className="w-2 h-2 bg-primary/50 rounded-full animate-bounce"
+                  style={{ animationDelay: `${i * 0.18}s`, animationDuration: '0.8s' }}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] text-gray-400 pb-1">{staffName || 'H2O Studio'} đang gõ...</span>
           </div>
         )}
 
