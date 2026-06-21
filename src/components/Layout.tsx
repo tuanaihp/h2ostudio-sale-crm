@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, MessageCircle, Share2, LogIn, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2, Bell } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Share2, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2, Bell } from 'lucide-react';
 import { APP_CONFIG } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { getDisplayImageUrl } from '../utils/image';
@@ -31,6 +31,20 @@ export const Layout: React.FC<LayoutProps> = ({
   const location = useLocation();
   const { user, login, handleLogout, isAuthReady, isAdmin, isSuperAdmin, favorites, settings, unreadCount } = useApp();
 
+  // Cổng bí mật: bấm logo 5 lần nhanh → trang đăng nhập admin
+  const logoTapCount = useRef(0);
+  const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleLogoTap = (e: React.MouseEvent) => {
+    logoTapCount.current += 1;
+    if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
+    logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 2000);
+    if (logoTapCount.current >= 5) {
+      e.preventDefault();
+      logoTapCount.current = 0;
+      navigate('/admin/login');
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-white">
       {/* Header */}
@@ -46,9 +60,10 @@ export const Layout: React.FC<LayoutProps> = ({
                 <ChevronLeft size={24} />
               </button>
             )}
-            <Link 
-              to="/" 
-              className="text-base xs:text-lg sm:text-2xl font-serif font-bold tracking-tighter bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent whitespace-nowrap"
+            <Link
+              to="/"
+              onClick={handleLogoTap}
+              className="text-base xs:text-lg sm:text-2xl font-serif font-bold tracking-tighter bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent whitespace-nowrap select-none"
             >
               {APP_CONFIG.brandName}
             </Link>
@@ -129,38 +144,23 @@ export const Layout: React.FC<LayoutProps> = ({
                         </Link>
                       </div>
                     )}
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleLogout();
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all border border-red-100"
-                      title="Đăng xuất"
-                    >
-                      <LogOut size={16} />
-                      <span>Đăng xuất</span>
-                    </button>
-                    {!isAdmin && (
-                      <Link 
-                        to="/admin/login"
-                        className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-light-gray text-dark/60 rounded-full text-[10px] font-bold hover:bg-light-gray/80 transition-all ml-1"
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleLogout();
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all border border-red-100"
+                        title="Đăng xuất"
                       >
-                        <LogIn size={14} />
-                        <span>Admin?</span>
-                      </Link>
+                        <LogOut size={16} />
+                        <span>Đăng xuất</span>
+                      </button>
                     )}
                   </>
-                ) : (
-                  <Link 
-                    to="/admin/login"
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full text-sm font-bold hover:bg-primary/90 transition-all shadow-sm active:scale-95"
-                  >
-                    <LogIn size={16} />
-                    <span>Đăng nhập</span>
-                  </Link>
-                )}
+                ) : null}
               </div>
             )}
           </div>
