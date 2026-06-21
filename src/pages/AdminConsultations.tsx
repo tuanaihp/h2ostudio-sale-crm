@@ -1212,13 +1212,13 @@ const AdminConsultations: React.FC = () => {
         const from = (sess as any)?.name || ((sess as any)?.phone?.startsWith('anon_') ? 'Khách ẩn danh' : (sess as any)?.phone) || 'Khách';
         setChatNotif({ text: msg.content, from });
         setTimeout(() => setChatNotif(null), 5000);
-        if (document.hidden && Notification.permission === 'granted') {
+        if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification(`${from} nhắn tin`, { body: msg.content, icon: '/favicon.ico' });
         }
       })
       .subscribe();
 
-    if (Notification.permission === 'default') Notification.requestPermission();
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
 
     return () => { sessCh.unsubscribe(); msgCh.unsubscribe(); };
   }, [isAdmin]);
