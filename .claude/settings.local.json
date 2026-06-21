@@ -8,7 +8,14 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git commit -m 'feat: 3-tier image upload fallback chain \\(R2 → Drive → Supabase\\) *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(npx vercel *)",
+      "Bash(curl -s -X POST https://h2ostudio-sale-crm.vercel.app/api/telegram-notify -H 'Content-Type: application/json' -d '{\"name\":\"Test H2O\",\"phone\":\"0899252412\",\"source\":\"test\",\"albums\":[],\"botToken\":\"8615173220:AAGPdDtdMFwd-sGqkSmPnMLk5IzKzVf06k4\",\"chatId\":\"8826731182\"}')",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(node -e ' *)",
+      "Bash(npx tsc *)",
+      "PowerShell($f = \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--CLAUDECODE-DUANPROJECT-H2OSALEALBUM-H2ostudio-sale-album-main\\\\fd78f65f-b92c-4955-a94f-9cc47dcf2f24\\\\tasks\\\\b9x9t4l4i.output\"; \\(Get-Item $f\\).Length; Get-Content $f -Tail 20)"
     ]
   }
 }

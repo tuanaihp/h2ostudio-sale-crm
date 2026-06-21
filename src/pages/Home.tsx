@@ -5,7 +5,7 @@ import { QuickViewModal } from '../components/QuickViewModal';
 import { AddPlaceholder } from '../components/AddPlaceholder';
 import { ImageEditorModal } from '../components/ImageEditorModal';
 import { ConsultationModal } from '../components/ConsultationModal';
-import { PromoMarquee } from '../components/PromoMarquee';
+import { PromoGrid } from '../components/PromoGrid';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'motion/react';
 import { EditorState, Style } from '../types';
@@ -174,7 +174,10 @@ const Home: React.FC = () => {
           onClose={() => setQuickViewStyle(null)}
         />
 
-        <PromoMarquee />
+        <PromoGrid onConsult={() => {
+            setConsultInitialMessage('Chào H2O STUDIO, mình muốn tư vấn về dịch vụ chụp ảnh cưới. Liên hệ lại giúp mình nhé!');
+            setIsConsultModalOpen(true);
+          }} />
       </div>
     </Layout>
   );

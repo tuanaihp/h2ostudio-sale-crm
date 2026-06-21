@@ -5,7 +5,7 @@ import { Navigate } from 'react-router-dom';
 import { Save, Upload, Image as ImageIcon, Trash2, Settings as SettingsIcon, MessageCircle, Plus, Gift, Bell, LogOut, Users, Link as LinkIcon, CheckCircle, AlertCircle, X, Cpu, Database, Globe, Megaphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChatMessageConfig, BannerItem } from '../types';
-import { BANNER_DEFAULT_ITEMS } from '../components/PromoMarquee';
+import { DEFAULT_SERVICE_CARDS } from '../components/PromoGrid';
 import { uploadImageToStorage, deleteImageFromStorage, getDisplayImageUrl } from '../utils/image';
 import { ImageCropperModal } from '../components/ImageCropperModal';
 
@@ -161,9 +161,8 @@ const AdminSettings: React.FC = () => {
   const [chatAutoOpenEnabled, setChatAutoOpenEnabled] = useState(settings.chatAutoOpenEnabled !== false);
   const [chatAutoOpenDelay, setChatAutoOpenDelay] = useState(settings.chatAutoOpenDelay ?? 20);
 
-  // Banner quảng cáo
-  const [bannerItems, setBannerItems] = useState<BannerItem[]>(settings.bannerItems ?? BANNER_DEFAULT_ITEMS);
-  const [bannerSpeed, setBannerSpeed] = useState(settings.bannerSpeed ?? 40);
+  // Banner / service cards
+  const [bannerItems, setBannerItems] = useState<BannerItem[]>(settings.bannerItems ?? DEFAULT_SERVICE_CARDS);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -347,7 +346,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { luckyWheelEnabled, luckyWheelGifts, luckyWheelCTA, luckyWheelSubCTA, luckyWheelNotificationText, luckyWheelNotificationEnabled };
       }
       else if (section === 'banner') {
-        partialSettings = { bannerItems, bannerSpeed };
+        partialSettings = { bannerItems };
       }
       else if (section === 'partners') {
         let finalPartner1Image = partnerBrand1.image;
@@ -1419,7 +1418,7 @@ const AdminSettings: React.FC = () => {
           <div className="space-y-6 flex flex-col h-full">
             <div className="flex items-center justify-between border-b border-light-gray pb-4">
               <h2 className="text-xl font-bold text-dark flex items-center gap-2">
-                <Megaphone size={24} className="text-secondary" /> Banner Quảng Cáo
+                <Megaphone size={24} className="text-secondary" /> Thẻ Dịch Vụ (PromoGrid)
               </h2>
               <button onClick={() => handleSaveSection('banner')} disabled={isSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition disabled:opacity-50">
@@ -1427,39 +1426,22 @@ const AdminSettings: React.FC = () => {
               </button>
             </div>
 
-            {/* Speed */}
-            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
-              <p className="text-sm font-bold text-amber-700 mb-3">⚡ Tốc độ cuộn</p>
-              <label className="block text-xs font-bold text-dark mb-1">
-                Thời gian 1 vòng: <span className="text-amber-600">{bannerSpeed}s</span>
-                <span className="text-dark/40 font-normal ml-1">({bannerSpeed <= 20 ? 'Nhanh' : bannerSpeed <= 50 ? 'Vừa' : 'Chậm'})</span>
-              </label>
-              <input type="range" min={10} max={120} step={5} value={bannerSpeed}
-                onChange={e => setBannerSpeed(Number(e.target.value))}
-                className="w-full accent-amber-500" />
-              <div className="flex justify-between text-[10px] text-dark/40 mt-0.5">
-                <span>Nhanh (10s)</span><span>Chậm (120s)</span>
-              </div>
-              <p className="text-[11px] text-amber-600/70 mt-2">
-                Khi hover chuột vào banner, cuộn tự dừng để khách đọc. Khuyến nghị: 35–50s.
-              </p>
-            </div>
-
-            {/* Live promo note */}
-            <div className="p-3 bg-green-50 rounded-xl border border-green-100 text-[11px] text-green-700">
-              🎉 <b>Khuyến mãi đang chạy</b> (bật <code>Hiển thị website</code> trong AdminPromotions) sẽ tự động xuất hiện đầu banner — không cần cấu hình thêm.
+            {/* Note */}
+            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-[11px] text-blue-700 space-y-1">
+              <p>📐 <b>Layout PromoGrid:</b> Bảng trái hiển thị khuyến mãi đang chạy từ AdminPromotions. Bảng phải hiển thị 6 thẻ dịch vụ bên dưới.</p>
+              <p>🎉 <b>Khuyến mãi</b> bật <code>Hiển thị website</code> sẽ tự động xuất hiện ở bảng trái — không cần cấu hình thêm.</p>
             </div>
 
             {/* Static items */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-dark">Các thẻ tĩnh ({bannerItems.length}/8)</p>
-                {bannerItems.length < 8 && (
+                <p className="text-sm font-bold text-dark">Thẻ dịch vụ ({bannerItems.length}/6)</p>
+                {bannerItems.length < 6 && (
                   <button
                     onClick={() => setBannerItems(prev => [...prev, {
                       id: `item-${Date.now()}`, emoji: '✨', tag: 'Dịch vụ',
-                      title: 'Tiêu đề mới', description: 'Mô tả ngắn',
-                      link: '', color: 'from-secondary to-primary', enabled: true,
+                      title: 'Tên dịch vụ mới', description: '',
+                      link: '/', color: 'from-secondary to-primary', enabled: true,
                     }])}
                     className="flex items-center gap-1 text-xs font-bold text-primary bg-primary/5 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition">
                     <Plus size={13} /> Thêm thẻ
@@ -1515,14 +1497,7 @@ const AdminSettings: React.FC = () => {
                       className="w-full text-sm font-bold border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
                   </div>
 
-                  {/* Row 4: description */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-dark/50 mb-1">Mô tả ngắn</label>
-                    <textarea value={item.description} onChange={e => updateItem(idx, 'description', e.target.value)}
-                      rows={2} className="w-full text-xs border border-gray-100 rounded-xl px-3 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
-
-                  {/* Row 5: link */}
+                  {/* Row 4: link */}
                   <div>
                     <label className="block text-[10px] font-bold text-dark/50 mb-1">Link (để trống nếu không cần)</label>
                     <input value={item.link ?? ''} onChange={e => updateItem(idx, 'link', e.target.value)}
