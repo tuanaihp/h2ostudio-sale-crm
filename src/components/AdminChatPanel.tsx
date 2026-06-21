@@ -678,11 +678,15 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
                     value={saveFaqForm.category}
                     onChange={e => setSaveFaqForm(f => ({ ...f, category: e.target.value }))}
                   >
-                    <option value="gia">💰 Giá & Gói</option>
-                    <option value="lich">📅 Lịch & Đặt ngày</option>
-                    <option value="album">📷 Album & Ảnh</option>
-                    <option value="quy_trinh">📋 Quy trình</option>
-                    <option value="khuyen_mai">🎉 Khuyến mãi</option>
+                    <option value="opening">💌 Mở đầu</option>
+                    <option value="discovery">📌 Khơi gợi nhu cầu</option>
+                    <option value="value_prop">💎 Giá trị – USP</option>
+                    <option value="offer">🔥 Ưu đãi đặc biệt</option>
+                    <option value="fomo">⏳ Tạo FOMO</option>
+                    <option value="closing">💳 Chốt cọc</option>
+                    <option value="pre_shoot">🌈 Trước ngày chụp</option>
+                    <option value="followup">🔔 Follow-up</option>
+                    <option value="faq">❓ Q&A – Từ chối</option>
                     <option value="khac">💬 Khác</option>
                   </select>
                 </div>

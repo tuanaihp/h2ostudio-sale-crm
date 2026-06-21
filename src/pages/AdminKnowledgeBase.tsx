@@ -5,21 +5,29 @@ import { supabase } from '../supabase';
 import type { CustomerFaq, DbCustomerFaqRow } from '../types';
 
 const CATEGORIES = [
-  { value: 'all',         label: 'Tất cả' },
-  { value: 'gia',         label: '💰 Giá & Gói' },
-  { value: 'lich',        label: '📅 Lịch & Đặt ngày' },
-  { value: 'album',       label: '📷 Album & Ảnh' },
-  { value: 'quy_trinh',  label: '📋 Quy trình' },
-  { value: 'khuyen_mai', label: '🎉 Khuyến mãi' },
-  { value: 'khac',        label: '💬 Khác' },
+  { value: 'all',        label: 'Tất cả' },
+  { value: 'opening',    label: '💌 Mở đầu' },
+  { value: 'discovery',  label: '📌 Khơi gợi nhu cầu' },
+  { value: 'value_prop', label: '💎 Giá trị – USP' },
+  { value: 'offer',      label: '🔥 Ưu đãi đặc biệt' },
+  { value: 'fomo',       label: '⏳ Tạo FOMO' },
+  { value: 'closing',    label: '💳 Chốt cọc' },
+  { value: 'pre_shoot',  label: '🌈 Trước ngày chụp' },
+  { value: 'followup',   label: '🔔 Follow-up' },
+  { value: 'faq',        label: '❓ Q&A – Từ chối' },
+  { value: 'khac',       label: '💬 Khác' },
 ];
 
 const CAT_COLORS: Record<string, string> = {
-  gia:        'bg-green-100 text-green-700',
-  lich:       'bg-blue-100 text-blue-700',
-  album:      'bg-purple-100 text-purple-700',
-  quy_trinh:  'bg-orange-100 text-orange-700',
-  khuyen_mai: 'bg-pink-100 text-pink-700',
+  opening:    'bg-pink-100 text-pink-700',
+  discovery:  'bg-blue-100 text-blue-700',
+  value_prop: 'bg-purple-100 text-purple-700',
+  offer:      'bg-orange-100 text-orange-700',
+  fomo:       'bg-red-100 text-red-700',
+  closing:    'bg-green-100 text-green-700',
+  pre_shoot:  'bg-teal-100 text-teal-700',
+  followup:   'bg-yellow-100 text-yellow-700',
+  faq:        'bg-indigo-100 text-indigo-700',
   khac:       'bg-gray-100 text-gray-600',
 };
 
