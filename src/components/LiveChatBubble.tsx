@@ -311,9 +311,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       exit={{ opacity: 0, scale: 0.92, y: 16 }}
       transition={{ type: 'spring', damping: 28, stiffness: 320 }}
       className="fixed z-50 bg-white flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-gray-100
-                 bottom-24 right-3 w-[calc(100vw-24px)] max-w-[320px] max-h-[min(420px,62vh)]
+                 right-3 w-[calc(100vw-24px)] max-w-[320px] max-h-[min(420px,62vh)]
                  sm:bottom-8 sm:right-8 sm:w-[340px] sm:max-h-none sm:h-[500px]"
-      style={{ transformOrigin: 'bottom right' }}
+      style={{ transformOrigin: 'bottom right', bottom: 'max(96px, calc(env(safe-area-inset-bottom) + 92px))' }}
     >
 
       {/* Header — gradient đồng bộ nút CHAT */}
@@ -424,7 +424,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   // Standalone mode: có nút bubble riêng
   if (!isControlled) {
     return (
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+      <div className="fixed right-4 z-50 flex flex-col items-end sm:right-6"
+           style={{ bottom: 'max(20px, calc(env(safe-area-inset-bottom) + 16px))' }}>
         {!open && (
           <motion.button
             initial={{ scale: 0, opacity: 0 }}
