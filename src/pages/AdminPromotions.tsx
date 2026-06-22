@@ -166,6 +166,8 @@ export default function AdminPromotions() {
   const [imageGenModel, setImageGenModel] = useState<'dall-e-3' | 'dall-e-3-hd' | 'dall-e-2'>('dall-e-3');
   const [imagePreview, setImagePreview] = useState('');
   const [imageGenError, setImageGenError] = useState('');
+  const [imagePosX, setImagePosX] = useState(50);
+  const [imagePosY, setImagePosY] = useState(50);
 
   // ── Customers tab state ─────────────────────────────────────────────────────
   const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
@@ -204,6 +206,8 @@ export default function AdminPromotions() {
     setForm({ ...BLANK_FORM, startDate: d, endDate: d });
     setImagePreview('');
     setImageGenError('');
+    setImagePosX(50);
+    setImagePosY(50);
     setShowModal(true);
   };
 
@@ -218,6 +222,8 @@ export default function AdminPromotions() {
     });
     setImagePreview(p.imageUrl || '');
     setImageGenError('');
+    setImagePosX(50);
+    setImagePosY(50);
     setShowModal(true);
   };
 
@@ -296,6 +302,25 @@ export default function AdminPromotions() {
     setImageGenLoading(false);
   };
 
+  const cropImageToPosition = () => {
+    if (!imagePreview || !imagePreview.startsWith('data:')) return;
+    const img = new Image();
+    img.onload = () => {
+      const minDim = Math.min(img.width, img.height);
+      const sourceX = Math.round((img.width  - minDim) * (imagePosX / 100));
+      const sourceY = Math.round((img.height - minDim) * (imagePosY / 100));
+      const canvas = document.createElement('canvas');
+      canvas.width  = minDim;
+      canvas.height = minDim;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, sourceX, sourceY, minDim, minDim, 0, 0, minDim, minDim);
+      setImagePreview(canvas.toDataURL('image/jpeg', 0.92));
+      setImagePosX(50);
+      setImagePosY(50);
+    };
+    img.src = imagePreview;
+  };
+
   const deletePromo = async (id: string) => {
     await supabase.from('promotions').delete().eq('id', id);
     setPromos(prev => prev.filter(p => p.id !== id));
@@ -338,7 +363,12 @@ export default function AdminPromotions() {
       const res = await fetch('/api/ai-promo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: aiCommand, type: 'bulk' }),
+        body: JSON.stringify({
+          command: aiCommand, type: 'bulk',
+          apiKey: settings?.integrationChatApiKey,
+          apiUrl: settings?.integrationChatApiUrl,
+          modelName: settings?.integrationChatApiModelName,
+        }),
       });
       const data = await res.json();
       if (data.result && Array.isArray(data.result)) {
@@ -388,6 +418,9 @@ export default function AdminPromotions() {
         body: JSON.stringify({
           type: 'content',
           context: `${form.title} (${form.startDate} đến ${form.endDate})`,
+          apiKey: settings?.integrationChatApiKey,
+          apiUrl: settings?.integrationChatApiUrl,
+          modelName: settings?.integrationChatApiModelName,
         }),
       });
       const data = await res.json();
@@ -413,6 +446,9 @@ export default function AdminPromotions() {
         body: JSON.stringify({
           type: 'content',
           context: `${p.title} (${p.startDate} đến ${p.endDate})`,
+          apiKey: settings?.integrationChatApiKey,
+          apiUrl: settings?.integrationChatApiUrl,
+          modelName: settings?.integrationChatApiModelName,
         }),
       });
       const data = await res.json();
@@ -1112,35 +1148,64 @@ export default function AdminPromotions() {
 
                 {/* Preview area */}
                 {(imagePreview || form.imageUrl) ? (
-                  <div className="relative group rounded-xl overflow-hidden">
-                    <img
-                      src={imagePreview || form.imageUrl}
-                      alt="AI generated banner"
-                      className="w-full h-36 object-cover rounded-xl"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      {imagePreview.startsWith('data:') && (
+                  <div className="space-y-2">
+                    {/* Image with position control */}
+                    <div className="relative group rounded-xl overflow-hidden">
+                      <img
+                        src={imagePreview || form.imageUrl}
+                        alt="AI generated banner"
+                        className="w-full h-36 object-cover rounded-xl transition-none"
+                        style={{ objectPosition: `${imagePosX}% ${imagePosY}%` }}
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        {imagePreview.startsWith('data:') && (
+                          <button
+                            onClick={useGeneratedImage}
+                            disabled={imageGenLoading}
+                            className="flex items-center gap-1.5 bg-white text-violet-700 text-xs font-bold px-3 py-2 rounded-xl hover:bg-violet-50 transition-colors"
+                          >
+                            {imageGenLoading ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                            Dùng ảnh này
+                          </button>
+                        )}
                         <button
-                          onClick={useGeneratedImage}
-                          disabled={imageGenLoading}
-                          className="flex items-center gap-1.5 bg-white text-violet-700 text-xs font-bold px-3 py-2 rounded-xl hover:bg-violet-50 transition-colors"
+                          onClick={() => { setImagePreview(''); setForm(f => ({ ...f, imageUrl: '' })); setImagePosX(50); setImagePosY(50); }}
+                          className="flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-red-700 transition-colors"
                         >
-                          {imageGenLoading ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                          Dùng ảnh này
+                          <X size={12} /> Xóa
+                        </button>
+                      </div>
+                      {imagePreview.startsWith('data:') && (
+                        <div className="absolute bottom-0 inset-x-0 bg-amber-500/90 text-white text-[10px] font-bold text-center py-1.5">
+                          ⚠ Chưa lưu — Hover vào ảnh và click "Dùng ảnh này" để upload
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Position sliders */}
+                    <div className="bg-violet-50/60 rounded-xl px-3 py-2 space-y-1.5 border border-violet-100">
+                      <p className="text-[9px] font-bold text-violet-500 uppercase tracking-wider">Chỉnh vị trí ảnh</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-violet-500 w-20 shrink-0">← Trái/Phải →</span>
+                        <input type="range" min={0} max={100} value={imagePosX}
+                          onChange={e => setImagePosX(Number(e.target.value))}
+                          className="flex-1 h-1.5 accent-violet-500 cursor-pointer" />
+                        <span className="text-[9px] font-mono text-violet-400 w-7 text-right">{imagePosX}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-violet-500 w-20 shrink-0">↑ Trên/Dưới ↓</span>
+                        <input type="range" min={0} max={100} value={imagePosY}
+                          onChange={e => setImagePosY(Number(e.target.value))}
+                          className="flex-1 h-1.5 accent-violet-500 cursor-pointer" />
+                        <span className="text-[9px] font-mono text-violet-400 w-7 text-right">{imagePosY}%</span>
+                      </div>
+                      {imagePreview?.startsWith('data:') && (imagePosX !== 50 || imagePosY !== 50) && (
+                        <button onClick={cropImageToPosition}
+                          className="w-full text-[10px] py-1 mt-0.5 bg-violet-100 border border-violet-200 text-violet-700 rounded-lg hover:bg-violet-200 font-bold transition-colors">
+                          ✂ Cắt & chốt vùng này
                         </button>
                       )}
-                      <button
-                        onClick={() => { setImagePreview(''); setForm(f => ({ ...f, imageUrl: '' })); }}
-                        className="flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-red-700 transition-colors"
-                      >
-                        <X size={12} /> Xóa
-                      </button>
                     </div>
-                    {imagePreview.startsWith('data:') && (
-                      <div className="absolute bottom-0 inset-x-0 bg-amber-500/90 text-white text-[10px] font-bold text-center py-1.5">
-                        ⚠ Chưa lưu — Hover vào ảnh và click "Dùng ảnh này" để upload
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="border-2 border-dashed border-violet-200 rounded-xl h-24 flex items-center justify-center text-violet-400">
@@ -1184,6 +1249,8 @@ export default function AdminPromotions() {
                           return;
                         }
                         setImageGenError('');
+                        setImagePosX(50);
+                        setImagePosY(50);
                         const reader = new FileReader();
                         reader.onloadend = () => setImagePreview(reader.result as string);
                         reader.readAsDataURL(file);
