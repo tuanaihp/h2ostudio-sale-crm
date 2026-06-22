@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Edit3, Trash2, Save, X,
   Calendar, List, TrendingUp, Eye, EyeOff, Megaphone,
   ToggleLeft, ToggleRight, Users, ArrowLeft, Check, AlertCircle,
-  Sparkles, UserCheck, Phone, MessageCircle, Loader2, Image as ImageIcon, Palette,
+  Sparkles, UserCheck, Phone, MessageCircle, Loader2, Image as ImageIcon, Palette, Upload,
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, getDay,
@@ -1158,17 +1158,42 @@ export default function AdminPromotions() {
                   </div>
                 )}
 
-                <button
-                  onClick={callAiImage}
-                  disabled={!form.title.trim() || imageGenLoading}
-                  className="w-full flex items-center justify-center gap-2 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                >
-                  {imageGenLoading
-                    ? <><Loader2 size={13} className="animate-spin" /> AI đang vẽ ảnh...</>
-                    : <><Sparkles size={13} /> {imagePreview || form.imageUrl ? 'Tạo lại ảnh mới' : 'Tạo ảnh banner bằng AI'}</>}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={callAiImage}
+                    disabled={!form.title.trim() || imageGenLoading}
+                    className="flex items-center justify-center gap-1.5 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                  >
+                    {imageGenLoading
+                      ? <><Loader2 size={12} className="animate-spin" /> Đang vẽ...</>
+                      : <><Sparkles size={12} /> {imagePreview || form.imageUrl ? 'Tạo lại' : 'Tạo bằng AI'}</>}
+                  </button>
+
+                  {/* Upload từ máy */}
+                  <label className="flex items-center justify-center gap-1.5 py-2 bg-white border-2 border-violet-200 text-violet-700 text-xs font-bold rounded-xl hover:bg-violet-50 cursor-pointer transition-colors">
+                    <Upload size={12} /> Tải ảnh lên
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 5 * 1024 * 1024) {
+                          setImageGenError('Ảnh quá lớn (tối đa 5MB)');
+                          return;
+                        }
+                        setImageGenError('');
+                        const reader = new FileReader();
+                        reader.onloadend = () => setImagePreview(reader.result as string);
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
                 <p className="text-[10px] text-violet-500 text-center">
-                  Cần API Key OpenAI (cấu hình tại Settings → Cổng kết nối)
+                  AI: cần API Key OpenAI (Settings → Cổng kết nối) · Tải lên: tối đa 5MB
                 </p>
               </div>
 
