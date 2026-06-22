@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { Save, Upload, Image as ImageIcon, Trash2, Settings as SettingsIcon, Mes
 import { motion, AnimatePresence } from 'motion/react';
 import { ChatMessageConfig, BannerItem, PromoGridItem } from '../types';
 import { DEFAULT_SERVICE_CARDS } from '../components/PromoGrid';
+import { supabase } from '../supabase';
 import { uploadImageToStorage, deleteImageFromStorage, getDisplayImageUrl } from '../utils/image';
 import { ImageCropperModal } from '../components/ImageCropperModal';
 
@@ -166,6 +167,24 @@ const AdminSettings: React.FC = () => {
 
   // PromoGrid Two Panel — bảng trái
   const [promoGridItems, setPromoGridItems] = useState<PromoGridItem[]>(settings.promoGridItems ?? []);
+
+  // Danh sách KM cho dropdown (load khi vào tab banner)
+  const [availablePromos, setAvailablePromos] = useState<{id: string; title: string; emoji: string; imageUrl: string; color: string; bgColor: string}[]>([]);
+  useEffect(() => {
+    if (activeTab !== 'banner') return;
+    supabase
+      .from('promotions')
+      .select('id,title,emoji,image_url,color,bg_color')
+      .eq('enabled', true)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        if (data) setAvailablePromos(data.map((p: any) => ({
+          id: p.id, title: p.title, emoji: p.emoji || '🎁',
+          imageUrl: p.image_url || '', color: p.color || '#ff4d8c', bgColor: p.bg_color || '#d926a9',
+        })));
+      });
+  }, [activeTab]);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -1497,12 +1516,44 @@ const AdminSettings: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Tiêu đề (custom cho promotion/blog/custom, auto điền cho style) */}
+                    {/* Promotion picker — chọn chương trình cụ thể */}
+                    {isPromo && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">Chọn chương trình khuyến mãi</label>
+                        <select
+                          value={item.linkValue || 'all'}
+                          onChange={e => {
+                            const val = e.target.value;
+                            updatePGItem(idx, 'linkValue', val);
+                            if (val === 'all') {
+                              updatePGItem(idx, 'title', 'Xem tất cả khuyến mãi');
+                              updatePGItem(idx, 'imageUrl', '');
+                            } else {
+                              const p = availablePromos.find(x => x.id === val);
+                              if (p) {
+                                updatePGItem(idx, 'title', p.title);
+                                updatePGItem(idx, 'imageUrl', p.imageUrl);
+                              }
+                            }
+                          }}
+                          className="w-full text-sm border border-gray-100 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                          <option value="all">📋 Trang khuyến mãi tổng hợp</option>
+                          {availablePromos.map(p => (
+                            <option key={p.id} value={p.id}>{p.emoji} {p.title}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-dark/35 mt-1">Tiêu đề và ảnh tự động lấy từ chương trình đã chọn</p>
+                      </div>
+                    )}
+
+                    {/* Tiêu đề (custom cho blog/custom, auto cho style/promo) */}
                     {!isStyle && (
                       <div>
-                        <label className="block text-[10px] font-bold text-dark/50 mb-1">Tiêu đề hiển thị</label>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">
+                          Tiêu đề hiển thị {isPromo && <span className="text-primary/50">(tự điền từ KM, có thể sửa)</span>}
+                        </label>
                         <input value={item.title} onChange={e => updatePGItem(idx, 'title', e.target.value)}
-                          placeholder={isPromo ? 'VD: Xem ưu đãi tháng 6' : 'Tiêu đề bài viết / nội dung'}
+                          placeholder={isPromo ? 'Tiêu đề chương trình KM' : 'Tiêu đề bài viết / nội dung'}
                           className="w-full text-sm border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
                       </div>
                     )}
@@ -1510,10 +1561,15 @@ const AdminSettings: React.FC = () => {
                     {/* URL ảnh (không cần cho style) */}
                     {!isStyle && (
                       <div>
-                        <label className="block text-[10px] font-bold text-dark/50 mb-1">URL ảnh thumbnail</label>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">
+                          URL ảnh thumbnail {isPromo && <span className="text-primary/50">(tự điền từ KM)</span>}
+                        </label>
                         <input value={item.imageUrl} onChange={e => updatePGItem(idx, 'imageUrl', e.target.value)}
                           placeholder="https://... (ảnh vuông ~100×100 px)"
                           className="w-full text-xs border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                        {item.imageUrl && (
+                          <img src={item.imageUrl} alt="" className="mt-1.5 w-12 h-12 rounded-lg object-cover border border-gray-100" />
+                        )}
                       </div>
                     )}
 
