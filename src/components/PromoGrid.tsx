@@ -22,6 +22,16 @@ interface Props {
 export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
   const { styles } = useApp();
   const [promos, setPromos] = useState<ActivePromo[]>([]);
+  const [stylesReady, setStylesReady] = useState(false);
+
+  // Mark ready when styles arrive OR after 2.5s timeout (genuine empty)
+  useEffect(() => {
+    if (styles.length > 0) setStylesReady(true);
+  }, [styles]);
+  useEffect(() => {
+    const t = setTimeout(() => setStylesReady(true), 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -52,7 +62,19 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
 
         {/* List */}
         <div className="flex-1 px-3 py-3 space-y-1">
-          {topStyles.map((style, i) => (
+          {!stylesReady ? (
+            /* Skeleton */
+            [0,1,2].map(i => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-2xl animate-pulse">
+                <div className="w-5 h-3 bg-gray-100 rounded shrink-0" />
+                <div className="w-11 h-11 rounded-xl bg-gray-100 shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-gray-100 rounded w-3/4" />
+                  <div className="h-2 bg-gray-100 rounded w-1/2" />
+                </div>
+              </div>
+            ))
+          ) : topStyles.map((style, i) => (
             <a
               key={style.id}
               href={`/style/${style.slug}`}
@@ -86,7 +108,7 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
             </a>
           ))}
 
-          {topStyles.length === 0 && (
+          {stylesReady && topStyles.length === 0 && (
             <p className="text-sm text-dark/30 text-center py-6">Chưa có dữ liệu</p>
           )}
         </div>
