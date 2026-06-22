@@ -1426,26 +1426,19 @@ const AdminSettings: React.FC = () => {
 
       case 'banner': {
         const LINK_TYPES = [
-          { value: 'style',     label: '🖼️ Concept album' },
-          { value: 'promotion', label: '🎁 Khuyến mãi' },
-          { value: 'blog',      label: '📝 Blog / Báo' },
+          { value: 'style',     label: '🖼️ Concept album (trong webapp)' },
+          { value: 'promotion', label: '🎁 Trang khuyến mãi' },
+          { value: 'blog',      label: '📝 Bài viết / Blog (link ngoài)' },
           { value: 'custom',    label: '🔗 Link tùy chỉnh' },
         ];
         const activeStyles = styles.filter(s => !s.deleted);
         const updatePGItem = (idx: number, field: keyof PromoGridItem, val: any) =>
           setPromoGridItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
-        const addPGItemAt = (insertIdx: number) => {
-          const newItem: PromoGridItem = {
-            id: `pg-${Date.now()}`, title: '', imageUrl: '',
-            linkType: 'style', linkValue: activeStyles[0]?.slug ?? '',
-            badge: '', enabled: true,
-          };
-          setPromoGridItems(prev => {
-            const copy = [...prev];
-            copy.splice(insertIdx, 0, newItem);
-            return copy.slice(0, 3);
-          });
-        };
+        const addPGItem = () => setPromoGridItems(prev => [...prev, {
+          id: `pg-${Date.now()}`, title: '', imageUrl: '',
+          linkType: 'style', linkValue: activeStyles[0]?.slug ?? '',
+          badge: '', enabled: true,
+        }]);
 
         return (
           <div className="space-y-4 flex flex-col h-full">
@@ -1462,171 +1455,167 @@ const AdminSettings: React.FC = () => {
 
             {/* Info */}
             <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-[11px] text-blue-700 space-y-0.5">
-              <p>📐 <b>Bảng trái</b> hiển thị tối đa 3 thẻ. <b>Bảng phải</b> (Khuyến mãi) tự động từ AdminPromotions.</p>
+              <p>📐 <b>Bảng trái</b> hiển thị danh sách thẻ bên dưới (vô hạn). <b>Bảng phải</b> (Khuyến mãi) tự động từ AdminPromotions.</p>
               <p>💡 Nếu không có thẻ nào bật, webapp tự hiển thị top concept được yêu thích nhất.</p>
             </div>
 
-            {/* ─── Kanban 3 cột ─── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[0, 1, 2].map(slotIdx => {
-                const item = promoGridItems[slotIdx];
-
-                /* ── Ô trống ── */
-                if (!item) {
-                  return (
-                    <div key={`empty-${slotIdx}`}
-                      className="rounded-2xl border-2 border-dashed border-gray-100 flex flex-col items-center justify-center gap-2 py-8 px-3 min-h-[180px]">
-                      <p className="text-[10px] font-black text-dark/25 uppercase tracking-widest">Thẻ {slotIdx + 1}</p>
-                      <p className="text-[10px] text-dark/30 text-center">Chưa cấu hình</p>
-                      <button onClick={() => addPGItemAt(slotIdx)}
-                        className="flex items-center gap-1 text-[11px] font-bold text-primary/60 hover:text-primary px-3 py-1.5 border border-primary/20 hover:border-primary/40 rounded-xl transition">
-                        <Plus size={12} /> Thêm thẻ
-                      </button>
-                    </div>
-                  );
-                }
-
-                /* ── Ô có thẻ ── */
+            {/* ─── Danh sách thẻ — vô hạn ─── */}
+            <div className="space-y-3">
+              {promoGridItems.map((item, idx) => {
                 const isStyle = item.linkType === 'style';
                 const isPromo = item.linkType === 'promotion';
                 return (
                   <div key={item.id}
-                    className={`rounded-2xl border p-3 space-y-2.5 flex flex-col transition-opacity ${item.enabled ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+                    className={`rounded-2xl border transition-opacity ${item.enabled ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
 
-                    {/* Header: số thẻ + toggle + xóa */}
-                    <div className="flex items-center gap-1.5 pb-1.5 border-b border-gray-50">
-                      <span className="text-[10px] font-black text-dark/35 uppercase tracking-widest flex-1">Thẻ {slotIdx + 1}</span>
+                    {/* Header hàng ngang compact */}
+                    <div className="flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-gray-50">
+                      <span className="text-[10px] font-black text-dark/35 uppercase tracking-widest w-12 shrink-0">Thẻ {idx + 1}</span>
+
+                      {/* Link type — inline compact */}
+                      <select value={item.linkType}
+                        onChange={e => updatePGItem(idx, 'linkType', e.target.value as PromoGridItem['linkType'])}
+                        className="flex-1 text-xs border border-gray-100 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30">
+                        {LINK_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+
                       {/* Toggle */}
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <span className="text-[9px] font-bold text-dark/40">{item.enabled ? 'Bật' : 'Tắt'}</span>
+                      <label className="flex items-center gap-1 cursor-pointer shrink-0">
                         <div className="relative">
                           <input type="checkbox" className="sr-only" checked={item.enabled}
-                            onChange={e => updatePGItem(slotIdx, 'enabled', e.target.checked)} />
+                            onChange={e => updatePGItem(idx, 'enabled', e.target.checked)} />
                           <div className={`w-8 h-4 rounded-full transition-colors ${item.enabled ? 'bg-primary' : 'bg-gray-300'}`} />
                           <div className={`absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${item.enabled ? 'translate-x-4' : ''}`} />
                         </div>
                       </label>
+
                       {/* Delete */}
-                      <button onClick={() => setPromoGridItems(prev => prev.filter((_, i) => i !== slotIdx))}
-                        className="p-1 text-gray-200 hover:text-red-400 transition-colors rounded hover:bg-red-50">
+                      <button onClick={() => setPromoGridItems(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1 text-gray-200 hover:text-red-400 transition-colors rounded hover:bg-red-50 shrink-0">
                         <Trash2 size={13} />
                       </button>
                     </div>
 
-                    {/* Loại liên kết */}
-                    <div>
-                      <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Loại link</label>
-                      <select value={item.linkType}
-                        onChange={e => updatePGItem(slotIdx, 'linkType', e.target.value as PromoGridItem['linkType'])}
-                        className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30">
-                        {LINK_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                      </select>
-                    </div>
+                    {/* Body */}
+                    <div className="px-3 pb-3 pt-2 grid grid-cols-2 gap-x-3 gap-y-2">
 
-                    {/* Concept dropdown */}
-                    {isStyle && (
-                      <div>
-                        <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Concept</label>
-                        <select value={item.linkValue}
-                          onChange={e => {
-                            const s = activeStyles.find(x => x.slug === e.target.value);
-                            updatePGItem(slotIdx, 'linkValue', e.target.value);
-                            if (s) updatePGItem(slotIdx, 'title', s.title);
-                          }}
-                          className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30">
-                          <option value="">— Chọn concept —</option>
-                          {activeStyles.map(s => (
-                            <option key={s.id} value={s.slug}>{s.title}</option>
-                          ))}
-                        </select>
-                        <p className="text-[9px] text-dark/30 mt-0.5">Ảnh tự lấy từ concept</p>
-                      </div>
-                    )}
+                      {/* Concept dropdown — full width */}
+                      {isStyle && (
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Chọn concept</label>
+                          <select value={item.linkValue}
+                            onChange={e => {
+                              const s = activeStyles.find(x => x.slug === e.target.value);
+                              updatePGItem(idx, 'linkValue', e.target.value);
+                              if (s) updatePGItem(idx, 'title', s.title);
+                            }}
+                            className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30">
+                            <option value="">— Chọn concept —</option>
+                            {activeStyles.map(s => (
+                              <option key={s.id} value={s.slug}>{s.title}</option>
+                            ))}
+                          </select>
+                          <p className="text-[9px] text-dark/30 mt-0.5">Ảnh thumbnail tự động lấy từ concept đã chọn</p>
+                        </div>
+                      )}
 
-                    {/* Promotion picker */}
-                    {isPromo && (
-                      <div>
-                        <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Chương trình KM</label>
-                        <select
-                          value={item.linkValue || 'all'}
-                          onChange={e => {
-                            const val = e.target.value;
-                            updatePGItem(slotIdx, 'linkValue', val);
-                            if (val === 'all') {
-                              updatePGItem(slotIdx, 'title', 'Xem tất cả KM');
-                              updatePGItem(slotIdx, 'imageUrl', '');
-                            } else {
-                              const p = availablePromos.find(x => x.id === val);
-                              if (p) {
-                                updatePGItem(slotIdx, 'title', p.title);
-                                updatePGItem(slotIdx, 'imageUrl', p.imageUrl);
+                      {/* Promotion picker — full width */}
+                      {isPromo && (
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Chương trình KM</label>
+                          <select
+                            value={item.linkValue || 'all'}
+                            onChange={e => {
+                              const val = e.target.value;
+                              updatePGItem(idx, 'linkValue', val);
+                              if (val === 'all') {
+                                updatePGItem(idx, 'title', 'Xem tất cả khuyến mãi');
+                                updatePGItem(idx, 'imageUrl', '');
+                              } else {
+                                const p = availablePromos.find(x => x.id === val);
+                                if (p) {
+                                  updatePGItem(idx, 'title', p.title);
+                                  updatePGItem(idx, 'imageUrl', p.imageUrl);
+                                }
                               }
-                            }
-                          }}
-                          className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30">
-                          <option value="all">📋 Tổng hợp KM</option>
-                          {availablePromos.map(p => (
-                            <option key={p.id} value={p.id}>{p.emoji} {p.title}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                            }}
+                            className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30">
+                            <option value="all">📋 Trang khuyến mãi tổng hợp</option>
+                            {availablePromos.map(p => (
+                              <option key={p.id} value={p.id}>{p.emoji} {p.title}</option>
+                            ))}
+                          </select>
+                          <p className="text-[9px] text-dark/30 mt-0.5">Tiêu đề và ảnh tự động lấy từ chương trình đã chọn</p>
+                        </div>
+                      )}
 
-                    {/* Tiêu đề */}
-                    {!isStyle && (
+                      {/* Tiêu đề (blog/custom/promo) */}
+                      {!isStyle && (
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">
+                            Tiêu đề {isPromo && <span className="text-primary/40 normal-case">(tự điền từ KM, có thể sửa)</span>}
+                          </label>
+                          <input value={item.title} onChange={e => updatePGItem(idx, 'title', e.target.value)}
+                            placeholder={isPromo ? 'Tiêu đề chương trình KM' : 'Tiêu đề bài viết / nội dung'}
+                            className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                        </div>
+                      )}
+
+                      {/* URL ảnh (blog/custom/promo) */}
+                      {!isStyle && (
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">
+                            Ảnh thumbnail {isPromo && <span className="text-primary/40 normal-case">(tự điền từ KM)</span>}
+                          </label>
+                          <div className="flex gap-1.5 items-center">
+                            <input value={item.imageUrl} onChange={e => updatePGItem(idx, 'imageUrl', e.target.value)}
+                              placeholder="https://..."
+                              className="flex-1 text-[10px] border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                            {item.imageUrl && (
+                              <img src={item.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-100 shrink-0" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* URL link (blog/custom) */}
+                      {!isPromo && !isStyle && (
+                        <div className="col-span-2">
+                          <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">
+                            {item.linkType === 'blog' ? 'URL bài viết (mở tab mới)' : 'URL liên kết'}
+                          </label>
+                          <input value={item.linkValue} onChange={e => updatePGItem(idx, 'linkValue', e.target.value)}
+                            placeholder="https://..."
+                            className="w-full text-[10px] border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                        </div>
+                      )}
+
+                      {/* Badge — half width */}
                       <div>
-                        <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">
-                          Tiêu đề {isPromo && <span className="text-primary/40 normal-case">(tự điền)</span>}
-                        </label>
-                        <input value={item.title} onChange={e => updatePGItem(slotIdx, 'title', e.target.value)}
-                          placeholder="Tiêu đề hiển thị..."
+                        <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Badge</label>
+                        <input value={item.badge ?? ''} onChange={e => updatePGItem(idx, 'badge', e.target.value)}
+                          placeholder="TOP1 / Mới / Hot..."
+                          maxLength={8}
                           className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
                       </div>
-                    )}
-
-                    {/* URL ảnh */}
-                    {!isStyle && (
-                      <div>
-                        <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">
-                          Ảnh {isPromo && <span className="text-primary/40 normal-case">(tự điền)</span>}
-                        </label>
-                        <div className="flex gap-1.5 items-center">
-                          <input value={item.imageUrl} onChange={e => updatePGItem(slotIdx, 'imageUrl', e.target.value)}
-                            placeholder="https://..."
-                            className="flex-1 text-[10px] border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
-                          {item.imageUrl && (
-                            <img src={item.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-100 shrink-0" />
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* URL link (blog/custom) */}
-                    {!isPromo && !isStyle && (
-                      <div>
-                        <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">URL</label>
-                        <input value={item.linkValue} onChange={e => updatePGItem(slotIdx, 'linkValue', e.target.value)}
-                          placeholder="https://..."
-                          className="w-full text-[10px] border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
-                      </div>
-                    )}
-
-                    {/* Badge */}
-                    <div>
-                      <label className="block text-[9px] font-bold text-dark/40 mb-1 uppercase tracking-wider">Badge</label>
-                      <input value={item.badge ?? ''} onChange={e => updatePGItem(slotIdx, 'badge', e.target.value)}
-                        placeholder="TOP1 / Mới / Hot..."
-                        maxLength={8}
-                        className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30" />
                     </div>
                   </div>
                 );
               })}
-            </div>
 
-            {promoGridItems.length === 0 && (
-              <p className="text-center text-[11px] text-dark/30 mt-1">Khi trống, webapp tự hiển thị top concept yêu thích nhất.</p>
-            )}
+              {promoGridItems.length === 0 && (
+                <div className="text-center py-8 text-sm text-dark/40 border-2 border-dashed border-gray-100 rounded-2xl">
+                  Chưa có thẻ nào. Nhấn "Thêm thẻ" để cấu hình.<br />
+                  <span className="text-[11px]">Khi trống, webapp tự hiển thị top concept yêu thích nhất.</span>
+                </div>
+              )}
+
+              {/* Nút thêm thẻ — vô hạn */}
+              <button onClick={addPGItem}
+                className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-primary/20 text-primary/70 hover:text-primary hover:border-primary/40 font-bold text-sm rounded-2xl transition">
+                <Plus size={16} /> Thêm thẻ ({promoGridItems.length} thẻ)
+              </button>
+            </div>
           </div>
         );
       }

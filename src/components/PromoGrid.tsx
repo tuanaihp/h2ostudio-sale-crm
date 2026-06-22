@@ -70,12 +70,12 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
       }))));
   }, []);
 
-  // Configured items from AdminSettings (enabled only, max 3)
-  const configuredItems: PromoGridItem[] = (settings?.promoGridItems ?? []).filter(i => i.enabled).slice(0, 3);
+  // Configured items from AdminSettings (enabled only, unlimited)
+  const configuredItems: PromoGridItem[] = (settings?.promoGridItems ?? []).filter(i => i.enabled);
   const useConfigured = configuredItems.length > 0;
 
   // Fallback: auto top styles
-  const topStyles = styles.filter(s => !s.deleted).slice(0, 3);
+  const topStyles = styles.filter(s => !s.deleted).slice(0, 5);
 
   // Build link + thumbnail for a configured item
   function resolveItem(item: PromoGridItem) {
@@ -117,7 +117,7 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
         </a>
 
         {/* List */}
-        <div className="flex-1 px-2 md:px-4 py-2 md:py-3 space-y-1 md:space-y-2">
+        <div className="flex-1 px-2 md:px-4 py-2 md:py-3 space-y-1 md:space-y-2 overflow-y-auto">
 
           {/* Skeleton while loading */}
           {!stylesReady && !useConfigured ? (
