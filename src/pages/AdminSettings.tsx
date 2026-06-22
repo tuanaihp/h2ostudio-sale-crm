@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
 import { Save, Upload, Image as ImageIcon, Trash2, Settings as SettingsIcon, MessageCircle, Plus, Gift, Bell, LogOut, Users, Link as LinkIcon, CheckCircle, AlertCircle, X, Cpu, Database, Globe, Megaphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChatMessageConfig, BannerItem } from '../types';
+import { ChatMessageConfig, BannerItem, PromoGridItem } from '../types';
 import { DEFAULT_SERVICE_CARDS } from '../components/PromoGrid';
 import { uploadImageToStorage, deleteImageFromStorage, getDisplayImageUrl } from '../utils/image';
 import { ImageCropperModal } from '../components/ImageCropperModal';
@@ -80,7 +80,7 @@ const TABS = [
 ];
 
 const AdminSettings: React.FC = () => {
-  const { settings, updateSettings, isSuperAdmin, isAuthReady, handleLogout } = useApp();
+  const { settings, updateSettings, isSuperAdmin, isAuthReady, handleLogout, styles } = useApp();
   const [activeTab, setActiveTab] = useState('general');
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -161,8 +161,11 @@ const AdminSettings: React.FC = () => {
   const [chatAutoOpenEnabled, setChatAutoOpenEnabled] = useState(settings.chatAutoOpenEnabled !== false);
   const [chatAutoOpenDelay, setChatAutoOpenDelay] = useState(settings.chatAutoOpenDelay ?? 20);
 
-  // Banner / service cards
+  // Banner / service cards (legacy)
   const [bannerItems, setBannerItems] = useState<BannerItem[]>(settings.bannerItems ?? DEFAULT_SERVICE_CARDS);
+
+  // PromoGrid Two Panel — bảng trái
+  const [promoGridItems, setPromoGridItems] = useState<PromoGridItem[]>(settings.promoGridItems ?? []);
   const [chatMessages, setChatMessages] = useState<ChatMessageConfig[]>(
     settings.chatMessages && settings.chatMessages.length > 0 
       ? settings.chatMessages 
@@ -221,6 +224,7 @@ const AdminSettings: React.FC = () => {
     if (settings.telegramBotToken) setTelegramBotToken(settings.telegramBotToken);
     if (settings.telegramChatId) setTelegramChatId(settings.telegramChatId);
     if (settings.telegramNotificationEnabled !== undefined) setTelegramNotificationEnabled(settings.telegramNotificationEnabled);
+    if (settings.promoGridItems) setPromoGridItems(settings.promoGridItems);
   }, [settings]);
 
   if (!isAuthReady) {
@@ -346,7 +350,7 @@ const AdminSettings: React.FC = () => {
         partialSettings = { luckyWheelEnabled, luckyWheelGifts, luckyWheelCTA, luckyWheelSubCTA, luckyWheelNotificationText, luckyWheelNotificationEnabled };
       }
       else if (section === 'banner') {
-        partialSettings = { bannerItems };
+        partialSettings = { promoGridItems };
       }
       else if (section === 'partners') {
         let finalPartner1Image = partnerBrand1.image;
@@ -1402,23 +1406,27 @@ const AdminSettings: React.FC = () => {
         );
 
       case 'banner': {
-        const COLORS = [
-          { label: 'Hồng', value: 'from-rose-400 to-pink-600' },
-          { label: 'Cam', value: 'from-orange-400 to-red-500' },
-          { label: 'Vàng', value: 'from-yellow-400 to-amber-500' },
-          { label: 'Xanh lá', value: 'from-emerald-400 to-teal-500' },
-          { label: 'Xanh dương', value: 'from-blue-400 to-cyan-500' },
-          { label: 'Tím', value: 'from-violet-400 to-purple-500' },
-          { label: 'H2O', value: 'from-secondary to-primary' },
+        const LINK_TYPES = [
+          { value: 'style',     label: '🖼️ Concept album (trong webapp)' },
+          { value: 'promotion', label: '🎁 Trang khuyến mãi' },
+          { value: 'blog',      label: '📝 Bài viết / Blog (link ngoài)' },
+          { value: 'custom',    label: '🔗 Link tùy chỉnh' },
         ];
-        const updateItem = (idx: number, field: keyof BannerItem, val: any) =>
-          setBannerItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+        const activeStyles = styles.filter(s => !s.deleted);
+        const updatePGItem = (idx: number, field: keyof PromoGridItem, val: any) =>
+          setPromoGridItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+        const addPGItem = () => setPromoGridItems(prev => [...prev, {
+          id: `pg-${Date.now()}`, title: '', imageUrl: '',
+          linkType: 'style', linkValue: activeStyles[0]?.slug ?? '',
+          badge: '', enabled: true,
+        }]);
 
         return (
-          <div className="space-y-6 flex flex-col h-full">
+          <div className="space-y-5 flex flex-col h-full">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-light-gray pb-4">
               <h2 className="text-xl font-bold text-dark flex items-center gap-2">
-                <Megaphone size={24} className="text-secondary" /> Thẻ Dịch Vụ (PromoGrid)
+                <Megaphone size={24} className="text-secondary" /> Cấu hình Banner Two Panel
               </h2>
               <button onClick={() => handleSaveSection('banner')} disabled={isSaving}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition disabled:opacity-50">
@@ -1426,91 +1434,125 @@ const AdminSettings: React.FC = () => {
               </button>
             </div>
 
-            {/* Note */}
+            {/* Info */}
             <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-[11px] text-blue-700 space-y-1">
-              <p>📐 <b>Layout PromoGrid:</b> Bảng trái hiển thị khuyến mãi đang chạy từ AdminPromotions. Bảng phải hiển thị 6 thẻ dịch vụ bên dưới.</p>
-              <p>🎉 <b>Khuyến mãi</b> bật <code>Hiển thị website</code> sẽ tự động xuất hiện ở bảng trái — không cần cấu hình thêm.</p>
+              <p>📐 <b>Bảng trái</b> hiển thị tối đa 3 thẻ cấu hình bên dưới. <b>Bảng phải</b> (Khuyến mãi) tự động từ AdminPromotions — không cần cấu hình thêm.</p>
+              <p>💡 Nếu không có thẻ nào được bật, webapp tự động hiển thị top concept được yêu thích nhất.</p>
             </div>
 
-            {/* Static items */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-dark">Thẻ dịch vụ ({bannerItems.length}/6)</p>
-                {bannerItems.length < 6 && (
-                  <button
-                    onClick={() => setBannerItems(prev => [...prev, {
-                      id: `item-${Date.now()}`, emoji: '✨', tag: 'Dịch vụ',
-                      title: 'Tên dịch vụ mới', description: '',
-                      link: '/', color: 'from-secondary to-primary', enabled: true,
-                    }])}
-                    className="flex items-center gap-1 text-xs font-bold text-primary bg-primary/5 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition">
-                    <Plus size={13} /> Thêm thẻ
-                  </button>
-                )}
-              </div>
+            {/* Item list */}
+            <div className="space-y-4">
+              {promoGridItems.map((item, idx) => {
+                const isStyle = item.linkType === 'style';
+                const isPromo = item.linkType === 'promotion';
+                return (
+                  <div key={item.id}
+                    className={`rounded-2xl border p-4 space-y-3 transition-opacity ${item.enabled ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
 
-              {bannerItems.map((item, idx) => (
-                <div key={item.id}
-                  className={`rounded-2xl border p-4 space-y-3 transition-colors ${item.enabled ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
-                  {/* Row 1: enable toggle + color + delete */}
-                  <div className="flex items-center gap-2">
-                    {/* Color strip preview */}
-                    <div className={`w-6 h-6 rounded-lg bg-gradient-to-br flex-shrink-0 ${item.color}`} />
-                    <select value={item.color} onChange={e => updateItem(idx, 'color', e.target.value)}
-                      className="text-xs border border-gray-100 rounded-lg px-2 py-1 bg-white flex-1">
-                      {COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
-                    <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
-                      <span className="text-[10px] font-bold text-dark/50">{item.enabled ? 'Bật' : 'Tắt'}</span>
-                      <div className="relative">
-                        <input type="checkbox" className="sr-only" checked={item.enabled}
-                          onChange={e => updateItem(idx, 'enabled', e.target.checked)} />
-                        <div className={`w-9 h-5 rounded-full transition-colors ${item.enabled ? 'bg-primary' : 'bg-gray-300'}`} />
-                        <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.enabled ? 'translate-x-4' : ''}`} />
-                      </div>
-                    </label>
-                    <button onClick={() => setBannerItems(prev => prev.filter((_, i) => i !== idx))}
-                      className="p-1.5 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-
-                  {/* Row 2: emoji + tag */}
-                  <div className="grid grid-cols-[64px_1fr] gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-dark/50 mb-1">Icon</label>
-                      <input value={item.emoji} onChange={e => updateItem(idx, 'emoji', e.target.value)}
-                        className="w-full text-center text-xl border border-gray-100 rounded-xl py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" maxLength={2} />
+                    {/* Row: Thẻ N + toggle + delete */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-dark/40 uppercase tracking-widest">Thẻ {idx + 1}</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
+                        <span className="text-[10px] font-bold text-dark/50">{item.enabled ? 'Bật' : 'Tắt'}</span>
+                        <div className="relative">
+                          <input type="checkbox" className="sr-only" checked={item.enabled}
+                            onChange={e => updatePGItem(idx, 'enabled', e.target.checked)} />
+                          <div className={`w-9 h-5 rounded-full transition-colors ${item.enabled ? 'bg-primary' : 'bg-gray-300'}`} />
+                          <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.enabled ? 'translate-x-4' : ''}`} />
+                        </div>
+                      </label>
+                      <button onClick={() => setPromoGridItems(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
+                        <Trash2 size={14} />
+                      </button>
                     </div>
+
+                    {/* Loại liên kết */}
                     <div>
-                      <label className="block text-[10px] font-bold text-dark/50 mb-1">Nhãn (tag)</label>
-                      <input value={item.tag} onChange={e => updateItem(idx, 'tag', e.target.value)}
-                        placeholder="Khuyến mãi / Dịch vụ / Hậu trường..."
+                      <label className="block text-[10px] font-bold text-dark/50 mb-1">Loại liên kết</label>
+                      <select value={item.linkType}
+                        onChange={e => updatePGItem(idx, 'linkType', e.target.value as PromoGridItem['linkType'])}
+                        className="w-full text-sm border border-gray-100 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                        {LINK_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+
+                    {/* Concept album dropdown */}
+                    {isStyle && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">Chọn concept</label>
+                        <select value={item.linkValue}
+                          onChange={e => {
+                            const s = activeStyles.find(x => x.slug === e.target.value);
+                            updatePGItem(idx, 'linkValue', e.target.value);
+                            if (s) updatePGItem(idx, 'title', s.title);
+                          }}
+                          className="w-full text-sm border border-gray-100 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                          <option value="">— Chọn concept —</option>
+                          {activeStyles.map(s => (
+                            <option key={s.id} value={s.slug}>{s.title}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-dark/35 mt-1">Ảnh thumbnail tự động lấy từ concept đã chọn</p>
+                      </div>
+                    )}
+
+                    {/* Tiêu đề (custom cho promotion/blog/custom, auto điền cho style) */}
+                    {!isStyle && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">Tiêu đề hiển thị</label>
+                        <input value={item.title} onChange={e => updatePGItem(idx, 'title', e.target.value)}
+                          placeholder={isPromo ? 'VD: Xem ưu đãi tháng 6' : 'Tiêu đề bài viết / nội dung'}
+                          className="w-full text-sm border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+                    )}
+
+                    {/* URL ảnh (không cần cho style) */}
+                    {!isStyle && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">URL ảnh thumbnail</label>
+                        <input value={item.imageUrl} onChange={e => updatePGItem(idx, 'imageUrl', e.target.value)}
+                          placeholder="https://... (ảnh vuông ~100×100 px)"
+                          className="w-full text-xs border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+                    )}
+
+                    {/* URL link (không cần cho promotion) */}
+                    {!isPromo && !isStyle && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-dark/50 mb-1">
+                          {item.linkType === 'blog' ? 'URL bài viết (mở tab mới)' : 'URL liên kết'}
+                        </label>
+                        <input value={item.linkValue} onChange={e => updatePGItem(idx, 'linkValue', e.target.value)}
+                          placeholder="https://..."
+                          className="w-full text-xs border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      </div>
+                    )}
+
+                    {/* Badge */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-dark/50 mb-1">Badge (để trống nếu không cần)</label>
+                      <input value={item.badge ?? ''} onChange={e => updatePGItem(idx, 'badge', e.target.value)}
+                        placeholder="TOP1 / Mới / Hot / Nổi bật..."
+                        maxLength={8}
                         className="w-full text-sm border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
                     </div>
                   </div>
+                );
+              })}
 
-                  {/* Row 3: title */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-dark/50 mb-1">Tiêu đề</label>
-                    <input value={item.title} onChange={e => updateItem(idx, 'title', e.target.value)}
-                      className="w-full text-sm font-bold border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
-
-                  {/* Row 4: link */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-dark/50 mb-1">Link (để trống nếu không cần)</label>
-                    <input value={item.link ?? ''} onChange={e => updateItem(idx, 'link', e.target.value)}
-                      placeholder="https://... hoặc /promotions"
-                      className="w-full text-xs border border-gray-100 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
+              {promoGridItems.length === 0 && (
+                <div className="text-center py-8 text-sm text-dark/40 border-2 border-dashed border-gray-100 rounded-2xl">
+                  Chưa có thẻ nào. Nhấn "Thêm thẻ" để cấu hình.<br />
+                  <span className="text-[11px]">Khi trống, webapp tự hiển thị top concept.</span>
                 </div>
-              ))}
+              )}
 
-              {bannerItems.length === 0 && (
-                <div className="text-center py-8 text-sm text-dark/40">
-                  Chưa có thẻ nào. Nhấn "Thêm thẻ" để bắt đầu.
-                </div>
+              {promoGridItems.length < 3 && (
+                <button onClick={addPGItem}
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-primary/20 text-primary/70 hover:text-primary hover:border-primary/40 font-bold text-sm rounded-2xl transition">
+                  <Plus size={16} /> Thêm thẻ ({promoGridItems.length}/3)
+                </button>
               )}
             </div>
           </div>

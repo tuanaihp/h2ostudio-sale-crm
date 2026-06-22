@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
-import { BannerItem } from '../types';
+import { BannerItem, PromoGridItem } from '../types';
 import { getDisplayImageUrl } from '../utils/image';
 
 interface ActivePromo {
@@ -19,15 +19,25 @@ interface Props {
   onConsult?: () => void;
 }
 
-const TOP_BADGE = [
+const DEFAULT_BADGE = [
   { label: 'TOP1', bg: 'bg-amber-50', text: 'text-amber-500', border: 'border-amber-200' },
   { label: 'TOP2', bg: 'bg-blue-50',  text: 'text-blue-500',  border: 'border-blue-200'  },
   { label: 'TOP3', bg: 'bg-rose-50',  text: 'text-rose-400',  border: 'border-rose-200'  },
 ];
 
+function badgeStyle(label?: string, idx?: number) {
+  if (!label) return DEFAULT_BADGE[idx ?? 0] ?? DEFAULT_BADGE[2];
+  const lower = label.toLowerCase();
+  if (lower.includes('top1') || lower === '1') return DEFAULT_BADGE[0];
+  if (lower.includes('top2') || lower === '2') return DEFAULT_BADGE[1];
+  if (lower.includes('top3') || lower === '3') return DEFAULT_BADGE[2];
+  // Custom badge — amber as default colour
+  return { label, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' };
+}
+
 export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
-  const { styles } = useApp();
-  const [promos, setPromos]       = useState<ActivePromo[]>([]);
+  const { styles, settings } = useApp();
+  const [promos, setPromos]           = useState<ActivePromo[]>([]);
   const [stylesReady, setStylesReady] = useState(false);
 
   useEffect(() => { if (styles.length > 0) setStylesReady(true); }, [styles]);
@@ -50,13 +60,39 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
       .then(({ data }) => setPromos(data ?? []));
   }, []);
 
+  // Configured items from AdminSettings (enabled only, max 3)
+  const configuredItems: PromoGridItem[] = (settings?.promoGridItems ?? []).filter(i => i.enabled).slice(0, 3);
+  const useConfigured = configuredItems.length > 0;
+
+  // Fallback: auto top styles
   const topStyles = styles.filter(s => !s.deleted).slice(0, 3);
+
+  // Build link + thumbnail for a configured item
+  function resolveItem(item: PromoGridItem) {
+    let href = '/';
+    let isExternal = false;
+    let thumbnail = item.imageUrl;
+
+    if (item.linkType === 'style') {
+      href = `/style/${item.linkValue}`;
+      const matched = styles.find(s => s.slug === item.linkValue);
+      if (matched?.coverImage) thumbnail = getDisplayImageUrl(matched.coverImage);
+    } else if (item.linkType === 'promotion') {
+      href = '/promotions';
+    } else {
+      href = item.linkValue;
+      isExternal = item.linkValue.startsWith('http');
+    }
+
+    const title = item.title || styles.find(s => s.slug === item.linkValue)?.title || '';
+    return { href, isExternal, thumbnail, title };
+  }
 
   return (
     <div className="mt-10 grid grid-cols-2 gap-3 md:gap-4">
 
       {/* ══════════════════════════════════════════
-          LEFT — Top concept tuần này
+          LEFT — Top concept / Configured items
       ══════════════════════════════════════════ */}
       <div className="bg-white rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-sm border border-gray-100">
 
@@ -72,7 +108,9 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
 
         {/* List */}
         <div className="flex-1 px-2 md:px-4 py-2 md:py-3 space-y-1 md:space-y-2">
-          {!stylesReady ? (
+
+          {/* Skeleton while loading */}
+          {!stylesReady && !useConfigured ? (
             [0,1,2].map(i => (
               <div key={i} className="flex items-center gap-2 px-1 py-1.5 animate-pulse">
                 <div className="w-9 h-9 md:w-12 md:h-12 rounded-xl bg-gray-100 shrink-0" />
@@ -82,18 +120,45 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
                 </div>
               </div>
             ))
+
+          /* Configured items from AdminSettings */
+          ) : useConfigured ? (
+            configuredItems.map((item, i) => {
+              const { href, isExternal, thumbnail, title } = resolveItem(item);
+              const badge = badgeStyle(item.badge, i);
+              return (
+                <a key={item.id} href={href}
+                  {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  className="flex items-center gap-2 md:gap-3 px-1 md:px-2 py-1.5 md:py-2 rounded-xl hover:bg-light-gray/60 transition-colors group">
+                  <div
+                    className="w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-cover bg-center shrink-0 bg-gray-100"
+                    style={{ backgroundImage: thumbnail ? `url(${thumbnail})` : undefined }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[11px] md:text-[13px] text-dark truncate leading-tight group-hover:text-primary transition-colors">
+                      {title}
+                    </p>
+                    {badge.label && (
+                      <span className={`inline-block text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded-full border mt-0.5 ${badge.bg} ${badge.text} ${badge.border}`}>
+                        {badge.label}
+                      </span>
+                    )}
+                  </div>
+                </a>
+              );
+            })
+
+          /* Auto fallback: top styles */
           ) : topStyles.length > 0 ? (
             topStyles.map((style, i) => {
-              const badge = TOP_BADGE[i] ?? TOP_BADGE[2];
+              const badge = DEFAULT_BADGE[i] ?? DEFAULT_BADGE[2];
               return (
                 <a key={style.id} href={`/style/${style.slug}`}
                   className="flex items-center gap-2 md:gap-3 px-1 md:px-2 py-1.5 md:py-2 rounded-xl hover:bg-light-gray/60 transition-colors group">
-                  {/* Thumbnail */}
                   <div
                     className="w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-cover bg-center shrink-0 bg-gray-100"
                     style={{ backgroundImage: style.coverImage ? `url(${getDisplayImageUrl(style.coverImage)})` : undefined }}
                   />
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-[11px] md:text-[13px] text-dark truncate leading-tight group-hover:text-primary transition-colors">
                       {style.title}
@@ -105,6 +170,7 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
                 </a>
               );
             })
+
           ) : (
             <p className="text-[11px] text-dark/30 text-center py-4">Chưa có dữ liệu</p>
           )}

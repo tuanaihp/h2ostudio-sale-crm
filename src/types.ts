@@ -96,6 +96,16 @@ export interface PartnerBrand {
   ctaText?: string;
 }
 
+export interface PromoGridItem {
+  id: string;
+  title: string;
+  imageUrl: string;           // URL ảnh thumbnail (bỏ trống nếu linkType='style')
+  linkType: 'style' | 'promotion' | 'blog' | 'custom';
+  linkValue: string;          // slug (style) hoặc URL đầy đủ (blog/custom)
+  badge?: string;             // "TOP1" / "Mới" / "Hot" / để trống
+  enabled: boolean;
+}
+
 export interface BannerItem {
   id: string;
   emoji: string;
@@ -156,8 +166,9 @@ export interface AppSettings {
   chatStaffNames?: string[];
   chatAutoOpenEnabled?: boolean;
   chatAutoOpenDelay?: number;
-  bannerItems?: BannerItem[];    // banner quảng cáo tĩnh
-  bannerSpeed?: number;          // giây/vòng, mặc định 40
+  bannerItems?: BannerItem[];
+  bannerSpeed?: number;
+  promoGridItems?: PromoGridItem[]; // 3 thẻ bảng trái Two Panel
 }
 
 export interface CustomerFaq {
