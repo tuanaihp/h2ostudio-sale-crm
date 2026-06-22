@@ -150,6 +150,10 @@ export interface AppSettings {
   integrationChatApiKey?: string;
   integrationChatApiModelName?: string;
   integrationChatApiHeaders?: string;
+  // Image AI — DALL-E (tách riêng khỏi Text AI)
+  aiImageEnabled?: boolean;
+  aiImageApiKey?: string;
+  aiImageModel?: string;
   integrationSheetEnabled?: boolean;
   integrationSheetId?: string;
   integrationSheetName?: string;

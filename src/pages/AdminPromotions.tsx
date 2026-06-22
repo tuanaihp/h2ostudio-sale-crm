@@ -252,17 +252,22 @@ export default function AdminPromotions() {
 
   const callAiImage = async () => {
     if (!form.title.trim()) return;
-    const apiKey = settings?.integrationChatApiKey;
-    if (!apiKey) {
-      setImageGenError('Cần API Key OpenAI. Vào Settings → Cổng kết nối → nhập OpenAI API Key.');
+    if (settings?.aiImageEnabled === false) {
+      setImageGenError('AI Tạo Ảnh đang tắt. Vào Settings → Cổng kết nối → bật Image AI.');
       return;
     }
+    const apiKey = settings?.aiImageApiKey || settings?.integrationChatApiKey;
+    if (!apiKey) {
+      setImageGenError('Cần API Key OpenAI. Vào Settings → Cổng kết nối → nhập API Key Image AI.');
+      return;
+    }
+    const imageModel = settings?.aiImageModel || imageGenModel;
     setImageGenLoading(true);
     setImageGenError('');
     setImagePreview('');
     try {
-      const actualModel = imageGenModel === 'dall-e-3-hd' ? 'dall-e-3' : imageGenModel;
-      const quality = imageGenModel === 'dall-e-3-hd' ? 'hd' : 'standard';
+      const actualModel = imageModel === 'dall-e-3-hd' ? 'dall-e-3' : imageModel;
+      const quality = imageModel === 'dall-e-3-hd' ? 'hd' : 'standard';
       const res = await fetch('/api/ai-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

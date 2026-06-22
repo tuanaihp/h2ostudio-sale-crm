@@ -147,6 +147,10 @@ const AdminSettings: React.FC = () => {
   const [integrationZaloOaId, setIntegrationZaloOaId] = useState(settings.integrationZaloOaId || '');
   const [integrationZaloAccessToken, setIntegrationZaloAccessToken] = useState(settings.integrationZaloAccessToken || '');
   const [integrationScriptNotes, setIntegrationScriptNotes] = useState(settings.integrationScriptNotes || '');
+  // Image AI — tách riêng khỏi Text AI
+  const [aiImageEnabled, setAiImageEnabled] = useState(settings.aiImageEnabled !== false);
+  const [aiImageApiKey, setAiImageApiKey] = useState(settings.aiImageApiKey || '');
+  const [aiImageModel, setAiImageModel] = useState(settings.aiImageModel || 'dall-e-3');
 
   const [cropImage, setCropImage] = useState<{ url: string; field: 'partner1' | 'partner2' | 'logo' } | null>(null);
 
@@ -346,16 +350,19 @@ const AdminSettings: React.FC = () => {
         partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
       }
       else if (section === 'integrations') {
-        partialSettings = { 
-          integrationChatApiEnabled, 
-          integrationChatApiUrl, 
-          integrationChatApiKey, 
-          integrationChatApiModelName, 
-          integrationChatApiHeaders, 
-          integrationSheetEnabled, 
-          integrationSheetId, 
-          integrationSheetName, 
-          integrationSheetApiKey, 
+        partialSettings = {
+          integrationChatApiEnabled,
+          integrationChatApiUrl,
+          integrationChatApiKey,
+          integrationChatApiModelName,
+          integrationChatApiHeaders,
+          aiImageEnabled,
+          aiImageApiKey,
+          aiImageModel,
+          integrationSheetEnabled,
+          integrationSheetId,
+          integrationSheetName,
+          integrationSheetApiKey,
           integrationZaloEnabled,
           integrationZaloOaId,
           integrationZaloAccessToken,
@@ -1118,6 +1125,65 @@ const AdminSettings: React.FC = () => {
                         rows={2}
                         className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary text-sm font-mono"
                       />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 1b. Image AI — DALL-E (tách riêng) */}
+            <div className="bg-light-gray/20 rounded-2xl p-5 border border-light-gray space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-dark text-sm flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-purple-100 text-purple-600">🎨</span>
+                  AI Tạo Ảnh — DALL-E (OpenAI)
+                </h3>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <span className="sr-only">Kích hoạt Image AI</span>
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={aiImageEnabled}
+                    onChange={(e) => setAiImageEnabled(e.target.checked)}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                </label>
+              </div>
+
+              {aiImageEnabled && (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* API Key riêng cho Image AI */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-dark/70 mb-1">
+                        OpenAI API Key <span className="font-normal text-dark/40">(dùng cho DALL-E — để trống thì dùng chung key Text AI)</span>
+                      </label>
+                      <input
+                        type="password"
+                        value={aiImageApiKey}
+                        onChange={(e) => setAiImageApiKey(e.target.value)}
+                        placeholder="sk-... (để trống → dùng chung API Key Text AI bên trên)"
+                        className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-purple-400 text-sm"
+                      />
+                    </div>
+
+                    {/* Model selector */}
+                    <div>
+                      <label className="block text-xs font-bold text-dark/70 mb-1">Model DALL-E</label>
+                      <select
+                        value={aiImageModel}
+                        onChange={(e) => setAiImageModel(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-purple-400 text-sm"
+                      >
+                        <option value="dall-e-3">DALL-E 3 (chất lượng cao nhất)</option>
+                        <option value="dall-e-2">DALL-E 2 (tiết kiệm hơn)</option>
+                      </select>
+                    </div>
+
+                    {/* Info note */}
+                    <div className="flex items-start gap-2 text-[11px] text-dark/50 bg-purple-50 rounded-xl p-3 border border-purple-100">
+                      <span className="text-purple-400 mt-0.5">ℹ️</span>
+                      <span>DALL-E chỉ hỗ trợ qua OpenAI. Nếu Text AI dùng DeepSeek/Groq, hãy điền key OpenAI riêng ở đây để tạo ảnh khuyến mãi.</span>
                     </div>
                   </div>
                 </div>
