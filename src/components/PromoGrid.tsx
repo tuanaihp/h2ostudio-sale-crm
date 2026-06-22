@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronRight, Heart } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
 import { BannerItem } from '../types';
@@ -19,15 +19,18 @@ interface Props {
   onConsult?: () => void;
 }
 
+const TOP_BADGE = [
+  { label: 'TOP1', bg: 'bg-amber-50', text: 'text-amber-500', border: 'border-amber-200' },
+  { label: 'TOP2', bg: 'bg-blue-50',  text: 'text-blue-500',  border: 'border-blue-200'  },
+  { label: 'TOP3', bg: 'bg-rose-50',  text: 'text-rose-400',  border: 'border-rose-200'  },
+];
+
 export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
   const { styles } = useApp();
-  const [promos, setPromos] = useState<ActivePromo[]>([]);
+  const [promos, setPromos]       = useState<ActivePromo[]>([]);
   const [stylesReady, setStylesReady] = useState(false);
 
-  // Mark ready when styles arrive OR after 2.5s timeout (genuine empty)
-  useEffect(() => {
-    if (styles.length > 0) setStylesReady(true);
-  }, [styles]);
+  useEffect(() => { if (styles.length > 0) setStylesReady(true); }, [styles]);
   useEffect(() => {
     const t = setTimeout(() => setStylesReady(true), 2500);
     return () => clearTimeout(t);
@@ -43,141 +46,121 @@ export const PromoGrid: React.FC<Props> = ({ onConsult }) => {
       .lte('start_date', today)
       .gte('end_date', today)
       .order('created_at', { ascending: false })
-      .limit(4)
+      .limit(3)
       .then(({ data }) => setPromos(data ?? []));
   }, []);
 
   const topStyles = styles.filter(s => !s.deleted).slice(0, 3);
 
   return (
-    <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="mt-10 grid grid-cols-2 gap-3 md:gap-4">
 
-      {/* ── Left: Top concepts ── */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+      {/* ══════════════════════════════════════════
+          LEFT — Top concept tuần này
+      ══════════════════════════════════════════ */}
+      <div className="bg-white rounded-2xl md:rounded-3xl overflow-hidden flex flex-col shadow-sm border border-gray-100">
+
         {/* Header */}
-        <div className="px-5 pt-5 pb-3 flex items-center gap-2 border-b border-gray-50">
-          <span className="text-[20px] leading-none">🏆</span>
-          <h3 className="font-bold text-dark text-[15px]">Top concept tuần này</h3>
-        </div>
+        <a href="/favorites"
+          className="flex items-center justify-between px-3 md:px-5 pt-3 md:pt-4 pb-2 md:pb-3 border-b border-gray-50 group">
+          <span className="font-bold text-dark text-[12px] md:text-[15px] flex items-center gap-1.5">
+            <span className="text-[16px] md:text-[20px]">🏆</span>
+            <span className="leading-tight">Top concept<br className="md:hidden" /><span className="hidden md:inline"> </span>tuần này</span>
+          </span>
+          <ChevronRight size={14} className="text-dark/25 group-hover:text-primary transition-colors shrink-0" />
+        </a>
 
         {/* List */}
-        <div className="flex-1 px-3 py-3 space-y-1">
+        <div className="flex-1 px-2 md:px-4 py-2 md:py-3 space-y-1 md:space-y-2">
           {!stylesReady ? (
-            /* Skeleton */
             [0,1,2].map(i => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-2xl animate-pulse">
-                <div className="w-5 h-3 bg-gray-100 rounded shrink-0" />
-                <div className="w-11 h-11 rounded-xl bg-gray-100 shrink-0" />
+              <div key={i} className="flex items-center gap-2 px-1 py-1.5 animate-pulse">
+                <div className="w-9 h-9 md:w-12 md:h-12 rounded-xl bg-gray-100 shrink-0" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 bg-gray-100 rounded w-3/4" />
-                  <div className="h-2 bg-gray-100 rounded w-1/2" />
+                  <div className="h-2.5 bg-gray-100 rounded w-3/4" />
+                  <div className="h-2 bg-gray-100 rounded w-1/3" />
                 </div>
               </div>
             ))
-          ) : topStyles.map((style, i) => (
-            <a
-              key={style.id}
-              href={`/style/${style.slug}`}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-light-gray/70 transition-colors group"
-            >
-              {/* Rank */}
-              <span className={`text-[12px] font-black w-5 shrink-0 text-center ${
-                i === 0 ? 'text-amber-500' : i === 1 ? 'text-gray-400' : 'text-orange-400'
-              }`}>
-                #{i + 1}
-              </span>
+          ) : topStyles.length > 0 ? (
+            topStyles.map((style, i) => {
+              const badge = TOP_BADGE[i] ?? TOP_BADGE[2];
+              return (
+                <a key={style.id} href={`/style/${style.slug}`}
+                  className="flex items-center gap-2 md:gap-3 px-1 md:px-2 py-1.5 md:py-2 rounded-xl hover:bg-light-gray/60 transition-colors group">
+                  {/* Thumbnail */}
+                  <div
+                    className="w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-cover bg-center shrink-0 bg-gray-100"
+                    style={{ backgroundImage: style.coverImage ? `url(${getDisplayImageUrl(style.coverImage)})` : undefined }}
+                  />
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[11px] md:text-[13px] text-dark truncate leading-tight group-hover:text-primary transition-colors">
+                      {style.title}
+                    </p>
+                    <span className={`inline-block text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded-full border mt-0.5 ${badge.bg} ${badge.text} ${badge.border}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+                </a>
+              );
+            })
+          ) : (
+            <p className="text-[11px] text-dark/30 text-center py-4">Chưa có dữ liệu</p>
+          )}
+        </div>
 
-              {/* Thumbnail */}
-              <div
-                className="w-11 h-11 rounded-xl bg-cover bg-center shrink-0 bg-light-gray"
-                style={{ backgroundImage: style.coverImage ? `url(${getDisplayImageUrl(style.coverImage)})` : undefined }}
-              />
+        {/* Footer CTA */}
+        <a href="/favorites"
+          className="mx-2 md:mx-4 mb-2 md:mb-4 flex items-center justify-center gap-1 text-[10px] md:text-[12px] font-bold text-primary/70 hover:text-primary py-2 border border-primary/15 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition">
+          Xem tất cả <ChevronRight size={11} className="md:hidden" /><ChevronRight size={13} className="hidden md:block" />
+        </a>
+      </div>
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-dark text-[13px] truncate group-hover:text-primary transition-colors">
-                  {style.title}
-                </p>
-                {style.description && (
-                  <p className="text-[11px] text-dark/40 truncate mt-0.5">{style.description}</p>
-                )}
+      {/* ══════════════════════════════════════════
+          RIGHT — Khuyến mãi đang chạy
+      ══════════════════════════════════════════ */}
+      <div className="bg-gradient-to-br from-rose-50 to-pink-50/60 rounded-2xl md:rounded-3xl overflow-hidden flex flex-col border border-rose-100/70 shadow-sm">
+
+        {/* Header */}
+        <a href="/promotions"
+          className="flex items-center justify-between px-3 md:px-5 pt-3 md:pt-4 pb-2 md:pb-3 border-b border-rose-100/50 group">
+          <span className="font-bold text-dark text-[12px] md:text-[15px] flex items-center gap-1.5">
+            <span className="text-[16px] md:text-[20px]">🎉</span>
+            <span className="leading-tight">Khuyến mãi<br className="md:hidden" /><span className="hidden md:inline"> </span>đang chạy</span>
+          </span>
+          <ChevronRight size={14} className="text-dark/25 group-hover:text-primary transition-colors shrink-0" />
+        </a>
+
+        {/* Promo list */}
+        <div className="flex-1 px-2 md:px-4 py-2 md:py-3 space-y-2 md:space-y-3">
+          {promos.length > 0 ? (
+            promos.map((promo, i) => (
+              <div key={promo.id} className="flex items-start gap-2 px-1 md:px-2">
+                <span className="text-[16px] md:text-[20px] leading-none shrink-0 mt-0.5">{promo.emoji || '🎁'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-[11px] md:text-[13px] text-dark leading-snug line-clamp-2">{promo.title}</p>
+                  {i === 0 && (
+                    <span className="text-[9px] font-black bg-rose-500 text-white px-1.5 py-0.5 rounded-full mt-0.5 inline-block">HOT</span>
+                  )}
+                </div>
               </div>
-
-              {/* Heart icon */}
-              <Heart size={13} className="text-rose-300 shrink-0 group-hover:text-rose-400 transition-colors fill-current" />
-            </a>
-          ))}
-
-          {stylesReady && topStyles.length === 0 && (
-            <p className="text-sm text-dark/30 text-center py-6">Chưa có dữ liệu</p>
+            ))
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center py-3 text-center">
+              <p className="text-2xl mb-1">✨</p>
+              <p className="text-[10px] md:text-[12px] text-dark/40 font-medium">Sắp có ưu đãi mới</p>
+            </div>
           )}
         </div>
 
         {/* CTA */}
-        <div className="px-5 pb-5 pt-2">
-          <a
-            href="/favorites"
-            className="flex items-center justify-center gap-1.5 border-2 border-primary/15 text-primary font-bold text-[13px] py-2.5 rounded-2xl hover:bg-primary/5 hover:border-primary/30 transition"
-          >
-            Xem album yêu thích <ChevronRight size={14} />
-          </a>
-        </div>
-      </div>
-
-      {/* ── Right: Active promotions ── */}
-      <div className="bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 rounded-3xl border border-rose-100/60 overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="px-5 pt-5 pb-3 flex items-center gap-2 border-b border-rose-100/40">
-          <span className="text-[20px] leading-none">🎉</span>
-          <h3 className="font-bold text-dark text-[15px]">Khuyến mãi đang chạy</h3>
-        </div>
-
-        {/* Promo list */}
-        <div className="flex-1 px-5 py-4 space-y-3.5">
-          {promos.map((promo, i) => (
-            <div key={promo.id} className="flex items-start gap-3">
-              <span className="text-[18px] leading-none shrink-0 mt-0.5">{promo.emoji || '🎁'}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-dark text-[13px] leading-snug">{promo.title}</p>
-                <p className="text-[10px] text-dark/40 mt-1 flex items-center gap-1">
-                  <span>⏰</span>
-                  Hết hạn {new Date(promo.end_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                </p>
-              </div>
-              {i === 0 && (
-                <span className="text-[9px] font-black bg-rose-500 text-white px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wide">
-                  Hot
-                </span>
-              )}
-            </div>
-          ))}
-
-          {promos.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-4 text-center">
-              <p className="text-3xl mb-2">✨</p>
-              <p className="text-sm font-bold text-dark/50">Sắp có ưu đãi mới</p>
-              <p className="text-[11px] text-dark/30 mt-1">Liên hệ H2O để nhận báo giá tốt nhất</p>
-            </div>
-          )}
-        </div>
-
-        {/* CTAs */}
-        <div className="px-5 pb-5 pt-2 space-y-2">
-          {onConsult && (
-            <button
-              onClick={onConsult}
-              className="w-full flex items-center justify-center gap-1.5 bg-gradient-to-r from-secondary to-primary text-white font-bold text-[13px] py-2.5 rounded-2xl hover:opacity-90 transition shadow-md shadow-primary/25"
-            >
-              Nhận tư vấn ngay ✨
-            </button>
-          )}
-          <a
-            href="/promotions"
-            className="flex items-center justify-center gap-1.5 border-2 border-rose-200 text-rose-500 font-bold text-[13px] py-2.5 rounded-2xl hover:bg-rose-50 transition"
-          >
-            Xem tất cả ưu đãi <ChevronRight size={14} />
-          </a>
-        </div>
+        {onConsult && (
+          <button onClick={onConsult}
+            className="mx-2 md:mx-4 mb-2 md:mb-4 flex items-center justify-center gap-1 text-[10px] md:text-[12px] font-bold text-white bg-gradient-to-r from-secondary to-primary py-2 md:py-2.5 rounded-xl hover:opacity-90 transition shadow-sm shadow-primary/20">
+            Tư vấn ngay ✨
+          </button>
+        )}
       </div>
 
     </div>
