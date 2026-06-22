@@ -40,7 +40,6 @@ IMPORTANT: Absolutely NO text, NO letters, NO numbers, NO words in the image. Pu
         n: 1,
         size: model === 'dall-e-3' ? '1792x1024' : '1024x1024',
         quality: model === 'dall-e-3' ? quality : undefined,
-        response_format: 'b64_json',
       }),
     });
 
@@ -51,8 +50,21 @@ IMPORTANT: Absolutely NO text, NO letters, NO numbers, NO words in the image. Pu
       return res.status(200).json({ error: errMsg });
     }
 
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) return res.status(200).json({ error: 'DALL-E không trả về ảnh' });
+    // Newer API returns URL; older returned b64_json — handle both
+    const b64Direct = data?.data?.[0]?.b64_json;
+    const imageUrl  = data?.data?.[0]?.url;
+
+    if (b64Direct) {
+      return res.status(200).json({ b64: b64Direct, revisedPrompt: data?.data?.[0]?.revised_prompt });
+    }
+
+    if (!imageUrl) return res.status(200).json({ error: 'DALL-E không trả về ảnh' });
+
+    // Fetch image from URL and convert to base64 for frontend compatibility
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return res.status(200).json({ error: 'Không tải được ảnh từ OpenAI' });
+    const imgBuf = await imgRes.arrayBuffer();
+    const b64 = Buffer.from(imgBuf).toString('base64');
 
     return res.status(200).json({ b64, revisedPrompt: data?.data?.[0]?.revised_prompt });
   } catch (err: any) {
