@@ -238,7 +238,7 @@ src/
 │   ├── LiveChatBubble.tsx      ← customer chat panel + Bot Tầng 1/2 (callBotTier1/2)
 │   ├── AdminChatPanel.tsx      ← admin side-drawer: session list + reply + @kịch bản + 📷 album + 📌 FAQ
 │   ├── PromoBanner.tsx         ← banner KM trên website (dismiss to sessionStorage)
-│   ├── PromoGrid.tsx           ← grid dịch vụ trang chủ: trái=KM nổi bật Supabase, phải=2×3 thẻ dịch vụ cấu hình được
+│   ├── PromoGrid.tsx           ← Two-Panel grid trang chủ: trái=Top concept (promoGridItems config), phải=KM đang chạy Supabase (adaptive 1-3 list / 4 grid)
 │   ├── LuckyWheelWidget.tsx
 │   ├── ImageCropperModal.tsx
 │   └── PartnerBrandsIcons.tsx
@@ -932,10 +932,12 @@ interface AiPromoProposal {
 **API: `api/ai-promo.ts`**
 
 ```typescript
-// POST body: { command?, type: 'bulk' | 'content', context? }
+// POST body: { command?, type: 'bulk' | 'content', context?, apiKey, apiUrl, modelName }
 // type 'bulk': returns { result: AiPromoProposal[] }
 // type 'content': returns { result: { shortDesc, content, ctaText } }
-// Dùng @google/genai, model gemini-3.5-flash, GEMINI_API_KEY (no VITE_ prefix)
+// OpenAI-compatible: gọi bất kỳ endpoint (DeepSeek, Groq, OpenAI, Custom LLM)
+// KHÔNG dùng @google/genai hay Gemini — đã rewrite hoàn toàn
+// Parse JSON từ raw: raw.match(/\[[\s\S]*\]/) || raw.match(/\{[\s\S]*\}/)
 ```
 
 **Các icon dùng trong AdminPromotions:**
@@ -950,26 +952,31 @@ import { Sparkles, UserCheck, Phone, MessageCircle, Loader2, Users } from 'lucid
 const { isAdmin, isAuthReady, consultations, updateConsultationTags, settings } = useApp();
 ```
 
-### AI Tạo Ảnh Banner (DALL-E 3) — `api/ai-image.ts`
+### AI Tạo Ảnh Banner (DALL-E) — `api/ai-image.ts`
 
 - Button "🎨 AI tạo ảnh" trong edit modal của mỗi KM
 - Gọi `/api/ai-image` với `{ promoTitle, shortDesc, emoji, color, apiKey, model, quality }`
-- Dùng `integrationChatApiKey` từ settings làm OpenAI API key
+- **API Key:** ưu tiên `settings.aiImageApiKey` (Image AI riêng), fallback `settings.integrationChatApiKey`
+- **Kiểm tra:** `settings.aiImageEnabled === false` → báo lỗi ngay, không gọi API
 - Trả về `{ b64: string }` (base64 PNG 1792×1024)
 - Frontend gọi `uploadImageToStorage(dataUrl, 'promotions/xxx.png')` → upload R2 → lưu URL vào `promotion.image_url`
 
+**Image position slider (trước khi upload ảnh từ máy):**
+- Trong upload modal: 2 slider "← Trái/Phải →" và "↑ Trên/Dưới ↓" (state imagePosX, imagePosY, default 50)
+- Preview `object-position: X% Y%` realtime
+- Nút "✂ Cắt & chốt vùng này" → Canvas API crop → baked vào data URL (không cần DB migration)
+- Reset về 50,50 khi mở modal mới hoặc chọn ảnh mới
+
 **Model image:**
 ```typescript
-const IMAGE_MODELS = [
-  { id: 'dall-e-3',    label: 'DALL-E 3 standard', quality: 'standard', note: '$0.04/ảnh' },
-  { id: 'dall-e-3-hd', label: 'DALL-E 3 HD',       quality: 'hd',       note: '$0.08/ảnh' },
-  { id: 'dall-e-2',    label: 'DALL-E 2',           quality: undefined,  note: '$0.02/ảnh' },
-];
+// AdminSettings → Cổng kết nối → Image AI chọn model
+// DALL-E 3 (default) / DALL-E 2
+// settings.aiImageModel → truyền vào callAiImage()
 ```
 
 **Flow tạo ảnh:**
-1. Chọn model (dropdown trong modal)
-2. Click "Tạo ảnh" → `callAiImage()` → `/api/ai-image` → nhận base64
+1. Click "🎨 AI tạo ảnh" → `callAiImage()` kiểm tra `aiImageEnabled` + lấy `aiImageApiKey || integrationChatApiKey`
+2. Gọi `/api/ai-image` → nhận base64
 3. Hiện preview — banner vàng cảnh báo "Chưa lưu"
 4. Hover ảnh → click "Dùng ảnh này" → `useGeneratedImage()` → upload R2 → lưu URL vào form
 5. Lưu KM → URL vào `image_url` Supabase
@@ -993,6 +1000,43 @@ const MODEL_PRESETS = [
 - Click provider chip → auto-fill URL + chọn model mặc định
 - Dropdown model thay text input khi provider đã biết
 - `selectedProvider` state được derive từ URL hiện tại khi load
+
+### Image AI — Cổng kết nối (AdminSettings)
+
+Block riêng biệt sau Text AI, có toggle bật/tắt, API Key riêng, model selector:
+
+```typescript
+// UI: toggle aiImageEnabled + input aiImageApiKey (password) + select aiImageModel
+// Lưu qua handleSaveSection('integrations') cùng với Text AI fields
+// Note: "Để trống API Key → dùng chung key Text AI"
+```
+
+---
+
+### PromoGrid Two-Panel (src/components/PromoGrid.tsx)
+
+Layout `grid-cols-2` trên trang chủ:
+
+**Bảng trái — Top concept:**
+- Nếu có `settings.promoGridItems` (enabled) → hiển thị list configured items (unlimited, badge tùy chỉnh)
+- Fallback: `styles.filter(s => !s.deleted).slice(0, 5)` với badge TOP1/TOP2/TOP3
+- Skeleton loader khi styles chưa load
+- Footer CTA: "Xem tất cả →" link `/favorites`
+
+**Bảng phải — KM đang chạy:**
+- Query Supabase: `enabled=true AND show_on_website=true AND start_date<=today AND end_date>=today LIMIT 4`
+- Adaptive layout: 0 KM → empty state; 1–3 → thumbnail list; 4 → 2×2 image grid
+- HOT badge trên item đầu tiên
+- Footer CTA: "Tư vấn ngay ✨" → `onConsult()`
+
+### AdminSettings Banner QC (case 'banner')
+
+Tab Banner QC trong AdminSettings quản lý `promoGridItems` (bảng trái PromoGrid):
+
+- Vertical list (`space-y-3`), không giới hạn số thẻ
+- Mỗi thẻ: header compact (số + link type dropdown + toggle + xóa) + body `grid grid-cols-2` (title, imageUrl, badge, linkValue)
+- `linkType`: `'style' | 'promotion' | 'blog' | 'custom'`
+- Nút "+ Thêm thẻ (N thẻ)" ở cuối, không giới hạn
 
 ---
 
@@ -1045,12 +1089,18 @@ export interface AppSettings {
   aiConsultantName?: string;
   aiConsultantPrompt?: string;
 
-  // Cổng kết nối — Model selector (OpenAI / DeepSeek / Groq / Claude / Custom)
+  // Cổng kết nối — Text AI (OpenAI / DeepSeek / Groq / Claude / Custom)
   integrationChatApiEnabled?: boolean;
   integrationChatApiUrl?: string;      // auto-fill khi chọn provider preset
-  integrationChatApiKey?: string;      // dùng cho cả chat lẫn DALL-E image gen
+  integrationChatApiKey?: string;      // dùng cho chat/promo text; fallback cho DALL-E nếu aiImageApiKey trống
   integrationChatApiModelName?: string; // chọn từ dropdown theo provider
   integrationChatApiHeaders?: string;
+
+  // Image AI — DALL-E (tách riêng khỏi Text AI)
+  aiImageEnabled?: boolean;            // toggle bật/tắt DALL-E image gen (default true)
+  aiImageApiKey?: string;              // OpenAI key riêng cho DALL-E; để trống → dùng chung integrationChatApiKey
+  aiImageModel?: string;               // 'dall-e-3' (default) | 'dall-e-2'
+
   integrationSheetEnabled?: boolean;
   integrationSheetId?: string;
   integrationSheetName?: string;
