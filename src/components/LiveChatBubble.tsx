@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { expandQuery } from '../utils/synonyms';
 import { useApp } from '../context/AppContext';
 import { sendLeadNotifications } from '../utils/sendLeadNotifications';
+import { APP_CONFIG } from '../data/mockData';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -163,9 +164,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const callBotTier1 = async (customerMessage: string, sid: string) => {
     try {
       setIsThinking(true);
-      const [{ data: faqData }, { data: scriptData }] = await Promise.all([
+      const todayStr = new Date().toISOString().split('T')[0];
+      const [{ data: faqData }, { data: scriptData }, { data: promoData }] = await Promise.all([
         supabase.from('customer_faqs').select('id, question, answer, tags, usage_count').eq('is_approved', true),
         supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
+        supabase.from('promotions').select('title, short_desc, emoji, end_date').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(2),
       ]);
 
       const thinkingDelay1 = settings?.chatBotThinkingDelay ?? 1200;
@@ -198,32 +201,56 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       const best = [...scoredFaqs, ...scoredScripts].sort((a, b) => b.score - a.score)[0];
 
+      // Format promotions footer (tối đa 2 KM đang chạy)
+      const activePromos = promoData || [];
+      const promoFooter = activePromos.length > 0
+        ? '\n\n🎉 Ưu đãi đang chạy:\n' + activePromos.map((p: any) => {
+            const endDate = new Date(p.end_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+            return `${p.emoji} ${p.title} — ${p.short_desc} (hết ${endDate})`;
+          }).join('\n')
+        : '';
+
+      // Kiểm tra câu hỏi có liên quan giá/ưu đãi không
+      const PRICE_KEYWORDS = ['giá', 'phí', 'tiền', 'bao nhiêu', 'ưu đãi', 'khuyến', 'giảm', 'sale', 'offer'];
+      const isPriceQuery = PRICE_KEYWORDS.some(k => customerMessage.toLowerCase().includes(k));
+
       let text: string;
       if (best && best.score > 0) {
         if (best.type === 'faq') {
           text = best.item.answer;
-          // Tăng usage_count không chặn luồng chính
           supabase.from('customer_faqs')
             .update({ usage_count: (best.item.usage_count || 0) + 1 })
             .eq('id', best.item.id).then(() => {});
+          // Thêm promo nếu câu hỏi về giá hoặc FAQ thuộc nhóm offer/fomo/closing
+          const promoPhases = ['offer', 'fomo', 'closing'];
+          if ((isPriceQuery || promoPhases.includes(best.item.category)) && promoFooter) {
+            text += promoFooter;
+          }
         } else {
           const c = best.item.content as string;
           text = c.length > 450 ? c.slice(0, 450) + '...' : c;
+          // Thêm promo nếu kịch bản thuộc giai đoạn báo giá/chốt
+          const promoPhases = ['offer', 'fomo', 'closing'];
+          if ((isPriceQuery || promoPhases.includes(best.item.phase)) && promoFooter) {
+            text += promoFooter;
+          }
         }
       } else {
-        text = 'Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Tư vấn viên sẽ phản hồi anh/chị sớm nhất có thể. Anh/chị vui lòng để lại số điện thoại để được hỗ trợ tốt hơn ạ 💕';
-        // Tự học: lưu câu hỏi chưa được bot trả lời vào kho để admin duyệt
+        // Fallback: không match được — thêm Zalo/Hotline để khách liên hệ trực tiếp
+        const zaloUrl = APP_CONFIG.zaloUrl;
+        const hotline = APP_CONFIG.hotline;
+        let cta = '';
+        if (zaloUrl) cta += `\n💬 Chat Zalo ngay: ${zaloUrl}`;
+        if (hotline) cta += `\n📞 Hotline: ${hotline}`;
+        text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
+        if (promoFooter) text += promoFooter;
+        // Tự học: lưu câu hỏi chưa trả lời để admin duyệt
         const q = customerMessage.trim();
         if (q.length >= 8) {
           supabase.from('customer_faqs').insert({
             id: crypto.randomUUID(),
-            question: q,
-            answer: '',
-            category: 'khac',
-            tags: [],
-            source: 'from_chat_auto',
-            is_approved: false,
-            usage_count: 0,
+            question: q, answer: '', category: 'khac', tags: [],
+            source: 'from_chat_auto', is_approved: false, usage_count: 0,
             created_at: new Date().toISOString(),
           }).then(() => {});
         }
@@ -244,9 +271,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const callBotTier2 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
     try {
       setIsThinking(true);
-      const [{ data: sess }, { data: scriptData }] = await Promise.all([
+      const todayStr = new Date().toISOString().split('T')[0];
+      const [{ data: sess }, { data: scriptData }, { data: promoData }] = await Promise.all([
         supabase.from('chat_sessions').select('stage').eq('id', sid).maybeSingle(),
         supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
+        supabase.from('promotions').select('title, short_desc, emoji, end_date, content').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(3),
       ]);
 
       const thinkingDelay = settings?.chatBotThinkingDelay ?? 1200;
@@ -261,6 +290,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           scripts: scriptData || [],
           history: currentMessages.slice(-10),
           integrationConfig,
+          activePromos: promoData || [],
         }),
       });
       if (!res.ok) return;

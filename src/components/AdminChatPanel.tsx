@@ -186,10 +186,29 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
     setScripts((data || []) as Script[]);
   };
 
+  // Chat stage → CRM status map (chỉ cập nhật khi stage tiến về phía trước)
+  const STAGE_TO_CRM_STATUS: Record<string, string> = {
+    discovery:  'consulting',
+    consulting: 'consulting',
+    offer:      'quoted',
+    fomo:       'quoted',
+    closing:    'quoted',
+    pre_shoot:  'registered',
+    followup:   'contacted',
+  };
+
   const updateStage = async (stage: string) => {
     if (!activeId) return;
     await supabase.from('chat_sessions').update({ stage }).eq('id', activeId);
     setSessions(prev => prev.map(s => s.id === activeId ? { ...s, stage } : s));
+
+    // Sync CRM status nếu có consultation liên kết
+    const crmStatus = STAGE_TO_CRM_STATUS[stage];
+    const consultId = activeSession?.consultation_id;
+    if (crmStatus && consultId) {
+      supabase.from('consultations').update({ status: crmStatus }).eq('id', consultId).then(() => {});
+    }
+
     const phases = STAGE_TO_PHASES[stage] || ['opening'];
     const { data } = await supabase.from('sale_scripts').select('id, phase, title, content')
       .in('phase', phases).eq('enabled', true).order('order_num', { ascending: true });

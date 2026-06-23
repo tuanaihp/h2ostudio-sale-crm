@@ -26,6 +26,19 @@ const StyleDetail: React.FC = () => {
     setHasRequestedAlbums(false);
   }, [slug]);
 
+  // Track style đã xem vào localStorage (để gửi kèm khi khách đăng ký tư vấn)
+  React.useEffect(() => {
+    if (!style || isAdmin) return;
+    try {
+      const KEY = 'h2o_viewed_styles';
+      const existing: { id: string; title: string; count: number }[] = JSON.parse(localStorage.getItem(KEY) || '[]');
+      const idx = existing.findIndex(v => v.id === style.id);
+      if (idx >= 0) { existing[idx].count = (existing[idx].count || 1) + 1; }
+      else { existing.push({ id: style.id, title: style.title, count: 1 }); }
+      localStorage.setItem(KEY, JSON.stringify(existing.slice(-8)));
+    } catch {}
+  }, [style?.id, isAdmin]);
+
   React.useEffect(() => {
     if (style && (!style.albums || style.albums.length === 0) && !hasRequestedAlbums) {
       setHasRequestedAlbums(true);

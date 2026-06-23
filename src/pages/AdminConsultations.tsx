@@ -1977,6 +1977,7 @@ const AdminConsultations: React.FC = () => {
                                   <Camera size={10} /> Chụp: {consult.shootingDate ? format(new Date(consult.shootingDate), 'dd/MM') : '??'}
                                   {getShootingCountdown(consult.shootingDate) === 1 && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded animate-pulse">D-1!</span>}
                                   {getShootingCountdown(consult.shootingDate) === 3 && <span className="bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded">D-3</span>}
+                                  {(() => { const cd = getShootingCountdown(consult.shootingDate); return cd !== null && cd < -1; })() && <span className="bg-yellow-400 text-yellow-900 text-[9px] px-1.5 py-0.5 rounded font-bold" title="Ngày chụp đã qua — nhắc xin review Google">⭐ Xin review</span>}
                                 </div>
                                 <div className="flex items-center gap-1.5 text-red-600 font-bold text-[10px] uppercase">
                                   <Calendar size={10} /> Cưới: {consult.weddingDate ? format(new Date(consult.weddingDate), 'dd/MM') : '??'}

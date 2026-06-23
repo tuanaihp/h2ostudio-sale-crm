@@ -73,8 +73,19 @@ export const ConsultationModal: React.FC<ConsultationModalProps> = ({ isOpen, on
         setIsDuplicate(true);
         return;
       }
+      // Append danh sách style khách đã xem vào message (từ localStorage)
+      let finalMessage = consultForm.message || '';
+      try {
+        const viewed: { id: string; title: string; count: number }[] = JSON.parse(localStorage.getItem('h2o_viewed_styles') || '[]');
+        if (viewed.length > 0) {
+          const styleList = viewed.map(v => `${v.title}${v.count > 1 ? ` ×${v.count}` : ''}`).join(', ');
+          finalMessage = (finalMessage ? finalMessage + '\n' : '') + `[Đã xem: ${styleList}]`;
+        }
+      } catch {}
+
       await submitConsultation({
         ...consultForm,
+        message: finalMessage,
         favoriteIds: favorites,
         favoriteAlbums: favoriteAlbumsInfo,
       });
