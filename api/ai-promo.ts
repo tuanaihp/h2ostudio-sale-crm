@@ -83,8 +83,8 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
             { role: 'system', content: 'Bạn là trợ lý marketing chuyên nghiệp. Chỉ trả về JSON đúng format được yêu cầu.' },
             { role: 'user', content: prompt },
           ],
-          temperature: 0.8,
-          max_tokens: 2000,
+          temperature: 0.7,
+          max_tokens: 8000,
         }),
       });
 
@@ -124,9 +124,9 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: 'Bạn là trợ lý marketing chuyên nghiệp. Chỉ trả về JSON đúng format được yêu cầu.' }] },
+          system_instruction: { parts: [{ text: 'Bạn là trợ lý marketing chuyên nghiệp. QUAN TRỌNG: Chỉ trả về JSON thuần túy, KHÔNG dùng markdown, KHÔNG dùng code block, KHÔNG giải thích, KHÔNG có text thừa ngoài JSON.' }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.8, maxOutputTokens: 2000 },
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
         }),
       }
     );
