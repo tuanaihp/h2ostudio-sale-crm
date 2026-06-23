@@ -1044,10 +1044,20 @@ interface AiPromoProposal {
 // POST body: { command?, type: 'bulk' | 'content', context?, apiKey, apiUrl, modelName }
 // type 'bulk': returns { result: AiPromoProposal[] }
 // type 'content': returns { result: { shortDesc, content, ctaText } }
-// OpenAI-compatible: gọi bất kỳ endpoint (DeepSeek, Groq, OpenAI, Custom LLM)
-// KHÔNG dùng @google/genai hay Gemini — đã rewrite hoàn toàn
 // Parse JSON từ raw: raw.match(/\[[\s\S]*\]/) || raw.match(/\{[\s\S]*\}/)
 ```
+
+**Thứ tự ưu tiên API (Gemini fallback):**
+1. **Custom API** (nếu `apiKey` có) → OpenAI-compatible (DeepSeek/Groq/OpenAI/Custom LLM)
+2. **Gemini fallback** tự động khi: không có apiKey, hoặc lỗi `insufficient_balance / quota / unauthorized`
+3. Cần `GEMINI_API_KEY` trong Vercel env vars — miễn phí 1500 req/ngày
+
+```typescript
+// Lỗi balance/auth → fallthrough sang Gemini
+const isBalanceOrAuth = /balance|quota|insufficient|unauthorized|invalid.*key/i.test(errMsg);
+```
+
+> **Lưu ý:** Khi thấy lỗi "Insufficient Balance" trong modal AI → `GEMINI_API_KEY` chưa được set trên Vercel, hoặc cả hai key đều hết quota.
 
 **Các icon dùng trong AdminPromotions:**
 
