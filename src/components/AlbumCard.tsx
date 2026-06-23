@@ -16,9 +16,11 @@ interface AlbumCardProps {
   styleId?: string;
   index: number;
   totalAlbums?: number;
+  isHot?: boolean;
+  realLikeCount?: number;
 }
 
-export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId = '', index, totalAlbums = 0 }) => {
+export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId = '', index, totalAlbums = 0, isHot, realLikeCount = 0 }) => {
   const { deleteAlbum, updateAlbumCover, isAdmin, updateAlbumText, favorites, toggleFavorite, moveAlbum, settings } = useApp();
   const [showConfirm, setShowConfirm] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
@@ -73,7 +75,9 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
   };
 
   const likesCount = parseLikes(album.displayLikes, album.id);
-  const isHotConcept = index < 5 && likesCount >= 5000;
+  // isHot từ parent (dựa trên album_likes thực tế); fallback legacy nếu chưa có data
+  const isHotConcept = isHot !== undefined ? isHot : (index < 5 && likesCount >= 5000);
+  const totalLikes = likesCount + realLikeCount;
   // Deterministic viewer count seeded by album id — consistent per album, varies 3–18
   const viewerCount = !isAdmin
     ? (album.id.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) & 0xffff, 7) % 16) + 3
@@ -168,11 +172,15 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
           />
           <div className="flex items-center gap-1 text-[10px] text-dark/40 font-bold shrink-0">
             <Heart size={10} className="fill-red-500 text-red-500" />
-            <EditableText 
-              value={album.displayLikes || formatLikes(parseLikes(undefined, album.id))}
-              onSave={(value) => updateAlbumText(styleSlug, album.slug, 'displayLikes', value)}
-              disabled={!isAdmin}
-            />
+            {isAdmin ? (
+              <EditableText
+                value={album.displayLikes || formatLikes(parseLikes(undefined, album.id))}
+                onSave={(value) => updateAlbumText(styleSlug, album.slug, 'displayLikes', value)}
+                disabled={false}
+              />
+            ) : (
+              <span>{formatLikes(totalLikes)}</span>
+            )}
           </div>
         </div>
       </Link>

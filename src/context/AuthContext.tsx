@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase, loginWithGoogle, logout } from '../supabase';
+
+const LIKE_SESSION_KEY = 'h2o_like_session';
+const getLikeSessionId = () => {
+  let id = localStorage.getItem(LIKE_SESSION_KEY);
+  if (!id) {
+    id = `ls-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    localStorage.setItem(LIKE_SESSION_KEY, id);
+  }
+  return id;
+};
 import type { User } from '@supabase/supabase-js';
 import type { DbUserRoleRow } from '../types';
 
@@ -47,7 +57,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [favorites]);
 
   const toggleFavorite = useCallback((id: string) => {
-    setFavorites(prev => prev.includes(id) ? prev.filter(fId => fId !== id) : [...prev, id]);
+    const sessionId = getLikeSessionId();
+    setFavorites(prev => {
+      const isAdding = !prev.includes(id);
+      if (isAdding) {
+        supabase.from('album_likes')
+          .upsert({ album_id: id, session_id: sessionId }, { onConflict: 'album_id,session_id' })
+          .then(() => {});
+      } else {
+        supabase.from('album_likes')
+          .delete().eq('album_id', id).eq('session_id', sessionId)
+          .then(() => {});
+      }
+      return isAdding ? [...prev, id] : prev.filter(fId => fId !== id);
+    });
   }, []);
 
   const checkPhoneInWhitelist = useCallback((

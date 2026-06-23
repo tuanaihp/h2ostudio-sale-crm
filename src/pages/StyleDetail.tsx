@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { EditorState } from '../types';
 import { useApp } from '../context/AppContext';
 import { parseLikes } from '../utils/likes';
+import { supabase } from '../supabase';
 
 const StyleDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -21,10 +22,23 @@ const StyleDetail: React.FC = () => {
   const [initialMessage, setInitialMessage] = useState('');
   const [hasRequestedAlbums, setHasRequestedAlbums] = useState(false);
   const [isFetchingAlbums, setIsFetchingAlbums] = useState(false);
+  const [albumLikeCounts, setAlbumLikeCounts] = React.useState<Record<string, number>>({});
 
   React.useEffect(() => {
     setHasRequestedAlbums(false);
   }, [slug]);
+
+  // Fetch real like counts từ album_likes table
+  React.useEffect(() => {
+    if (!style?.albums?.length) return;
+    const albumIds = style.albums.map(a => a.id);
+    supabase.from('album_likes').select('album_id').in('album_id', albumIds)
+      .then(({ data }) => {
+        const counts: Record<string, number> = {};
+        data?.forEach(({ album_id }) => { counts[album_id] = (counts[album_id] || 0) + 1; });
+        setAlbumLikeCounts(counts);
+      });
+  }, [style?.id, style?.albums?.length]);
 
   // Track style đã xem vào localStorage (để gửi kèm khi khách đăng ký tư vấn)
   React.useEffect(() => {
@@ -49,13 +63,25 @@ const StyleDetail: React.FC = () => {
 
   const sortedAlbums = React.useMemo(() => {
     if (!style?.albums) return [];
-    if (isAdmin) return style.albums; // Maintain standard order for admin drag-and-drop
+    if (isAdmin) return style.albums;
     return [...style.albums].sort((a, b) => {
-      const likesA = parseLikes(a.displayLikes, a.id);
-      const likesB = parseLikes(b.displayLikes, b.id);
-      return likesB - likesA;
+      const totalA = parseLikes(a.displayLikes, a.id) + (albumLikeCounts[a.id] || 0);
+      const totalB = parseLikes(b.displayLikes, b.id) + (albumLikeCounts[b.id] || 0);
+      return totalB - totalA;
     });
-  }, [style?.albums, isAdmin]);
+  }, [style?.albums, isAdmin, albumLikeCounts]);
+
+  // HOT TRENDING tự động: top 3 album by real likes; fallback to displayLikes nếu chưa có data
+  const hotAlbumIds = React.useMemo(() => {
+    const hasRealData = Object.values(albumLikeCounts).some(c => c > 0);
+    if (!hasRealData) return null; // null = AlbumCard dùng logic cũ (displayLikes >= 5000)
+    return new Set(
+      Object.entries(albumLikeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id]) => id)
+    );
+  }, [albumLikeCounts]);
 
   // If we found the style but haven't found the albums yet, check if we are still loading albums
   const isLoadingAlbums = style && (!style.albums || style.albums.length === 0);
@@ -135,6 +161,8 @@ const StyleDetail: React.FC = () => {
               styleId={style.id}
               index={index}
               totalAlbums={sortedAlbums.length}
+              isHot={hotAlbumIds !== null ? hotAlbumIds.has(album.id) : undefined}
+              realLikeCount={albumLikeCounts[album.id] || 0}
             />
           ))}
           {isAdmin && <AddPlaceholder label="Thêm Album" onClick={() => setIsEditorOpen(true)} aspectRatio="aspect-[4/5]" />}

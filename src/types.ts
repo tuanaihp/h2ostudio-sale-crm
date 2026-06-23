@@ -31,6 +31,7 @@ export interface Album {
   suggestedLayout?: string;
   suitableFor?: string;
   displayLikes?: string;
+  realLikeCount?: number;
   photos: Photo[];
   order: number;
   design?: EditorState;
