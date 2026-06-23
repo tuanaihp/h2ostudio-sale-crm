@@ -20,15 +20,16 @@
 10. [Admin CRM — Tính năng tự động](#10-admin-crm--tính-năng-tự-động)
 11. [Live Chat & Bot AI & AdminChatPanel](#11-live-chat--bot-ai--adminchatpanel)
 12. [Kho Câu Hỏi Thực Tế (Knowledge Base)](#12-kho-câu-hỏi-thực-tế-knowledge-base)
-13. [Lịch Khuyến Mãi (Promotions)](#13-lịch-khuyến-mãi-promotions)
-14. [AppSettings Interface](#14-appsettings-interface)
-15. [Environment Variables (Vercel)](#15-environment-variables-vercel)
-16. [Quy tắc Code](#16-quy-tắc-code)
-17. [Checklist Build Phases](#17-checklist-build-phases)
-18. [Deploy lên Vercel](#18-deploy-lên-vercel)
-19. [Setup Lark Webhook — Chi tiết từng bước](#19-setup-lark-webhook--chi-tiết-từng-bước)
-20. [Setup Telegram Bot — Chi tiết từng bước](#20-setup-telegram-bot--chi-tiết-từng-bước)
-21. [Prompt mẫu để bắt đầu dự án mới](#21-prompt-mẫu-để-bắt-đầu-dự-án-mới)
+13. [Tự động hóa Sale (Sale Automation)](#13-tự-động-hóa-sale-sale-automation)
+14. [Lịch Khuyến Mãi (Promotions)](#14-lịch-khuyến-mãi-promotions)
+15. [AppSettings Interface](#15-appsettings-interface)
+16. [Environment Variables (Vercel)](#16-environment-variables-vercel)
+17. [Quy tắc Code](#17-quy-tắc-code)
+18. [Checklist Build Phases](#18-checklist-build-phases)
+19. [Deploy lên Vercel](#19-deploy-lên-vercel)
+20. [Setup Lark Webhook — Chi tiết từng bước](#20-setup-lark-webhook--chi-tiết-từng-bước)
+21. [Setup Telegram Bot — Chi tiết từng bước](#21-setup-telegram-bot--chi-tiết-từng-bước)
+22. [Prompt mẫu để bắt đầu dự án mới](#22-prompt-mẫu-để-bắt-đầu-dự-án-mới)
 
 ---
 
@@ -286,19 +287,22 @@ const Home = lazy(() => import('./pages/Home'));
 /admin/knowledge-base → AdminKnowledgeBase (kho câu hỏi thực tế)
 ```
 
-**`vercel.json` rewrites** (bắt buộc cho SPA):
+**`vercel.json` rewrites + crons** (bắt buộc cho SPA + cron jobs):
 ```json
 {
   "rewrites": [
-    {
-      "source": "/((?!api).+)",
-      "destination": "/index.html"
-    }
+    { "source": "/((?!api).+)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/cron-digest",   "schedule": "0 1 * * *"   },
+    { "path": "/api/cron-stale",    "schedule": "30 1 * * *"  },
+    { "path": "/api/cron-shoots",   "schedule": "0 10 * * *"  },
+    { "path": "/api/cron-followup", "schedule": "0 */2 * * *" }
   ]
 }
 ```
 
-> ⚠️ **Không thêm `"crons"` vào `vercel.json` nếu dùng Hobby plan** — sẽ gây lỗi build.
+> Cron schedules dùng UTC: `0 1 * * *` = 8:00 VN, `30 1 * * *` = 8:30 VN, `0 10 * * *` = 17:00 VN, `0 */2 * * *` = mỗi 2h.
 
 ---
 
@@ -758,22 +762,31 @@ expandQuery("bao nhiêu tiền")
 ### Bot Tầng 1 — search logic (LiveChatBubble.tsx)
 
 ```typescript
-// Fetch song song cả hai nguồn
-const [{ data: faqData }, { data: scriptData }] = await Promise.all([
-  supabase.from('customer_faqs').select('...').eq('is_approved', true),
-  supabase.from('sale_scripts').select('...').eq('enabled', true),
+// Fetch song song 3 nguồn (FAQ + kịch bản + khuyến mãi đang chạy)
+const todayStr = new Date().toISOString().split('T')[0];
+const [{ data: faqData }, { data: scriptData }, { data: promoData }] = await Promise.all([
+  supabase.from('customer_faqs').select('id, question, answer, tags, usage_count').eq('is_approved', true),
+  supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
+  supabase.from('promotions').select('title, short_desc, emoji, end_date')
+    .eq('enabled', true).eq('show_on_website', true)
+    .lte('start_date', todayStr).gte('end_date', todayStr).limit(2),
 ]);
 
 // Mở rộng từ khóa
 const words = expandQuery(customerMessage);
+const isPriceQuery = ['giá', 'chi phí', 'bao nhiêu', 'báo giá', 'ưu đãi', 'khuyến mãi'].some(k => customerMessage.includes(k));
 
+// Xây promoFooter để inject vào câu trả lời
 // Score FAQ: question +4, tags +2, answer +1
 // Score Script: title +3, tags +2, content +1
 
 if (best && best.score > 0) {
-  // Trả lời + tăng usage_count (non-blocking)
+  // Trả lời + inject promoFooter nếu câu hỏi về giá hoặc kịch bản offer/fomo/closing
+  // + tăng usage_count (non-blocking)
 } else {
-  // Gửi fallback message
+  // Fallback: Zalo/Hotline deeplink từ APP_CONFIG (KHÔNG dùng settings?.zaloUrl)
+  const zaloUrl = APP_CONFIG.zaloUrl;
+  const hotline = APP_CONFIG.hotline;
   // TỰ HỌC: lưu câu hỏi vào pending (is_approved=false, source='from_chat_auto')
   if (customerMessage.trim().length >= 8) {
     supabase.from('customer_faqs').insert({ ..., is_approved: false, source: 'from_chat_auto' })
@@ -781,9 +794,84 @@ if (best && best.score > 0) {
 }
 ```
 
+> ⚠️ **Deeplink Zalo/Hotline** trong fallback dùng `APP_CONFIG` từ `src/data/mockData.ts`, KHÔNG phải `settings?.zaloUrl` (AppSettings không có field này).
+
 ---
 
-## 13. Lịch Khuyến Mãi (Promotions)
+## 13. Tự động hóa Sale (Sale Automation)
+
+### Tổng quan 6 tính năng
+
+| # | Tính năng | File |
+|---|-----------|------|
+| A | Bot tự mention KM đang chạy khi khách hỏi giá | `LiveChatBubble.tsx` |
+| B | Fallback bot có deeplink Zalo/Hotline | `LiveChatBubble.tsx` |
+| C | Chat stage → CRM status sync tự động | `AdminChatPanel.tsx` |
+| D | 4 Vercel Cron Jobs | `vercel.json` + `api/cron-*.ts` |
+| E | Badge ⭐ Xin review sau ngày chụp | `AdminConsultations.tsx` |
+| F | Track style đã xem → gửi kèm consultation | `StyleDetail.tsx` + `ConsultationModal.tsx` |
+
+### A — Bot mention khuyến mãi
+
+`callBotTier1` fetch thêm bảng `promotions` (max 2 KM đang chạy). Khi câu hỏi liên quan giá/ưu đãi, hoặc kịch bản khớp phase `offer/fomo/closing` → inject `promoFooter` vào cuối câu trả lời.
+
+`callBotTier2` cũng truyền `activePromos` xuống `/api/live-chat-bot` để LLM có context.
+
+### B — Fallback Zalo/Hotline
+
+Khi bot không match (score=0), trả về message kèm deeplink:
+```
+💬 Chat Zalo ngay: {APP_CONFIG.zaloUrl}
+📞 Hotline: {APP_CONFIG.hotline}
+```
+Nguồn: `APP_CONFIG` từ `src/data/mockData.ts` (KHÔNG phải `settings?.zaloUrl`).
+
+### C — Stage → CRM sync
+
+```typescript
+// AdminChatPanel.tsx — updateStage()
+const STAGE_TO_CRM_STATUS: Record<string, string> = {
+  discovery: 'consulting', consulting: 'consulting',
+  offer: 'quoted', fomo: 'quoted', closing: 'quoted',
+  pre_shoot: 'registered', followup: 'contacted',
+};
+// Khi admin đổi stage → tự cập nhật consultations.status
+```
+
+### D — Vercel Cron Jobs (4 jobs)
+
+| File | Schedule (UTC) | Giờ VN | Mục đích |
+|------|----------------|--------|---------|
+| `api/cron-digest.ts` | `0 1 * * *` | 8:00 | Tổng lead mới qua đêm |
+| `api/cron-stale.ts` | `30 1 * * *` | 8:30 | Lead >48h chưa xử lý |
+| `api/cron-shoots.ts` | `0 10 * * *` | 17:00 | Lịch chụp D-1/D-3 |
+| `api/cron-followup.ts` | `0 */2 * * *` | Mỗi 2h | Lead mới 2–6h (Lark + Telegram) |
+
+`cron-followup.ts` là file mới nhất — focus vào golden window 2–6h đầu (tỷ lệ chuyển đổi cao nhất). Gửi đồng thời Lark và Telegram (các cron khác chỉ gửi Lark).
+
+### E — Badge ⭐ Xin review
+
+Trong bảng CRM (`AdminConsultations.tsx`), hiện badge màu vàng khi `getShootingCountdown(consult.shootingDate) < -1` (ngày chụp đã qua > 1 ngày):
+
+```tsx
+{getShootingCountdown(consult.shootingDate) !== null && 
+ getShootingCountdown(consult.shootingDate)! < -1 && 
+ <span className="bg-yellow-400 text-yellow-900 ...">⭐ Xin review</span>}
+```
+
+### F — Tracking style đã xem
+
+`StyleDetail.tsx`: mỗi lần khách vào trang style → ghi `{ id, title, count }` vào `localStorage['h2o_viewed_styles']` (max 8 styles gần nhất).
+
+`ConsultationModal.tsx`: trước khi submit → đọc localStorage, append vào message:
+```
+[Đã xem: Rustic ×2, Vintage, Modern ×3]
+```
+Sale thấy ngay khách quan tâm style nào mà không cần hỏi.
+
+---
+
+## 14. Lịch Khuyến Mãi (Promotions)
 
 ### Tổng quan
 
@@ -1229,12 +1317,18 @@ TELEGRAM_CHAT_ID          = -100xxxxxxxxxx
 - [ ] Priority sort tự động
 - [ ] Stats tuần/tháng/lịch chụp
 - [ ] Auto-tag khi submit
+- [ ] Badge ⭐ Xin review (ngày chụp đã qua)
+- [ ] Chat stage → CRM status sync (AdminChatPanel.updateStage)
 
 ### Phase 5 — Notifications & Sync
 - [ ] Lark webhook setup (xem mục 16)
 - [ ] Telegram Bot setup (xem mục 17)
 - [ ] Google Sheets sync (Google Apps Script)
-- [ ] Cron digest sáng (cron-job.org nếu Hobby plan)
+- [ ] 4 Vercel cron jobs (vercel.json crons section):
+  - `cron-digest`: 8:00 VN — tổng lead mới qua đêm
+  - `cron-stale`: 8:30 VN — nhắc lead >48h chưa xử lý
+  - `cron-shoots`: 17:00 VN — nhắc lịch chụp D-1/D-3
+  - `cron-followup`: mỗi 2h — nhắc lead mới 2–6h (Lark + Telegram)
 
 ### Phase 6 — UX nâng cao
 - [ ] Shimmer skeleton loader
