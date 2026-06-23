@@ -3,8 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { ScrollToTop } from './components/ScrollToTop';
 import { AppProvider } from './context/AppContext';
 import { PhoneGate } from './components/PhoneGate';
+import Home from './pages/Home';
 
-const Home = lazy(() => import('./pages/Home'));
 const StyleDetail = lazy(() => import('./pages/StyleDetail'));
 const AlbumDetail = lazy(() => import('./pages/AlbumDetail'));
 const PhotoView = lazy(() => import('./pages/PhotoView'));

@@ -106,16 +106,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    // Fallback: nếu Supabase auth treo >3s thì bỏ qua, render trang bình thường
+    const fallback = setTimeout(() => setIsAuthReady(true), 3000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      clearTimeout(fallback);
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (!currentUser) { setUserRole(null); setIsAuthReady(true); }
       else { await loadUserRole(currentUser); }
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) setIsAuthReady(true);
+      if (!session) { clearTimeout(fallback); setIsAuthReady(true); }
     });
-    return () => subscription.unsubscribe();
+    return () => { subscription.unsubscribe(); clearTimeout(fallback); };
   }, [loadUserRole]);
 
   const setUserPhone = useCallback((phone: string, customerName?: string) => {
