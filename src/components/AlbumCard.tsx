@@ -5,7 +5,7 @@ import { DesignPreview } from './DesignPreview';
 import { EditableText } from './EditableText';
 import { OptimizedImage } from './OptimizedImage';
 import { motion } from 'motion/react';
-import { Trash2, Upload, GripVertical, Heart, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Upload, Heart, TrendingUp, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { compressImage, uploadImageToStorage, getDisplayImageUrl } from '../utils/image';
 import { parseLikes, formatLikes } from '../utils/likes';
@@ -13,14 +13,25 @@ import { parseLikes, formatLikes } from '../utils/likes';
 interface AlbumCardProps {
   album: Album;
   styleSlug: string;
-  styleId: string;
+  styleId?: string;
   index: number;
+  totalAlbums?: number;
 }
 
-export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId, index }) => {
+export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId = '', index, totalAlbums = 0 }) => {
   const { deleteAlbum, updateAlbumCover, isAdmin, updateAlbumText, favorites, toggleFavorite, moveAlbum, settings } = useApp();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleMove = async (e: React.MouseEvent, dir: 'prev' | 'next') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isMoving) return;
+    setIsMoving(true);
+    await moveAlbum(styleId, album.id, dir);
+    setTimeout(() => setIsMoving(false), 400);
+  };
   const isFavorite = favorites.includes(album.id);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -169,20 +180,21 @@ export const AlbumCard = React.memo<AlbumCardProps>(({ album, styleSlug, styleId
       {!showConfirm && isAdmin && (
         <div className="absolute top-2 right-2 flex flex-col gap-2 z-10">
           <div className="flex gap-1">
-            <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveAlbum(styleId, index, 'prev'); }}
-              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-l-full shadow-lg transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+            <button
+              onClick={(e) => handleMove(e, 'prev')}
+              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-l-full shadow-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
               title="Di chuyển sang trái"
-              disabled={index === 0}
+              disabled={index === 0 || isMoving}
             >
-              <ChevronLeft size={16} />
+              {isMoving ? <Loader2 size={16} className="animate-spin" /> : <ChevronLeft size={16} />}
             </button>
-            <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveAlbum(styleId, index, 'next'); }}
-              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-r-full shadow-lg transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+            <button
+              onClick={(e) => handleMove(e, 'next')}
+              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-r-full shadow-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
               title="Di chuyển sang phải"
+              disabled={index === totalAlbums - 1 || isMoving}
             >
-              <ChevronRight size={16} />
+              {isMoving ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
             </button>
           </div>
           <button 

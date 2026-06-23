@@ -115,12 +115,13 @@ const StyleDetail: React.FC = () => {
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
           {sortedAlbums.map((album, index) => (
-            <AlbumCard 
-              key={album.id} 
-              album={album} 
-              styleSlug={style.slug} 
+            <AlbumCard
+              key={album.id}
+              album={album}
+              styleSlug={style.slug}
               styleId={style.id}
-              index={index} 
+              index={index}
+              totalAlbums={sortedAlbums.length}
             />
           ))}
           {isAdmin && <AddPlaceholder label="Thêm Album" onClick={() => setIsEditorOpen(true)} aspectRatio="aspect-[4/5]" />}
