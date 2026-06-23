@@ -212,6 +212,21 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         }
       } else {
         text = 'Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Tư vấn viên sẽ phản hồi anh/chị sớm nhất có thể. Anh/chị vui lòng để lại số điện thoại để được hỗ trợ tốt hơn ạ 💕';
+        // Tự học: lưu câu hỏi chưa được bot trả lời vào kho để admin duyệt
+        const q = customerMessage.trim();
+        if (q.length >= 8) {
+          supabase.from('customer_faqs').insert({
+            id: crypto.randomUUID(),
+            question: q,
+            answer: '',
+            category: 'khac',
+            tags: [],
+            source: 'from_chat_auto',
+            is_approved: false,
+            usage_count: 0,
+            created_at: new Date().toISOString(),
+          }).then(() => {});
+        }
       }
 
       const botId  = crypto.randomUUID();

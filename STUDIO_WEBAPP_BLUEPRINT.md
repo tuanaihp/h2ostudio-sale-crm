@@ -682,17 +682,23 @@ const insertAlbumLink = (style: Style, album: Album) => {
 
 ---
 
-## 12. Kho Câu Hỏi Thực Tế (Knowledge Base)
+## 12. Kho Câu Hỏi Thực Tế (Knowledge Base) + Tự Học
 
-### Tổng quan
-
-Hệ thống Q&A tích lũy từ chat thực tế với khách → Bot Tầng 1 tìm kiếm kho này trước `sale_scripts` → kho càng lớn bot càng chính xác.
+### Tổng quan — Vòng tự học khép kín
 
 ```
-Chat thực tế → Admin click "📌 Lưu vào kho" → customer_faqs lớn dần
-                                                      ↓
-Bot Tầng 1: expandQuery (từ điển đồng nghĩa) → score faqs + scripts → trả lời tốt nhất
+Khách chat → Bot Tầng 1 match?
+  ├─ YES → trả lời + tăng usage_count
+  └─ NO  → tự lưu câu hỏi vào pending (is_approved=false, source='from_chat_auto')
+               ↓
+         AdminKnowledgeBase: "Chờ duyệt" section
+               ↓
+         Admin điền đáp án → Duyệt
+               ↓
+         FAQ vào kho (is_approved=true) → bot dùng từ lần sau
 ```
+
+Thêm vào đó, admin có thể thủ công lưu bằng nút **📌 Lưu vào kho** trong AdminChatPanel (source=`from_chat`).
 
 ### Database table: `customer_faqs`
 
@@ -700,12 +706,12 @@ Bot Tầng 1: expandQuery (từ điển đồng nghĩa) → score faqs + scripts
 CREATE TABLE customer_faqs (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   question text NOT NULL,
-  answer text NOT NULL,
-  category text NOT NULL DEFAULT 'khac',  -- 'gia'|'lich'|'album'|'quy_trinh'|'khuyen_mai'|'khac'
+  answer text NOT NULL DEFAULT '',     -- rỗng khi pending
+  category text NOT NULL DEFAULT 'khac',
   tags text[] DEFAULT '{}',
   usage_count integer NOT NULL DEFAULT 0,
-  source text NOT NULL DEFAULT 'manual',  -- 'manual' | 'from_chat'
-  is_approved boolean NOT NULL DEFAULT true,
+  source text NOT NULL DEFAULT 'manual',  -- 'manual' | 'from_chat' | 'from_chat_auto'
+  is_approved boolean NOT NULL DEFAULT true,  -- false = pending review
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -713,6 +719,11 @@ ALTER TABLE customer_faqs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read approved" ON customer_faqs FOR SELECT USING (is_approved = true);
 CREATE POLICY "Admin all access" ON customer_faqs FOR ALL USING (auth.role() = 'authenticated');
 ```
+
+**Source values:**
+- `manual` — admin tự thêm tay trong AdminKnowledgeBase
+- `from_chat` — admin click "📌 Lưu vào kho" trong AdminChatPanel  
+- `from_chat_auto` — bot tự ghi khi score=0 (pending, is_approved=false)
 
 ### src/utils/synonyms.ts
 
@@ -726,12 +737,15 @@ expandQuery("bao nhiêu tiền")
 
 ### AdminKnowledgeBase.tsx (`/admin/knowledge-base`)
 
-- Stats: tổng Q&A, từ chat thực tế, số lần bot đã dùng
-- Filter category + search
+- **Stats cards:** Tổng Q&A · Từ chat thực tế · Bot đã dùng N lần · Chờ duyệt (amber badge)
+- **Pending Review Queue (mới):** collapsible amber section — hiện khi có pending FAQs:
+  - Mỗi item: câu hỏi khách, textarea điền đáp án, chọn category
+  - Nút **Duyệt & Lưu** → update `is_approved=true`, answer, category → bot dùng ngay
+  - Nút **Bỏ qua** → xóa khỏi DB
+- Filter category + search (chỉ hiển thị approved FAQs)
 - FAQ cards: click để xem câu trả lời đầy đủ
-- Add/Edit modal: câu hỏi, câu trả lời, nhóm, tags
-- Badge "💬 Chat thực tế" cho FAQ được lưu từ AdminChatPanel
-- Badge "✅ Bot dùng N×" hiển thị usage_count
+- Badge "💬 Chat thực tế" (from_chat), "🤖 Bot tự học" (from_chat_auto), "✅ Bot dùng N×"
+- Push to Script: đẩy Q&A lên Kho Kịch Bản (sale_scripts)
 
 ### AdminChatPanel.tsx — nút 📌 Lưu vào kho
 
@@ -739,7 +753,7 @@ expandQuery("bao nhiêu tiền")
 - Click → modal pre-fill:
   - Question = nội dung tin nhắn khách đó
   - Answer = tin nhắn admin kế tiếp sau câu hỏi đó (nếu có)
-- Admin chỉnh sửa rồi chọn category + tags → Save
+- Admin chỉnh sửa rồi chọn category + tags → Save (source=`from_chat`, is_approved=true)
 
 ### Bot Tầng 1 — search logic (LiveChatBubble.tsx)
 
@@ -755,9 +769,16 @@ const words = expandQuery(customerMessage);
 
 // Score FAQ: question +4, tags +2, answer +1
 // Score Script: title +3, tags +2, content +1
-// FAQ được ưu tiên hơn (weight cao hơn) vì là Q&A thực tế đã kiểm duyệt
 
-// Lấy best match → trả lời; FAQ → tăng usage_count
+if (best && best.score > 0) {
+  // Trả lời + tăng usage_count (non-blocking)
+} else {
+  // Gửi fallback message
+  // TỰ HỌC: lưu câu hỏi vào pending (is_approved=false, source='from_chat_auto')
+  if (customerMessage.trim().length >= 8) {
+    supabase.from('customer_faqs').insert({ ..., is_approved: false, source: 'from_chat_auto' })
+  }
+}
 ```
 
 ---

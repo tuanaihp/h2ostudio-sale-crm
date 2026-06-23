@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Edit2, Trash2, BookOpen, X, TrendingUp, MessageSquare, CheckCircle, BookMarked, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Edit2, Trash2, BookOpen, X, TrendingUp, MessageSquare, CheckCircle, BookMarked, ChevronRight, ChevronDown, ChevronUp, Brain, AlertCircle } from 'lucide-react';
 import { supabase } from '../supabase';
 import type { CustomerFaq, DbCustomerFaqRow } from '../types';
 
@@ -38,14 +38,13 @@ const dbToFaq = (row: DbCustomerFaqRow): CustomerFaq => ({
   category: row.category,
   tags: row.tags || [],
   usageCount: row.usage_count,
-  source: row.source as 'manual' | 'from_chat',
+  source: row.source as CustomerFaq['source'],
   isApproved: row.is_approved,
   createdAt: row.created_at,
 });
 
 const EMPTY_FORM = { question: '', answer: '', category: 'faq', tags: '' };
 
-// Các phase của Kho Kịch Bản (khớp với AdminScripts PHASES)
 const SCRIPT_PHASES = [
   { key: 'opening',    emoji: '💌', label: 'Mở đầu' },
   { key: 'discovery',  emoji: '📌', label: 'Khơi gợi nhu cầu' },
@@ -58,8 +57,19 @@ const SCRIPT_PHASES = [
   { key: 'faq',        emoji: '❓', label: 'Q&A – Từ chối' },
 ];
 
+interface PendingEdit {
+  answer: string;
+  category: string;
+}
+
 export default function AdminKnowledgeBase() {
   const [faqs, setFaqs]                   = useState<CustomerFaq[]>([]);
+  const [pendingFaqs, setPendingFaqs]     = useState<CustomerFaq[]>([]);
+  const [pendingEdits, setPendingEdits]   = useState<Record<string, PendingEdit>>({});
+  const [pendingOpen, setPendingOpen]     = useState(true);
+  const [approvingId, setApprovingId]     = useState<string | null>(null);
+  const [ignoringId, setIgnoringId]       = useState<string | null>(null);
+
   const [loading, setLoading]             = useState(true);
   const [search, setSearch]               = useState('');
   const [catFilter, setCatFilter]         = useState('all');
@@ -70,7 +80,6 @@ export default function AdminKnowledgeBase() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
 
-  // Push to script modal
   const [pushModal, setPushModal]         = useState<{ faq: CustomerFaq; phase: string } | null>(null);
   const [pushSaving, setPushSaving]       = useState(false);
   const [pushedIds, setPushedIds]         = useState<Set<string>>(new Set());
@@ -81,8 +90,19 @@ export default function AdminKnowledgeBase() {
     setLoading(true);
     const { data } = await supabase
       .from('customer_faqs').select('*')
-      .order('usage_count', { ascending: false });
-    setFaqs((data || []).map(r => dbToFaq(r as DbCustomerFaqRow)));
+      .order('created_at', { ascending: false });
+    const all = (data || []).map(r => dbToFaq(r as DbCustomerFaqRow));
+    const approved = all.filter(f => f.isApproved);
+    // Sort approved: by usage_count desc
+    approved.sort((a, b) => b.usageCount - a.usageCount);
+    setFaqs(approved);
+
+    const pending = all.filter(f => !f.isApproved);
+    setPendingFaqs(pending);
+    // Init edit state for pending
+    const edits: Record<string, PendingEdit> = {};
+    pending.forEach(f => { edits[f.id] = { answer: f.answer || '', category: f.category || 'khac' }; });
+    setPendingEdits(edits);
     setLoading(false);
   };
 
@@ -126,8 +146,33 @@ export default function AdminKnowledgeBase() {
     setFaqs(prev => prev.filter(f => f.id !== id));
   };
 
+  // Duyệt câu hỏi đang chờ — lưu đáp án và approved=true
+  const approvePending = async (faq: CustomerFaq) => {
+    const edit = pendingEdits[faq.id];
+    if (!edit?.answer?.trim()) return;
+    setApprovingId(faq.id);
+    await supabase.from('customer_faqs').update({
+      answer: edit.answer.trim(),
+      category: edit.category,
+      is_approved: true,
+      updated_at: new Date().toISOString(),
+    }).eq('id', faq.id);
+    setApprovingId(null);
+    setPendingFaqs(prev => prev.filter(f => f.id !== faq.id));
+    setPendingEdits(prev => { const n = { ...prev }; delete n[faq.id]; return n; });
+    loadFaqs();
+  };
+
+  // Bỏ qua câu hỏi pending — xóa khỏi DB
+  const ignorePending = async (id: string) => {
+    setIgnoringId(id);
+    await supabase.from('customer_faqs').delete().eq('id', id);
+    setIgnoringId(null);
+    setPendingFaqs(prev => prev.filter(f => f.id !== id));
+    setPendingEdits(prev => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
   const openPushModal = (faq: CustomerFaq) => {
-    // Tự động chọn phase tương ứng với category; khac → faq
     const autoPhase = SCRIPT_PHASES.find(p => p.key === faq.category)?.key ?? 'faq';
     setPushModal({ faq, phase: autoPhase });
   };
@@ -136,7 +181,6 @@ export default function AdminKnowledgeBase() {
     if (!pushModal) return;
     setPushSaving(true);
     const { faq, phase } = pushModal;
-    const phaseLabel = SCRIPT_PHASES.find(p => p.key === phase)?.label ?? phase;
     const { data: existing } = await supabase
       .from('sale_scripts').select('id').eq('phase', phase).order('order_num', { ascending: false }).limit(1);
     const nextOrder = existing && existing.length > 0 ? ((existing[0] as any).order_num ?? 0) + 1 : 0;
@@ -164,7 +208,7 @@ export default function AdminKnowledgeBase() {
   });
 
   const totalUsage = faqs.reduce((s, f) => s + f.usageCount, 0);
-  const fromChatCount = faqs.filter(f => f.source === 'from_chat').length;
+  const fromChatCount = faqs.filter(f => f.source !== 'manual').length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -177,6 +221,12 @@ export default function AdminKnowledgeBase() {
         <BookOpen size={22} className="text-primary shrink-0" />
         <h1 className="text-xl font-bold text-dark">Kho Câu Hỏi Thực Tế</h1>
         <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-semibold">{faqs.length} câu hỏi</span>
+        {pendingFaqs.length > 0 && (
+          <span className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
+            <AlertCircle size={11} />
+            {pendingFaqs.length} chờ duyệt
+          </span>
+        )}
         <div className="ml-auto">
           <button
             onClick={() => openAdd()}
@@ -196,7 +246,7 @@ export default function AdminKnowledgeBase() {
             { label: 'Tổng câu hỏi', value: faqs.length, icon: BookOpen, color: 'text-primary', bg: 'bg-primary/5' },
             { label: 'Từ chat thực tế', value: fromChatCount, icon: MessageSquare, color: 'text-blue-500', bg: 'bg-blue-50' },
             { label: 'Bot đã dùng', value: `${totalUsage} lần`, icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-50' },
-            { label: 'Đã duyệt', value: faqs.filter(f => f.isApproved).length, icon: CheckCircle, color: 'text-amber-500', bg: 'bg-amber-50' },
+            { label: 'Chờ duyệt', value: pendingFaqs.length, icon: Brain, color: 'text-amber-500', bg: 'bg-amber-50' },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-3">
               <div className={`${s.bg} ${s.color} p-2.5 rounded-xl shrink-0`}><s.icon size={18} /></div>
@@ -207,6 +257,103 @@ export default function AdminKnowledgeBase() {
             </div>
           ))}
         </div>
+
+        {/* ── Pending Review Queue ── */}
+        {pendingFaqs.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-5 py-3.5 text-left"
+              onClick={() => setPendingOpen(v => !v)}
+            >
+              <div className="flex items-center gap-2.5">
+                <Brain size={17} className="text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-bold text-amber-800 text-sm">
+                    🤖 Bot đã tự học: {pendingFaqs.length} câu hỏi chưa trả lời được
+                  </span>
+                  <p className="text-[11px] text-amber-600 mt-0.5">
+                    Điền đáp án → duyệt → bot sẽ dùng ngay từ lần sau
+                  </p>
+                </div>
+              </div>
+              {pendingOpen ? <ChevronUp size={16} className="text-amber-600 shrink-0" /> : <ChevronDown size={16} className="text-amber-600 shrink-0" />}
+            </button>
+
+            {pendingOpen && (
+              <div className="border-t border-amber-200 divide-y divide-amber-100">
+                {pendingFaqs.map(faq => {
+                  const edit = pendingEdits[faq.id] || { answer: '', category: 'khac' };
+                  const isApproving = approvingId === faq.id;
+                  const isIgnoring = ignoringId === faq.id;
+                  return (
+                    <div key={faq.id} className="px-5 py-4 bg-white/60 hover:bg-white/80 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0 space-y-2.5">
+                          {/* Question */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+                                🤖 Bot tự ghi lại
+                              </span>
+                              <span className="text-[10px] text-gray-400">{new Date(faq.createdAt).toLocaleDateString('vi-VN')}</span>
+                            </div>
+                            <p className="text-sm font-semibold text-dark">❓ {faq.question}</p>
+                          </div>
+
+                          {/* Answer input */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1">
+                              💬 Nhập câu trả lời tốt nhất (bắt buộc để duyệt)
+                            </label>
+                            <textarea
+                              className="w-full border border-amber-200 bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-400/40 resize-none"
+                              rows={3}
+                              placeholder="Nhập câu trả lời để bot dùng khi khách hỏi câu tương tự..."
+                              value={edit.answer}
+                              onChange={e => setPendingEdits(prev => ({
+                                ...prev, [faq.id]: { ...edit, answer: e.target.value }
+                              }))}
+                            />
+                          </div>
+
+                          {/* Category + actions */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <select
+                              className="text-xs border border-amber-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                              value={edit.category}
+                              onChange={e => setPendingEdits(prev => ({
+                                ...prev, [faq.id]: { ...edit, category: e.target.value }
+                              }))}
+                            >
+                              {CATEGORIES.filter(c => c.value !== 'all').map(c => (
+                                <option key={c.value} value={c.value}>{c.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => approvePending(faq)}
+                              disabled={!edit.answer.trim() || isApproving || isIgnoring}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600 disabled:opacity-40 transition-colors"
+                            >
+                              <CheckCircle size={12} />
+                              {isApproving ? 'Đang duyệt...' : 'Duyệt & Lưu'}
+                            </button>
+                            <button
+                              onClick={() => ignorePending(faq.id)}
+                              disabled={isApproving || isIgnoring}
+                              className="px-3 py-1.5 bg-gray-100 text-gray-500 rounded-lg text-xs font-bold hover:bg-gray-200 disabled:opacity-40 transition-colors"
+                            >
+                              {isIgnoring ? '...' : 'Bỏ qua'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Search + Filter ── */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
@@ -266,7 +413,6 @@ export default function AdminKnowledgeBase() {
                   className="flex items-start gap-3 p-4 cursor-pointer"
                   onClick={() => setExpandedId(expandedId === faq.id ? null : faq.id)}
                 >
-                  {/* Left */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${CAT_COLORS[faq.category] || CAT_COLORS.khac}`}>
@@ -274,6 +420,9 @@ export default function AdminKnowledgeBase() {
                       </span>
                       {faq.source === 'from_chat' && (
                         <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">💬 Chat thực tế</span>
+                      )}
+                      {faq.source === 'from_chat_auto' && (
+                        <span className="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold">🤖 Bot tự học</span>
                       )}
                       {faq.usageCount > 0 && (
                         <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full font-semibold">
@@ -287,9 +436,7 @@ export default function AdminKnowledgeBase() {
                     )}
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                    {/* Push to script */}
                     {pushedIds.has(faq.id) ? (
                       <span className="text-[10px] bg-green-50 text-green-600 px-2 py-1 rounded-lg font-bold">✅ Đã thêm</span>
                     ) : (
@@ -318,7 +465,7 @@ export default function AdminKnowledgeBase() {
                       <button
                         onClick={() => setConfirmDelete(faq.id)}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Xoá (chỉ xoá khỏi Kho Câu Hỏi)"
+                        title="Xoá"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -326,7 +473,6 @@ export default function AdminKnowledgeBase() {
                   </div>
                 </div>
 
-                {/* Expanded answer */}
                 {expandedId === faq.id && (
                   <div className="border-t bg-gray-50 px-4 py-3">
                     <p className="text-xs font-bold text-gray-500 mb-1">💬 Câu trả lời:</p>
@@ -348,6 +494,7 @@ export default function AdminKnowledgeBase() {
         {/* Info box */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-[11px] text-blue-800 space-y-1">
           <p>🤖 <b>Bot Tầng 1</b> tự động tìm trong kho này bằng từ khóa + từ điển đồng nghĩa. Kho càng nhiều Q&A thực tế → bot càng chính xác.</p>
+          <p>🧠 <b>Tự học:</b> Khi bot không trả lời được, câu hỏi tự động vào mục <b>Chờ duyệt</b> — admin điền đáp án → duyệt → bot dùng ngay.</p>
           <p>💬 Để lưu nhanh từ chat: mở <b>Chat khách</b> → hover vào tin nhắn khách → click nút <b>📌 Lưu vào kho</b>.</p>
         </div>
 
@@ -365,13 +512,10 @@ export default function AdminKnowledgeBase() {
               <button onClick={() => setPushModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
-              {/* Preview Q&A */}
               <div className="bg-gray-50 rounded-xl p-3 text-sm">
                 <p className="font-semibold text-dark mb-1">❓ {pushModal.faq.question}</p>
                 <p className="text-gray-500 text-xs line-clamp-3">💬 {pushModal.faq.answer}</p>
               </div>
-
-              {/* Phase picker */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2">
                   📂 Chọn giai đoạn trong Kho Kịch Bản
@@ -393,7 +537,6 @@ export default function AdminKnowledgeBase() {
                   ))}
                 </div>
               </div>
-
               <div className="flex items-start gap-2 bg-blue-50 rounded-xl px-3 py-2.5 text-[11px] text-blue-700">
                 <span className="shrink-0 mt-0.5">ℹ️</span>
                 <span>

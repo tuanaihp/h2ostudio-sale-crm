@@ -182,7 +182,7 @@ export interface CustomerFaq {
   category: string;
   tags: string[];
   usageCount: number;
-  source: 'manual' | 'from_chat';
+  source: 'manual' | 'from_chat' | 'from_chat_auto';
   isApproved: boolean;
   createdAt: string;
 }
