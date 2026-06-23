@@ -144,10 +144,11 @@ const Home: React.FC = () => {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {styles.map((style, index) => (
-            <StyleCard 
-              key={style.id} 
-              style={style} 
-              index={index} 
+            <StyleCard
+              key={style.id}
+              style={style}
+              index={index}
+              totalStyles={styles.length}
               onQuickView={(s) => setQuickViewStyle(s)}
             />
           ))}

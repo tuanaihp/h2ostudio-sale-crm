@@ -5,7 +5,7 @@ import { DesignPreview } from './DesignPreview';
 import { EditableText } from './EditableText';
 import { OptimizedImage } from './OptimizedImage';
 import { motion } from 'motion/react';
-import { Trash2, Upload, GripVertical, Heart, Eye, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Upload, GripVertical, Heart, Eye, TrendingUp, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { compressImage, uploadImageToStorage, getDisplayImageUrl } from '../utils/image';
 import { parseLikes, formatLikes } from '../utils/likes';
@@ -13,13 +13,24 @@ import { parseLikes, formatLikes } from '../utils/likes';
 interface StyleCardProps {
   style: Style;
   index: number;
+  totalStyles?: number;
   onQuickView?: (style: Style) => void;
 }
 
-export const StyleCard = React.memo<StyleCardProps>(({ style, index, onQuickView }) => {
+export const StyleCard = React.memo<StyleCardProps>(({ style, index, totalStyles = 0, onQuickView }) => {
   const { deleteStyle, updateStyleCover, isAdmin, updateStyleText, favorites, toggleFavorite, moveStyle, settings } = useApp();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleMove = async (e: React.MouseEvent, dir: 'prev' | 'next') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isMoving) return;
+    setIsMoving(true);
+    await moveStyle(style.id, dir);
+    setTimeout(() => setIsMoving(false), 400);
+  };
   const isFavorite = favorites.includes(style.id);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -201,20 +212,21 @@ export const StyleCard = React.memo<StyleCardProps>(({ style, index, onQuickView
       {!showConfirm && isAdmin && (
         <div className="absolute top-3 right-3 flex flex-col gap-2 z-10">
           <div className="flex gap-1">
-            <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveStyle(index, 'prev'); }}
+            <button
+              onClick={(e) => handleMove(e, 'prev')}
               className="p-2 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-l-full shadow-lg transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
               title="Di chuyển sang trái"
-              disabled={index === 0}
+              disabled={index === 0 || isMoving}
             >
-              <ChevronLeft size={18} />
+              {isMoving ? <Loader2 size={18} className="animate-spin" /> : <ChevronLeft size={18} />}
             </button>
-            <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveStyle(index, 'next'); }}
+            <button
+              onClick={(e) => handleMove(e, 'next')}
               className="p-2 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-r-full shadow-lg transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
               title="Di chuyển sang phải"
+              disabled={index === totalStyles - 1 || isMoving}
             >
-              <ChevronRight size={18} />
+              {isMoving ? <Loader2 size={18} className="animate-spin" /> : <ChevronRight size={18} />}
             </button>
           </div>
           <button 
