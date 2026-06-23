@@ -19,6 +19,7 @@ import { parseLikes, formatLikes } from '../utils/likes';
 interface SortablePhotoProps {
   photo: Photo;
   index: number;
+  totalPhotos: number;
   slug: string;
   styleId: string;
   albumId: string;
@@ -29,10 +30,20 @@ interface SortablePhotoProps {
   onConsult: (e: React.MouseEvent, photo: Photo, index: number) => void;
 }
 
-const PhotoItem = React.memo<SortablePhotoProps>(({ 
-  photo, index, slug, styleId, albumId, albumSlug, isAdmin, triggerPhotoUpload, handleDeletePhoto, onConsult 
+const PhotoItem = React.memo<SortablePhotoProps>(({
+  photo, index, totalPhotos, slug, styleId, albumId, albumSlug, isAdmin, triggerPhotoUpload, handleDeletePhoto, onConsult
 }) => {
   const { movePhoto, settings } = useApp();
+  const [isMoving, setIsMoving] = useState(false);
+
+  const handleMove = async (e: React.MouseEvent, dir: 'prev' | 'next') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isMoving) return;
+    setIsMoving(true);
+    await movePhoto(styleId, albumId, photo.id, dir);
+    setTimeout(() => setIsMoving(false), 400);
+  };
   
   return (
     <motion.div
@@ -100,20 +111,21 @@ const PhotoItem = React.memo<SortablePhotoProps>(({
       {isAdmin && (
         <div className="absolute top-2 right-2 flex flex-col gap-2 z-10 opacity-0 group-hover:opacity-100 transition-all duration-300">
           <div className="flex gap-0.5">
-            <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); movePhoto(styleId, albumId, index, 'prev'); }}
-              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-l-full shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+            <button
+              onClick={(e) => handleMove(e, 'prev')}
+              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-l-full shadow-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               title="Di chuyển sang trái"
-              disabled={index === 0}
+              disabled={index === 0 || isMoving}
             >
-              <ChevronLeft size={14} />
+              {isMoving ? <Loader2 size={14} className="animate-spin" /> : <ChevronLeft size={14} />}
             </button>
-            <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); movePhoto(styleId, albumId, index, 'next'); }}
-              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-r-full shadow-lg transition-all duration-300"
+            <button
+              onClick={(e) => handleMove(e, 'next')}
+              className="p-1.5 bg-primary/80 hover:bg-primary backdrop-blur-sm text-white rounded-r-full shadow-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               title="Di chuyển sang phải"
+              disabled={index === totalPhotos - 1 || isMoving}
             >
-              <ChevronRight size={14} />
+              {isMoving ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
             </button>
           </div>
           <button 
@@ -539,10 +551,11 @@ const AlbumDetail: React.FC = () => {
             onChange={handlePhotoUpload}
           />
           {(album.photos || []).map((photo, index) => (
-            <PhotoItem 
+            <PhotoItem
               key={photo.id}
               photo={photo}
               index={index}
+              totalPhotos={(album.photos || []).length}
               slug={slug!}
               styleId={style.id}
               albumId={album.id}
