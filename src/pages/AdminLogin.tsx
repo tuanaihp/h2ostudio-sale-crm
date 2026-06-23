@@ -37,17 +37,30 @@ const AdminLogin: React.FC = () => {
     setError('');
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      let { error: signInError } = await supabase.auth.signInWithPassword({
         email: 'staff@h2ostudio.com',
         password: 'H2oStudioStaff2026!',
       });
 
-      if (signInError) {
-        if (signInError.message.includes('Invalid login credentials')) {
-          setError('Tài khoản nhân viên chưa được tạo trong hệ thống. Vui lòng liên hệ Admin để tạo tài khoản staff@h2ostudio.com trong Supabase Dashboard → Authentication → Users.');
+      // Nếu chưa có account staff → tự tạo rồi đăng nhập lại
+      if (signInError?.message?.includes('Invalid login credentials')) {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: 'staff@h2ostudio.com',
+          password: 'H2oStudioStaff2026!',
+        });
+        if (!signUpError) {
+          const { error: retryError } = await supabase.auth.signInWithPassword({
+            email: 'staff@h2ostudio.com',
+            password: 'H2oStudioStaff2026!',
+          });
+          signInError = retryError || null;
         } else {
-          setError(`Lỗi đăng nhập: ${signInError.message}`);
+          signInError = signUpError;
         }
+      }
+
+      if (signInError) {
+        setError(`Lỗi đăng nhập: ${signInError.message}`);
         setIsLoading(false);
         return;
       }

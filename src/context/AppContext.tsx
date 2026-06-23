@@ -23,13 +23,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 // ─── Unified hook — backward-compatible with all existing useApp() calls ──────
 
-export const useApp = () => ({
-  ...useAuth(),
-  ...useSettings(),
-  ...useConsultations(),
-  ...useContent(),
-  ...useToast(),
-});
+export const useApp = () => {
+  const auth = useAuth();
+  const settingsCtx = useSettings();
+  const consultations = useConsultations();
+  const content = useContent();
+  const toast = useToast();
+
+  // isAdmin: ngoài HARDCODED_STAFF_PHONES, còn check settings.staffPhones từ Supabase
+  // Yêu cầu user phải đã Supabase-authenticated (auth.user !== null) để tránh PhoneGate bypass
+  const staffPhones = settingsCtx.settings?.staffPhones || [];
+  const isAdmin = auth.isAdmin ||
+    (auth.user !== null && auth.checkPhoneInWhitelist(auth.userPhone, staffPhones));
+
+  return {
+    ...auth,
+    ...settingsCtx,
+    ...consultations,
+    ...content,
+    ...toast,
+    isAdmin,
+  };
+};
 
 // Re-export individual hooks for direct usage
 export { useAuth } from './AuthContext';
