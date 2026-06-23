@@ -6,8 +6,207 @@ import { supabase } from '../supabase';
 import type { SaleScript } from '../types';
 import {
   Copy, Check, Edit3, Trash2, Plus, Save, X,
-  BookOpen, Search, ChevronDown, ChevronRight, Tag,
+  BookOpen, Search, ChevronDown, ChevronRight, Tag, Download,
 } from 'lucide-react';
+
+// ─── Seed data — Kịch bản mẫu H2O Studio ─────────────────────────────────────
+
+const H2O_SEED_SCRIPTS: Omit<SaleScript, 'id'>[] = [
+  {
+    phase: 'opening',
+    title: 'Lời chào mở đầu — kết nối cảm xúc',
+    content: `Chào em nha 💕
+Chị là Lan - quản lý bên H2O Studio đây
+
+Cảm ơn em đã quan tâm đến các gói chụp ảnh cưới của bên chị nha!
+
+✨ Chị tin rằng, mỗi cặp đôi đều xứng đáng có bộ ảnh cưới ghi dấu hạnh phúc – thật đẹp và thật ý nghĩa.`,
+    tags: ['zalo', 'mở đầu', 'kết nối'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'discovery',
+    title: 'Khơi gợi nhu cầu — câu hỏi mở',
+    content: `• Hai em dự định cưới vào tháng mấy rồi em?
+• Vợ chồng em muốn chụp ngoại cảnh hay studio em nhỉ?
+
+Nhà chị nhiều dâu rể cưới tháng 5 là giờ cũng đang lên lịch chụp nhiều lắm nè. Vợ chồng em sắp xếp chụp sớm sẽ thoải mái thời gian chọn ảnh và duyệt ảnh cho vợ chồng e nhớ 😊
+
+Chụp studio thì không bị nóng, cũng không phải phụ thuộc thời tiết nhiều em nè. Cô dâu nếu có bầu nghén sẽ không bị mệt nha mà các concept đa dạng lúc nào cũng đẹp em ạ
+
+C gửi e là có combo chỉ chụp, có cả combo bao gồm đầy đủ ngày ăn hỏi và ngày ăn cưới đó e
+
+Quy trình bên chị cũng rút ngắn gọn cho vợ chồng em là ngày chụp hình vợ chồng em có thể chọn đồ và hẹn lịch make up tất cả mọi thứ trong ngày hôm đó luôn. Còn sau đó về phần ảnh mình sẽ làm việc qua online được nè. Vậy sẽ tiện cho vck e và không mất nhiều công đi lại + chuẩn bị đó e`,
+    tags: ['khám phá', 'nhu cầu', 'studio', 'ngoại cảnh'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'value_prop',
+    title: 'Giá trị khác biệt — 7 lý do chọn H2O',
+    content: `🌟 Tại sao hàng nghìn cặp đôi đã tin chọn H2O Studio?
+
+✅ 1. Ảnh đẹp không góc chết. Trước buổi chụp hình dâu rể được lựa chọn concept chụp theo sở thích mong muốn của dâu rể
+✅ 2. Makeup cô dâu bởi giảng viên Học viện Thuỷ H2O Makeup, nổi tiếng layout trẻ trung, sang, tôn nét đẹp tự nhiên sẵn có của cô dâu.
+✅ 3. Studio rộng 900m², có phòng váy cưới, áo dài, vest, phòng chụp đa dạng – không cần di chuyển xa.
+✅ 4. Ekip hướng dẫn tạo dáng tận tình, dâu rể không biết diễn cũng ra dáng mẫu ngay!
+✅ 5. Được check file ngay sau chụp, chỉnh sửa theo ý cô dâu chú rể.
+✅ 6. Miễn phí toàn bộ phụ kiện: vương miện, khuyên tai, cài đầu, hoa cầm tay, giày, guốc, sơ mi, thắt lưng… nếu vk ck chưa chuẩn bị kịp.
+✅ 7. Concept đa dạng, từ Hàn Quốc – cổ điển – sang trọng – đến nhẹ nhàng tự nhiên.`,
+    tags: ['USP', 'điểm khác biệt', 'studio', 'makeup'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'offer',
+    title: 'Ưu đãi đặc biệt — book Online trong 48h',
+    content: `💝 Book lịch Online trong 48h, em được tặng gói quà trị giá lên tới 3.500.000đ bao gồm:
+
+🎁 Nâng cấp chất liệu ảnh tráng gương cao cấp nhất (trị giá 1.500.000đ)
+🎁 Tặng voucher nâng cấp váy (trị giá 1.500.000đ)
+🎁 Makeup chú rể chụp hình (trị giá 500.000đ)
+🎁 Ưu tiên tự chọn lịch chụp bất kỳ
+
+Hầu hết dâu rể bên c đều lựa chọn combo studio 9999 vì gần như đã đầy đủ cho vck e về ảnh và 2 ngày cưới hỏi như váy, vest, makeup, áo dài cho 2vck nhớ
+
+🎁 Đặc biệt: KHI BOOK LỊCH TRONG VÒNG 24h KỂ TỪ KHI TƯ VẤN bên c tặng e thêm 1 voucher giảm 500k khi e đăng ký combo bất kỳ e nhớ`,
+    tags: ['ưu đãi', '48h', 'quà tặng', 'combo'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'fomo',
+    title: 'Tạo FOMO — khan hiếm slot lịch chụp',
+    content: `⏳ Chỉ còn vài slot ưu đãi trong hôm nay và ngày mai thôi nha em!
+
+📢 Hôm nay đã có 4 cặp book rồi, lịch đẹp cuối tuần chỉ còn 1-2 slot thôi em ơi!
+
+💬 Chị giữ suất cho mình luôn nhé? Chỉ cần cọc trước 500K – lịch chụp có thể chọn sau nha!
+
+Vck e muốn tư vấn thêm phần nào hay muốn đăng đăng ký để nhận gói quà trị giá 3tr500k thì bảo c nhớ 🥰`,
+    tags: ['FOMO', 'khan hiếm', 'slot', 'urgency'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'closing',
+    title: 'Chốt cọc — hướng dẫn thanh toán',
+    content: `Vck e đăng ký combo để nhận khuyến mãi gửi c xin tên + sđt 2 vck e và bank cọc trước 1 triệu giúp c nha
+
+E chuyển khoản KHÔNG GHI NỘI DUNG và cho c xin chụp màn hình nha. Ghi nội dung sẽ bị tính 20% thuế nè
+
+💳 THÔNG TIN CHUYỂN KHOẢN
+➡️ MB Bank – STK: [STK MB Bank] – [Tên chủ TK]
+➡️ Vietcombank – STK: [STK Vietcombank] – [Tên chủ TK]
+
+💌 Sau khi cọc, em chụp màn hình gửi chị để note quà tặng & ưu tiên chọn lịch chụp cho vk ck em nha!
+
+👉 Em chốt lịch sớm hôm nay để nhận gói quà 2.000.000đ + đặc quyền chọn lịch nha!`,
+    tags: ['cọc', 'thanh toán', 'chốt', 'chuyển khoản'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'pre_shoot',
+    title: 'Dặn dò dâu rể trước ngày chụp',
+    content: `📝 Chuẩn bị cho ngày chụp:
+
+• Cô dâu: chuẩn bị quần lót màu nude/trắng, miếng dán ngực, guốc, làm nails xinh xắn.
+• Chú rể: chuẩn bị áo sơ mi trắng, thắt lưng, giày da đen.
+• Nếu thiếu, studio có sẵn – yên tâm nha!
+• Nhớ ăn sáng no, ngủ đủ giấc để hôm chụp rạng rỡ nhất.
+• Ngày chụp hình vợ chồng em cọc thêm 90% hoặc thanh toán hết giúp c nhớ
+
+📅 Hẹn gặp vk ck mình 8h30 ngày [ngày chụp] để cùng ghi dấu khoảnh khắc đẹp nhất nhé!`,
+    tags: ['chuẩn bị', 'trước ngày chụp', 'dặn dò'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'followup',
+    title: 'Follow-up hôm sau — nhắc nhở chốt cọc',
+    content: `Chào em nha! 🌸 Hôm qua chị có tư vấn cho em về các gói chụp cưới, không biết vk ck em đã suy nghĩ xong chưa nè?
+
+📌 Hôm nay là ngày cuối cùng bên chị tặng gói quà 2 triệu + ưu tiên chọn lịch chụp cho khách book Online đó em ơi!
+
+✅ Chỉ cần cọc trước 500K, giữ ưu đãi - có thể chọn lịch chụp sau!
+✅ Nếu để qua hôm nay, giá sẽ tăng lên theo giá niêm yết đó nha!
+✅ Hôm nay đã có 4 cặp book rồi, lịch chụp đẹp cuối tuần chỉ còn 1-2 slot thôi!
+
+🔻 Vk ck mình chốt lịch hôm nay luôn để giữ giá ưu đãi không em? Chị giữ suất cho mình luôn nè!
+
+🔻 Nếu cần chị hỗ trợ thêm gì cứ ib chị ngay nha! ❤️`,
+    tags: ['follow-up', 'nhắc nhở', 'hôm sau'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'faq',
+    title: 'Q&A — Khách muốn đến thử váy trước',
+    content: `💃 Thử Váy Trước:
+• Váy ngày chụp, em có thể thoải mái chọn mẫu ưng ý!
+• Thường thì, sau khi makeup và làm tóc xong, thử váy sẽ đẹp và chuẩn hơn.
+• Bên chị có nhiều mẫu váy mới, đảm bảo em luôn lung linh!`,
+    tags: ['váy', 'thử váy', 'FAQ'],
+    orderNum: 0,
+    enabled: true,
+  },
+  {
+    phase: 'faq',
+    title: 'Q&A — Hỏi về thời gian có ảnh',
+    content: `⏰ Thời Gian Có Ảnh:
+• Thông thường, bên chị sẽ có ảnh sau 2 tuần.
+• Nếu cần gấp, chỉ cần báo trước – có thể hoàn thành trong 3-5 ngày.`,
+    tags: ['thời gian', 'ảnh', 'FAQ'],
+    orderNum: 1,
+    enabled: true,
+  },
+  {
+    phase: 'faq',
+    title: 'Q&A — Chưa có lịch chụp / chưa biết chọn combo',
+    content: `🛍 Chưa Quyết Định Combo:
+• Hầu hết các cặp đôi đều đăng ký Online để nhận gói quà 3tr500k
+• Sau khi đăng ký, đến cửa hàng sẽ được tư vấn lại combo cụ thể.`,
+    tags: ['combo', 'chưa quyết định', 'FAQ'],
+    orderNum: 2,
+    enabled: true,
+  },
+  {
+    phase: 'faq',
+    title: 'Q&A — Lo lắng về trang điểm cô dâu',
+    content: `💄 Trang Điểm Cô Dâu:
+• Bên chị là học viện đào tạo makeup số 1 Hải Phòng.
+• Ekip chuyên viên makeup tư vấn layout trước khi makeup, đảm bảo phù hợp & trẻ trung.
+• Makeup xong ai cũng xinh lung linh, không ai muốn tẩy trang luôn nè!
+
+Chuyên viên bên chị đều là các bạn đã làm cho rất nhiều cô dâu ưng ý, hiện tại đang là giảng viên tại học viện và có chứng chỉ của nhà nước cấp nên em yên tâm về phần chuyên viên nha. Nếu em thích tone make up nào có thể nói với chuyên viên, chuyên viên sẽ tư vấn kỹ về khuôn mặt của em và làm phù hợp với em nhất nhé. Tone nào chuyên viên cũng có thể làm được nên em cứ trao đổi với chị trước nha bé`,
+    tags: ['makeup', 'trang điểm', 'lo lắng', 'FAQ'],
+    orderNum: 3,
+    enabled: true,
+  },
+  {
+    phase: 'faq',
+    title: 'Q&A — Đồ tự chọn hay có sẵn tại Studio',
+    content: `👗 Đồ Tự Chọn:
+• Bên chị chuẩn bị sẵn áo dài đôi, vest đôi, hanbok, hỷ phục…
+• Nếu vk ck muốn tự chuẩn bị đồ thì cứ thoải mái mang theo!`,
+    tags: ['đồ chụp', 'váy', 'có sẵn', 'FAQ'],
+    orderNum: 4,
+    enabled: true,
+  },
+  {
+    phase: 'faq',
+    title: 'Q&A — Chọn váy ngày cưới',
+    content: `👰 Váy Ngày Cưới Em Chọn:
+• Em hoàn toàn được chọn váy theo sở thích.
+• Nếu chọn váy cao cấp hơn, có thể thêm phụ thu. (ví dụ combo váy 3tr5: em chọn váy 4.000.000đ → phụ thu 500.000đ).
+• Quan trọng nhất là em chọn mẫu mình thích nhất để lung linh trong ngày trọng đại nha!`,
+    tags: ['váy cưới', 'phụ thu', 'chọn váy', 'FAQ'],
+    orderNum: 5,
+    enabled: true,
+  },
+];
 
 // ─── Phase definitions ────────────────────────────────────────────────────────
 
@@ -322,6 +521,7 @@ const AdminScripts: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [editModal, setEditModal] = useState<{ open: boolean; script: Partial<SaleScript> | null }>({ open: false, script: null });
   const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const loadScripts = useCallback(async () => {
     setLoading(true);
@@ -377,6 +577,26 @@ const AdminScripts: React.FC = () => {
   const handleToggle = async (id: string, enabled: boolean) => {
     await supabase.from('sale_scripts').update({ enabled, updated_at: new Date().toISOString() }).eq('id', id);
     setScripts(prev => prev.map(s => s.id === id ? { ...s, enabled } : s));
+  };
+
+  const handleSeedH2O = async () => {
+    if (!window.confirm(`Nạp ${H2O_SEED_SCRIPTS.length} kịch bản mẫu H2O vào hệ thống?\n\nKịch bản cũ sẽ vẫn giữ nguyên, chỉ thêm mới.`)) return;
+    setSeeding(true);
+    try {
+      const rows = H2O_SEED_SCRIPTS.map((s, i) => ({
+        id: crypto.randomUUID(),
+        phase: s.phase,
+        title: s.title,
+        content: s.content,
+        tags: s.tags,
+        order_num: s.orderNum + i,
+        enabled: s.enabled,
+      }));
+      await supabase.from('sale_scripts').insert(rows);
+      await loadScripts();
+    } finally {
+      setSeeding(false);
+    }
   };
 
   if (!isAuthReady) {
@@ -442,6 +662,22 @@ const AdminScripts: React.FC = () => {
                 </button>
               )}
             </div>
+
+            {/* Seed H2O button — chỉ hiện khi chưa có kịch bản nào */}
+            {scripts.length === 0 && !loading && (
+              <button
+                onClick={handleSeedH2O}
+                disabled={seeding}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white font-bold text-sm rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-200 disabled:opacity-60"
+                title="Nạp toàn bộ kịch bản mẫu H2O Studio vào hệ thống"
+              >
+                {seeding
+                  ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <Download size={16} />
+                }
+                Nạp kịch bản mẫu H2O
+              </button>
+            )}
 
             {/* Add button */}
             <button
