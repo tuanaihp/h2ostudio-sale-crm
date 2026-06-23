@@ -1,19 +1,11 @@
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const {
-    command, type, context,
-    apiKey, apiUrl, modelName,
-  } = req.body || {};
+  const { command, type, context, apiKey, apiUrl, modelName } = req.body || {};
 
-  if (!apiKey) {
-    return res.status(200).json({
-      error: 'Chưa cấu hình API Key AI. Vào Settings → Cổng kết nối → nhập API Key và chọn model.',
-    });
+  if (type !== 'bulk' && type !== 'content') {
+    return res.status(400).json({ error: 'type không hợp lệ (bulk hoặc content)' });
   }
-
-  const endpoint = apiUrl || 'https://api.openai.com/v1/chat/completions';
-  const model    = modelName || 'gpt-4o-mini';
 
   let prompt = '';
 
@@ -51,8 +43,7 @@ Màu gợi ý:
 - Xanh dương: color #2B6CB0, bgColor #EBF8FF
 
 Chỉ JSON array, không có text khác.`;
-
-  } else if (type === 'content') {
+  } else {
     prompt = `Bạn là chuyên gia marketing cho H2O Studio — studio chụp ảnh cưới chuyên nghiệp tại Việt Nam.
 
 Tên chương trình khuyến mãi: "${context}"
@@ -63,43 +54,84 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
   "content": "3-4 câu nội dung đầy đủ: mức ưu đãi cụ thể, điều kiện áp dụng, cách nhận ưu đãi, thời hạn đăng ký",
   "ctaText": "Text nút CTA ngắn gọn kêu gọi hành động (< 25 ký tự)"
 }`;
+  }
 
-  } else {
-    return res.status(400).json({ error: 'type không hợp lệ (bulk hoặc content)' });
+  const parseResult = (raw: string) => {
+    const jsonMatch = raw.match(/\[[\s\S]*\]/) || raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    try { return JSON.parse(jsonMatch[0]); } catch { return null; }
+  };
+
+  // Thử Custom API trước (nếu có apiKey)
+  if (apiKey) {
+    try {
+      const endpoint = apiUrl || 'https://api.openai.com/v1/chat/completions';
+      const model = modelName || 'gpt-4o-mini';
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: 'Bạn là trợ lý marketing chuyên nghiệp. Chỉ trả về JSON đúng format được yêu cầu.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.8,
+          max_tokens: 2000,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const raw = data?.choices?.[0]?.message?.content || '';
+        const result = parseResult(raw);
+        if (result) return res.json({ result });
+        return res.json({ error: 'AI không trả về JSON hợp lệ', raw });
+      }
+
+      // Lỗi balance/auth → fallthrough sang Gemini
+      const errMsg: string = data?.error?.message || '';
+      const isBalanceOrAuth = /balance|quota|insufficient|unauthorized|invalid.*key/i.test(errMsg);
+      if (!isBalanceOrAuth) {
+        return res.json({ error: errMsg || `AI API error ${response.status}` });
+      }
+      console.warn('[ai-promo] Custom API lỗi balance/auth, thử Gemini fallback:', errMsg);
+    } catch (err: any) {
+      console.warn('[ai-promo] Custom API exception, thử Gemini fallback:', err.message);
+    }
+  }
+
+  // Fallback: Google Gemini (miễn phí 1500 req/ngày)
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    return res.json({
+      error: 'Tài khoản AI hết credit. Vui lòng nạp thêm hoặc thêm GEMINI_API_KEY vào Vercel env vars để dùng miễn phí.',
+    });
   }
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: 'Bạn là trợ lý marketing chuyên nghiệp. Chỉ trả về JSON đúng format được yêu cầu.' },
-          { role: 'user',   content: prompt },
-        ],
-        temperature: 0.8,
-        max_tokens: 2000,
-      }),
-    });
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: 'Bạn là trợ lý marketing chuyên nghiệp. Chỉ trả về JSON đúng format được yêu cầu.' }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.8, maxOutputTokens: 2000 },
+        }),
+      }
+    );
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      const errMsg = data?.error?.message || `AI API error ${response.status}`;
-      return res.status(200).json({ error: errMsg });
-    }
-
-    const raw = data?.choices?.[0]?.message?.content || '';
-    const jsonMatch = raw.match(/\[[\s\S]*\]/) || raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.status(200).json({ error: 'AI không trả về JSON hợp lệ', raw });
-
-    return res.status(200).json({ result: JSON.parse(jsonMatch[0]) });
+    const data: any = await geminiRes.json();
+    const raw: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const result = parseResult(raw);
+    if (result) return res.json({ result });
+    return res.json({ error: 'Gemini không trả về JSON hợp lệ', raw });
   } catch (err: any) {
-    console.error('ai-promo error:', err);
-    return res.status(500).json({ error: err?.message || 'Lỗi kết nối AI' });
+    console.error('[ai-promo] Gemini error:', err.message);
+    return res.status(500).json({ error: err?.message || 'Lỗi kết nối Gemini' });
   }
 }
