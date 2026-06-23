@@ -57,9 +57,15 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
   }
 
   const parseResult = (raw: string) => {
-    const jsonMatch = raw.match(/\[[\s\S]*\]/) || raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    try { return JSON.parse(jsonMatch[0]); } catch { return null; }
+    // Xóa markdown code fences nếu có (```json ... ``` hoặc ``` ... ```)
+    const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+    const candidates = [stripped, raw];
+    for (const text of candidates) {
+      const m = text.match(/\[[\s\S]*\]/) || text.match(/\{[\s\S]*\}/);
+      if (!m) continue;
+      try { return JSON.parse(m[0]); } catch { continue; }
+    }
+    return null;
   };
 
   // Thử Custom API trước (nếu có apiKey)
