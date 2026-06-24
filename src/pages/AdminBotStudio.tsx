@@ -854,39 +854,154 @@ export default function AdminBotStudio() {
 
         {/* ══ TEST CHAT ══ */}
         {tab === 'test' && (
-          <div className="max-w-3xl mx-auto p-6 space-y-4 w-full">
-            <div><h2 className="text-xl font-bold text-gray-900">Chat thử nghiệm</h2><p className="text-sm text-gray-500">Mô phỏng Bot Tầng 1 — xem FAQ/script nào được match và với score bao nhiêu</p></div>
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col" style={{ height: 520 }}>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
-                {testMsgs.length === 0 && <div className="text-center text-gray-400 text-sm pt-12"><MessageSquare size={32} className="mx-auto mb-2 opacity-20" /><p>Nhập câu hỏi như khách hàng thực tế</p><p className="text-xs mt-1 opacity-70">VD: "gói chụp cưới bao nhiêu?" / "combo 9999 có gì?"</p></div>}
-                {testMsgs.map((m, i) => (
-                  <div key={i} className="space-y-1.5">
-                    <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {m.role === 'bot' && <div className="w-7 h-7 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white text-[9px] font-bold mr-1.5 shrink-0 self-end">AI</div>}
-                      <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${m.role === 'user' ? 'bg-purple-600 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'}`}>
-                        <p className="whitespace-pre-wrap">{m.text}</p>
+          <div className="flex flex-1 overflow-hidden min-h-0">
+
+            {/* ── Left: Chat area ── */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#f0f2f5]">
+
+              {/* Toolbar */}
+              <div className="px-4 py-2 flex items-center gap-2 shrink-0">
+                <button onClick={() => setTestMsgs([])} title="Làm mới đoạn chat"
+                  className="p-2 hover:bg-black/10 rounded-full text-gray-500 transition-colors">
+                  <RefreshCw size={16} />
+                </button>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto">
+                <div className="max-w-xl mx-auto px-4 py-2 space-y-2.5">
+
+                  {/* Brand card */}
+                  <div className="flex justify-center my-4">
+                    <div className="bg-white rounded-2xl shadow-sm p-5 w-[240px] text-center">
+                      {settings?.brandLogo
+                        ? <img src={settings.brandLogo} alt="Logo" className="w-14 h-14 mx-auto rounded-full mb-2 object-cover" />
+                        : <div className="w-14 h-14 mx-auto rounded-full mb-2 bg-gradient-to-br from-secondary to-primary flex items-center justify-center text-white font-bold text-xl">H2</div>
+                      }
+                      <p className="font-bold text-gray-900 text-sm leading-tight">Đoạn chat thử nghiệm</p>
+                      <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">Thử chat với AI như bạn là khách hàng. Xem phản hồi và đóng góp ý kiến để góp phần cải thiện AI.</p>
+                    </div>
+                  </div>
+
+                  {testMsgs.map((m, i) => (
+                    <div key={i} className="space-y-1.5">
+                      <div className={`flex items-end gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {m.role === 'bot' && (
+                          <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0">AI</div>
+                        )}
+                        <div className={`max-w-[72%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${m.role === 'user' ? 'bg-[#7c3aed] text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
+                          <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                        </div>
+                      </div>
+                      {m.matched && (
+                        <div className="ml-10 bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs">
+                          <p className="font-semibold text-amber-800">🎯 {m.matched.type === 'faq' ? '📚 FAQ' : '🎭 Script'}</p>
+                          <p className="text-amber-700 mt-0.5 line-clamp-1 font-medium">"{m.matched.title}"</p>
+                          <div className="flex gap-4 mt-1 text-amber-600">
+                            <span>Score: <strong>{m.matched.score}</strong></span>
+                            {m.matched.phase && <span>Phase: <strong>{m.matched.phase}</strong></span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {testLoading && (
+                    <div className="flex items-end gap-2">
+                      <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0">AI</div>
+                      <div className="bg-white rounded-2xl rounded-bl-sm shadow-sm px-4 py-3 flex gap-1">
+                        {[0,1,2].map(i => <span key={i} className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: `${i*0.18}s`, animationDuration: '0.8s' }} />)}
                       </div>
                     </div>
-                    {m.matched && (
-                      <div className="ml-10 bg-yellow-50 border border-yellow-200 rounded-xl p-2.5 text-xs">
-                        <p className="font-semibold text-yellow-800">🎯 Match: {m.matched.type === 'faq' ? '📚 FAQ' : '🎭 Script'}</p>
-                        <p className="text-yellow-700 mt-0.5 truncate">"{m.matched.title}"</p>
-                        <div className="flex gap-4 mt-1 text-yellow-600"><span>Score: <strong>{m.matched.score}</strong></span>{m.matched.phase && <span>Phase: <strong>{m.matched.phase}</strong></span>}</div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {testLoading && <div className="flex items-end gap-1.5"><div className="w-7 h-7 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0">AI</div><div className="bg-white rounded-2xl border border-gray-200 px-4 py-3 flex gap-1">{[0,1,2].map(i => <span key={i} className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: `${i*0.18}s` }} />)}</div></div>}
-                <div ref={testBottomRef} />
+                  )}
+                  <div ref={testBottomRef} />
+                </div>
               </div>
-              <div className="border-t bg-white p-3 flex gap-2">
-                <input className="flex-1 border border-gray-200 rounded-full px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
-                  placeholder="Nhập câu hỏi của khách hàng..." value={testInput}
-                  onChange={e => setTestInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && runTestBot()} />
-                <button onClick={runTestBot} disabled={!testInput.trim() || testLoading} className="bg-purple-600 text-white rounded-full p-2.5 disabled:opacity-40 hover:bg-purple-700 transition-colors"><Send size={15} /></button>
-                {testMsgs.length > 0 && <button onClick={() => setTestMsgs([])} className="p-2.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"><RefreshCw size={15} /></button>}
+
+              {/* Suggested questions */}
+              <div className="shrink-0 max-w-xl mx-auto w-full px-4 py-3">
+                <p className="text-xs text-gray-400 mb-2">Xem cách AI phản hồi những câu hỏi thường gặp này.</p>
+                <div className="flex flex-wrap gap-2">
+                  {(topFaqs.length > 0 ? topFaqs.slice(0, 3) : [
+                    { question: 'Giá chụp ảnh cưới bao nhiêu?' },
+                    { question: 'Studio ở địa chỉ nào?' },
+                    { question: 'Bao lâu thì nhận được ảnh?' },
+                  ]).map((f: any, i: number) => (
+                    <button key={i} onClick={() => setTestInput(f.question)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-700 hover:border-purple-300 hover:text-purple-700 transition-colors shadow-sm">
+                      <span className="text-purple-400 font-bold text-[10px]">✦</span>
+                      <span className="max-w-[180px] truncate">{f.question}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Input */}
+              <div className="bg-white border-t shrink-0">
+                <div className="max-w-xl mx-auto px-4 py-3 flex items-center gap-2">
+                  <input
+                    className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-purple-200 transition-colors"
+                    placeholder="Khách hàng của bạn sẽ hỏi gì?"
+                    value={testInput} onChange={e => setTestInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && runTestBot()}
+                    autoFocus={tab === 'test'}
+                  />
+                  <button onClick={runTestBot} disabled={!testInput.trim() || testLoading}
+                    className="bg-purple-600 text-white rounded-full p-2.5 disabled:opacity-40 hover:bg-purple-700 transition-colors shrink-0">
+                    <Send size={15} />
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* ── Right: Guide panel ── */}
+            <div className="hidden lg:flex flex-col w-64 xl:w-72 bg-white border-l border-gray-200 shrink-0 overflow-y-auto">
+              <div className="p-5 space-y-5">
+                <h3 className="font-bold text-gray-900 text-base">Hướng dẫn</h3>
+                <div className="space-y-4">
+                  <div className="flex gap-3 text-sm text-gray-600 leading-relaxed">
+                    <span className="shrink-0 font-bold text-gray-300 mt-0.5">1.</span>
+                    <span>Giả sử bạn là khách hàng. Hãy đặt câu hỏi trong đoạn chat hoặc chọn một số câu hỏi thường gặp để hỏi.</span>
+                  </div>
+                  <div className="flex gap-3 text-sm text-gray-600 leading-relaxed">
+                    <span className="shrink-0 font-bold text-gray-300 mt-0.5">2.</span>
+                    <span>Hộp vàng bên dưới câu trả lời cho thấy <strong className="text-gray-700">FAQ / kịch bản nào được match</strong> và với điểm số bao nhiêu.</span>
+                  </div>
+                  <div className="flex gap-3 text-sm text-gray-600 leading-relaxed">
+                    <span className="shrink-0 font-bold text-gray-300 mt-0.5">3.</span>
+                    <span>Bạn cũng có thể đến phần{' '}
+                      <button onClick={() => { setTab('knowledge'); setKTab('faqs'); }}
+                        className="text-purple-600 underline underline-offset-2 font-medium hover:text-purple-800">
+                        Kiến thức AI
+                      </button>{' '}
+                      để thêm hoặc cập nhật thông tin cho bot.
+                    </span>
+                  </div>
+                </div>
+                <div className="border-t pt-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Trạng thái</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Bot Tầng 1 (TF-IDF)</span>
+                      <span className={`font-bold ${settings?.chatBotEnabled ? 'text-green-600' : 'text-gray-300'}`}>{settings?.chatBotEnabled ? '● Bật' : '○ Tắt'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Bot Tầng 2 (AI)</span>
+                      <span className={`font-bold ${settings?.chatBotTier2Enabled ? 'text-purple-600' : 'text-gray-300'}`}>{settings?.chatBotTier2Enabled ? '● Bật' : '○ Tắt'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Kho FAQ</span>
+                      <span className="font-bold text-gray-700">{stats.faqs} câu hỏi</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Kịch bản sale</span>
+                      <span className="font-bold text-gray-700">{stats.scripts} kịch bản</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 
