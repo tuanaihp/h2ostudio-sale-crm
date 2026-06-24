@@ -1536,27 +1536,11 @@ const AdminConsultations: React.FC = () => {
             </button>
 
             <Link
-              to="/admin/scripts"
-              className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-sm hover:bg-amber-100 transition-all"
-            >
-              <BookOpen size={16} />
-              Kho kịch bản
-            </Link>
-
-            <Link
               to="/admin/promotions"
               className="flex items-center gap-2 px-4 py-2.5 bg-pink-50 text-pink-700 border border-pink-200 rounded-xl font-bold text-sm hover:bg-pink-100 transition-all"
             >
               <Gift size={16} />
               Lịch KM
-            </Link>
-
-            <Link
-              to="/admin/knowledge-base"
-              className="flex items-center gap-2 px-4 py-2.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-xl font-bold text-sm hover:bg-teal-100 transition-all"
-            >
-              <Database size={16} />
-              Kho Câu Hỏi
             </Link>
 
             {isSuperAdmin && (
