@@ -10,7 +10,7 @@ const SYNONYM_GROUPS: [string, string[]][] = [
   ['giao ảnh', ['nhận ảnh', 'giao hàng', 'trả ảnh', 'nhận hình', 'nhận bộ', 'khi nào có ảnh', 'khi nào nhận', 'ra ảnh']],
   ['ngoại cảnh', ['outdoor', 'ngoài trời', 'phong cảnh', 'công viên', 'chụp ngoài', 'thiên nhiên', 'sân vườn']],
   ['studio', ['phòng chụp', 'trong nhà', 'indoor', 'chụp trong', 'background']],
-  ['makeup', ['trang điểm', 'làm đẹp', 'phấn son', 'make up', 'đội makeup', 'artist', 'mua']],
+  ['makeup', ['trang điểm', 'làm đẹp', 'phấn son', 'make up', 'đội makeup', 'artist']],
   ['váy', ['áo cưới', 'đầm cưới', 'trang phục', 'quần áo', 'thuê váy', 'thuê áo', 'vest', 'suit']],
   ['khuyến mãi', ['giảm giá', 'ưu đãi', 'sale', 'discount', 'khuyến mại', 'km', 'giảm', 'deal', 'ưu đãi đặc biệt']],
   ['đặt cọc', ['cọc', 'thanh toán', 'trả tiền', 'cọc trước', 'đặt trước', 'tiền cọc', 'trả trước', 'payment']],

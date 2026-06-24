@@ -153,9 +153,15 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       last_message: '', last_message_at: new Date().toISOString(),
       unread_admin: 0, created_at: new Date().toISOString(),
     });
+    // Gửi lời chào đầu tiên tự động cho khách mới
+    const greetId  = crypto.randomUUID();
+    const greetNow = new Date().toISOString();
+    const greetText = 'Chào em nha! Em đang muốn tham khảo “ 𝑻𝒓𝒐̣𝒏 𝒈𝒐́𝒊 𝒄𝒉𝒖̣𝒑 𝒂̉𝒏𝒉 𝒄𝒖̛𝒐̛́𝒊 “ hay “ 𝑽𝒂́𝒚 𝒄𝒖̛𝒐̛́𝒊 “ ? Để chị tư vấn chi tiết cho em nhé!\n(Nếu trường hợp cần hỗ trợ gấp hãy gọi ngay Mrs.Thủy H2O 0783327323 or 0399558699)';
+    const greetMsg: Msg = { id: greetId, sender: 'admin', content: greetText, created_at: greetNow };
+    setMessages([greetMsg]);
+    supabase.from('chat_messages').insert({ id: greetId, session_id: sid, sender: 'admin', content: greetText, created_at: greetNow }).then(() => {});
     setSessionId(sid);
     setIsAnon(true);
-    setMessages([]);
     subscribe(sid);
     setTimeout(() => setShowForm(true), 1500);
   };
@@ -423,13 +429,6 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-gray-50 p-3 space-y-2">
-        <div className="flex justify-start">
-          <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">{staffInitials}</div>
-          <div className="bg-white text-gray-800 rounded-2xl rounded-bl-sm border border-gray-100 px-3 py-2 text-sm shadow-sm max-w-[78%]">
-            <p>Xin chào! Tư vấn viên H2O Studio sẵn sàng hỗ trợ anh/chị 💕</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">H2O Studio</p>
-          </div>
-        </div>
 
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
