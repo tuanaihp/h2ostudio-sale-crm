@@ -173,6 +173,10 @@ export interface AppSettings {
   chatAutoOpenDelay?: number;
   chatBotGreeting?: string;
   chatBotCustomInstructions?: string;
+  chatBotBlockedTopics?: string;
+  botStudioInfo?: string;
+  botPaymentInfo?: string;
+  botCollectLeads?: boolean;
   bannerItems?: BannerItem[];
   bannerSpeed?: number;
   promoGridItems?: PromoGridItem[]; // 3 thẻ bảng trái Two Panel

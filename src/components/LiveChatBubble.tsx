@@ -317,6 +317,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           integrationConfig,
           activePromos: promoData || [],
           customInstructions: settings?.chatBotCustomInstructions || '',
+          blockedTopics: settings?.chatBotBlockedTopics || '',
+          studioInfo: settings?.botStudioInfo || '',
+          paymentInfo: settings?.botPaymentInfo || '',
         }),
       });
       if (!res.ok) return;
@@ -348,6 +351,32 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       last_message: content, last_message_at: now, status: 'waiting',
       unread_admin: messages.filter(m => m.sender === 'customer').length + 1,
     }).eq('id', sessionId);
+    // Thu thập lead tự động: phát hiện SĐT trong tin nhắn khách
+    if (settings?.botCollectLeads && isAnon && !formDone) {
+      const phoneMatch = content.match(/\b(0[3-9]\d{8})\b/);
+      if (phoneMatch) {
+        const detectedPhone = phoneMatch[1];
+        supabase.from('chat_sessions').update({ phone: detectedPhone, status: 'waiting' }).eq('id', sessionId).then(() => {});
+        const { data: existing } = await supabase
+          .from('consultations').select('id').eq('phone', detectedPhone).limit(1).maybeSingle();
+        if (!existing) {
+          const consultId = crypto.randomUUID();
+          await supabase.from('consultations').insert({
+            id: consultId, name: detectedPhone, phone: detectedPhone,
+            status: 'new', source: 'website_chat',
+            message: 'Khách tự để lại SĐT trong chat (bot tự nhận diện)',
+            created_at: new Date().toISOString(),
+          });
+          await supabase.from('chat_sessions').update({ consultation_id: consultId }).eq('id', sessionId);
+        } else {
+          await supabase.from('chat_sessions').update({ consultation_id: (existing as any).id }).eq('id', sessionId);
+        }
+        localStorage.setItem('h2o_user_phone', detectedPhone);
+        sendLeadNotifications({ name: detectedPhone, phone: detectedPhone, source: 'website_chat', settings });
+        setIsAnon(false);
+        setFormDone(true);
+      }
+    }
     if (isAnon && !formDone) setTimeout(() => setShowForm(true), 800);
     setSending(false);
 

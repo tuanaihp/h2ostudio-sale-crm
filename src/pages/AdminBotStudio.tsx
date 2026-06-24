@@ -266,6 +266,9 @@ export default function AdminBotStudio() {
   const DEFAULT_GREETING = 'Chào em nha! Em đang muốn tham khảo " 𝑻𝒓𝒐̣𝒏 𝒈𝒐́𝒊 𝒄𝒉𝒖̣𝒑 𝒂̉𝒏𝒉 𝒄𝒖̛𝒐̛́𝒊 " hay " 𝑽𝒂́𝒚 𝒄𝒖̛𝒐̛́𝒊 " ? Để chị tư vấn chi tiết cho em nhé!\n(Nếu trường hợp cần hỗ trợ gấp hãy gọi ngay Mrs.Thủy H2O 0783327323 or 0399558699)';
   const [greeting, setGreeting] = useState('');
   const [customInstr, setCustomInstr] = useState('');
+  const [blockedTopics, setBlockedTopics] = useState('');
+  const [studioInfo, setStudioInfo] = useState('');
+  const [paymentInfo, setPaymentInfo] = useState('');
   const [instrSaving, setInstrSaving] = useState(false);
   const [instrSaveOk, setInstrSaveOk] = useState(false);
 
@@ -284,8 +287,11 @@ export default function AdminBotStudio() {
     if (settings) {
       setGreeting(settings.chatBotGreeting || DEFAULT_GREETING);
       setCustomInstr(settings.chatBotCustomInstructions || '');
+      setBlockedTopics(settings.chatBotBlockedTopics || '');
+      setStudioInfo(settings.botStudioInfo || '');
+      setPaymentInfo(settings.botPaymentInfo || '');
     }
-  }, [settings?.chatBotGreeting, settings?.chatBotCustomInstructions]);
+  }, [settings?.chatBotGreeting, settings?.chatBotCustomInstructions, settings?.chatBotBlockedTopics, settings?.botStudioInfo, settings?.botPaymentInfo]);
 
   // ── Home stats ──
   const loadHomeStats = async () => {
@@ -385,7 +391,8 @@ export default function AdminBotStudio() {
 
   // ── Instructions ──
   const saveInstructions = async () => {
-    setInstrSaving(true); await updateSettings({ chatBotGreeting: greeting, chatBotCustomInstructions: customInstr });
+    setInstrSaving(true);
+    await updateSettings({ chatBotGreeting: greeting, chatBotCustomInstructions: customInstr, chatBotBlockedTopics: blockedTopics, botStudioInfo: studioInfo, botPaymentInfo: paymentInfo });
     setInstrSaving(false); setInstrSaveOk(true); setTimeout(() => setInstrSaveOk(false), 2500);
   };
 
@@ -810,6 +817,27 @@ export default function AdminBotStudio() {
               <button onClick={() => setGreeting(DEFAULT_GREETING)} className="mt-1.5 text-xs text-gray-400 hover:text-gray-600 underline">Đặt lại mặc định</button>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-800 mb-0.5">🏠 Thông tin Studio</h3>
+              <p className="text-xs text-gray-400 mb-3">Địa chỉ, giờ làm việc, liên hệ — bot dùng khi khách hỏi về studio. Chỉ áp dụng Bot Tầng 2.</p>
+              <textarea value={studioInfo} onChange={e => setStudioInfo(e.target.value)} rows={4}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none"
+                placeholder="VD: H2O Studio tại 123 Nguyễn Văn A, Q.Bình Thạnh. Mở cửa T2-CN 8:00-20:00. Hotline: 0783327323..." />
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-800 mb-0.5">💳 Thông tin thanh toán</h3>
+              <p className="text-xs text-gray-400 mb-3">Số tài khoản, ngân hàng, điều khoản đặt cọc — bot dùng khi khách hỏi về thanh toán. Chỉ áp dụng Bot Tầng 2.</p>
+              <textarea value={paymentInfo} onChange={e => setPaymentInfo(e.target.value)} rows={4}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none"
+                placeholder="VD: Đặt cọc 30% qua tài khoản Vietcombank 1234567890 - H2O Studio. Số dư còn lại thanh toán trước ngày chụp..." />
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-800 mb-0.5">🚫 Chủ đề không tư vấn</h3>
+              <p className="text-xs text-gray-400 mb-3">Bot sẽ lịch sự từ chối khi khách hỏi về những chủ đề này. Chỉ áp dụng Bot Tầng 2.</p>
+              <textarea value={blockedTopics} onChange={e => setBlockedTopics(e.target.value)} rows={3}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none"
+                placeholder="VD: Chính trị, tôn giáo. Không so sánh với đối thủ cạnh tranh. Không tiết lộ thông tin nội bộ về chi phí vận hành..." />
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
               <h3 className="text-sm font-semibold text-gray-800 mb-0.5">🤖 Hướng dẫn thêm cho AI Tầng 2</h3>
               <p className="text-xs text-gray-400 mb-3">Được thêm vào system prompt của Gemini/GPT — chỉ áp dụng khi Bot Tầng 2 BẬT</p>
               <textarea value={customInstr} onChange={e => setCustomInstr(e.target.value)} rows={5}
@@ -872,6 +900,7 @@ export default function AdminBotStudio() {
                 { key: 'chatBotTier2Enabled', emoji: '⚡', label: 'Bot Tầng 2 (AI)', desc: 'Dùng Gemini/GPT tạo câu trả lời thông minh hơn' },
                 { key: 'liveChatEnabled', emoji: '💬', label: 'Live Chat Widget', desc: 'Hiển thị khung chat trên website cho khách' },
                 { key: 'chatAutoOpenEnabled', emoji: '🚀', label: 'Tự động mở chat', desc: 'Tự bật khung chat sau vài giây khách vào web' },
+                { key: 'botCollectLeads', emoji: '📱', label: 'Tự động thu thập SĐT', desc: 'Bot nhận diện số điện thoại trong tin nhắn và tự tạo lead' },
               ].map(({ key, emoji, label, desc }) => (
                 <div key={key} className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center justify-between">
                   <div className="flex items-start gap-3"><span className="text-xl mt-0.5">{emoji}</span><div><p className="text-sm font-semibold text-gray-800">{label}</p><p className="text-xs text-gray-400">{desc}</p></div></div>
