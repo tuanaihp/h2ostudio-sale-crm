@@ -216,6 +216,7 @@ type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings';
 type KnowledgeTab = 'faqs' | 'scripts';
 interface TestMsg {
   role: 'user' | 'bot'; text: string;
+  tier?: 1 | 2;
   matched?: { type: 'faq' | 'script'; title: string; score: number; phase?: string };
 }
 interface PendingEdit { answer: string; category: string; }
@@ -475,6 +476,60 @@ export default function AdminBotStudio() {
     const msg = testInput.trim(); setTestInput('');
     setTestMsgs(prev => [...prev, { role: 'user', text: msg }]);
     setTestLoading(true);
+
+    // Tầng 2: gọi AI với đầy đủ context
+    if (settings?.chatBotTier2Enabled) {
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const [{ data: scriptData }, { data: promoData }, { data: faqData }] = await Promise.all([
+          supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num'),
+          supabase.from('promotions').select('title, short_desc, emoji, end_date').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(3),
+          supabase.from('customer_faqs').select('question, answer, category').eq('is_approved', true).order('usage_count', { ascending: false }).limit(30),
+        ]);
+        const s = settings;
+        const parts: string[] = [];
+        if (s?.botBusinessName || s?.botBusinessPhone || s?.botBusinessAddress) {
+          let bi = 'THÔNG TIN CƠ BẢN:';
+          if (s?.botBusinessName) bi += `\n• Tên: ${s.botBusinessName}`;
+          if (s?.botBusinessDescription) bi += `\n• Mô tả: ${s.botBusinessDescription}`;
+          if (s?.botBusinessPhone) bi += `\n• SĐT: ${s.botBusinessPhone}`;
+          if (s?.botBusinessEmail) bi += `\n• Email: ${s.botBusinessEmail}`;
+          if (s?.botBusinessAddress) bi += `\n• Địa chỉ: ${s.botBusinessAddress}`;
+          if (s?.botBusinessHours) bi += `\n• Giờ mở cửa: ${s.botBusinessHours}`;
+          parts.push(bi);
+        }
+        if (s?.botPriceList) parts.push(`BẢNG GIÁ:\n${s.botPriceList}`);
+        if (s?.botPurchaseInfo) parts.push(`THÔNG TIN ĐẶT LỊCH/CỌC:\n${s.botPurchaseInfo}`);
+        if (s?.botPaymentMethods) parts.push(`PHƯƠNG THỨC THANH TOÁN:\n${s.botPaymentMethods}`);
+        if (s?.botReturnPolicy) parts.push(`CHÍNH SÁCH HỦY/THAY ĐỔI:\n${s.botReturnPolicy}`);
+        if (s?.botDiscountPolicy) parts.push(`KHUYẾN MÃI:\n${s.botDiscountPolicy}`);
+        try { const items = JSON.parse(s?.botCustomInfoItems || '[]') as Array<{title: string; content: string}>; items.forEach(item => parts.push(`${item.title.toUpperCase()}:\n${item.content}`)); } catch {}
+        const knowledgeContext = parts.join('\n\n---\n\n');
+
+        const testHistory = testMsgs.slice(-8).map(m => ({ sender: m.role === 'user' ? 'customer' : 'admin', content: m.text }));
+        const res = await fetch('/api/live-chat-bot', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: msg, stage: 'new',
+            scripts: scriptData || [], faqs: faqData || [],
+            history: testHistory,
+            integrationConfig: { chatApiEnabled: settings?.integrationChatApiEnabled, chatApiUrl: settings?.integrationChatApiUrl, chatApiKey: settings?.integrationChatApiKey, chatApiModelName: settings?.integrationChatApiModelName },
+            activePromos: promoData || [],
+            customInstructions: settings?.chatBotCustomInstructions || '',
+            blockedTopics: settings?.chatBotBlockedTopics || '',
+            studioInfo: settings?.botStudioInfo || '',
+            paymentInfo: settings?.botPaymentInfo || '',
+            knowledgeContext,
+          }),
+        });
+        const { text } = await res.json();
+        setTestMsgs(prev => [...prev, { role: 'bot', text: text || 'Không có phản hồi.', tier: 2 }]);
+      } catch { setTestMsgs(prev => [...prev, { role: 'bot', text: 'Lỗi khi gọi Bot Tầng 2.' }]); }
+      finally { setTestLoading(false); }
+      return;
+    }
+
+    // Tầng 1: TF-IDF
     try {
       const [{ data: faqData }, { data: scriptData }] = await Promise.all([
         supabase.from('customer_faqs').select('id, question, answer, tags, usage_count, category').eq('is_approved', true),
@@ -503,7 +558,7 @@ export default function AdminBotStudio() {
         ? (best.type === 'faq' ? best.item.answer : (best.item.content as string).slice(0, 450))
         : 'Không tìm thấy câu trả lời phù hợp trong kho kiến thức.';
       const matched = best?.score > 0 ? { type: best.type, title: best.title, score: Math.round(best.score * 10) / 10, phase: best.phase } : undefined;
-      setTestMsgs(prev => [...prev, { role: 'bot', text, matched }]);
+      setTestMsgs(prev => [...prev, { role: 'bot', text, tier: 1, matched }]);
     } catch { setTestMsgs(prev => [...prev, { role: 'bot', text: 'Lỗi khi chạy test.' }]); }
     finally { setTestLoading(false); }
   };
@@ -1099,9 +1154,15 @@ export default function AdminBotStudio() {
                           <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
                         </div>
                       </div>
+                      {m.role === 'bot' && m.tier === 2 && (
+                        <div className="ml-10 bg-purple-50 border border-purple-200 rounded-xl p-2.5 text-xs flex items-center gap-2">
+                          <span className="text-purple-600 font-bold">⚡ Bot Tầng 2 (AI)</span>
+                          <span className="text-purple-400">— Gemini / Custom LLM</span>
+                        </div>
+                      )}
                       {m.matched && (
                         <div className="ml-10 bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs">
-                          <p className="font-semibold text-amber-800">🎯 {m.matched.type === 'faq' ? '📚 FAQ' : '🎭 Script'}</p>
+                          <p className="font-semibold text-amber-800">🎯 {m.matched.type === 'faq' ? '📚 FAQ' : '🎭 Script'} · Tầng 1</p>
                           <p className="text-amber-700 mt-0.5 line-clamp-1 font-medium">"{m.matched.title}"</p>
                           <div className="flex gap-4 mt-1 text-amber-600">
                             <span>Score: <strong>{m.matched.score}</strong></span>

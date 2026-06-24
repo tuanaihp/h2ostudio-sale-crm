@@ -2,12 +2,18 @@
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { message, stage, scripts, history, integrationConfig, activePromos, customInstructions, blockedTopics, studioInfo, paymentInfo, knowledgeContext } = req.body || {};
+  const { message, stage, scripts, faqs, history, integrationConfig, activePromos, customInstructions, blockedTopics, studioInfo, paymentInfo, knowledgeContext } = req.body || {};
 
   // Build system prompt từ kịch bản
   const scriptsText = (scripts || []).slice(0, 12)
     .map((s: any) => `## ${s.title} [${s.phase}]\n${s.content}`)
     .join('\n\n---\n\n');
+
+  // Build FAQ context — câu hỏi thực tế khách hay hỏi (ưu tiên dùng câu trả lời này verbatim)
+  const faqsText = (faqs || []).slice(0, 30)
+    .filter((f: any) => f.question && f.answer)
+    .map((f: any) => `Q: ${f.question}\nA: ${f.answer}`)
+    .join('\n\n');
 
   // Build promo context nếu có
   let promoContext = '';
@@ -24,7 +30,7 @@ Giai đoạn hiện tại: ${stage || 'new'}
 
 KỊCH BẢN TƯ VẤN:
 ${scriptsText || 'Chào khách, hỏi nhu cầu và tư vấn nhiệt tình.'}${promoContext}
-${knowledgeContext ? `\nKIẾN THỨC VỀ DOANH NGHIỆP (dùng khi khách hỏi):\n${knowledgeContext}\n` : ''}${studioInfo ? `\nTHÔNG TIN STUDIO:\n${studioInfo}\n` : ''}${paymentInfo ? `\nTHÔNG TIN THANH TOÁN:\n${paymentInfo}\n` : ''}${customInstructions ? `\nHƯỚNG DẪN THÊM:\n${customInstructions}\n` : ''}${blockedTopics ? `\nCHỦ ĐỀ KHÔNG TƯ VẤN (từ chối lịch sự):\n${blockedTopics}\n` : ''}
+${faqsText ? `\nCÂU HỎI THỰC TẾ KHÁCH HAY HỎI (khi khách hỏi câu tương tự, ưu tiên dùng câu trả lời này):\n${faqsText}\n` : ''}${knowledgeContext ? `\nKIẾN THỨC VỀ DOANH NGHIỆP (dùng khi khách hỏi):\n${knowledgeContext}\n` : ''}${studioInfo ? `\nTHÔNG TIN STUDIO:\n${studioInfo}\n` : ''}${paymentInfo ? `\nTHÔNG TIN THANH TOÁN:\n${paymentInfo}\n` : ''}${customInstructions ? `\nHƯỚNG DẪN THÊM:\n${customInstructions}\n` : ''}${blockedTopics ? `\nCHỦ ĐỀ KHÔNG TƯ VẤN (từ chối lịch sự):\n${blockedTopics}\n` : ''}
 QUY TẮC QUAN TRỌNG:
 - Xưng "em", gọi khách là "anh/chị"
 - Trả lời ngắn gọn, tự nhiên (2-3 câu), không rườm rà

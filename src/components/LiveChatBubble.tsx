@@ -84,18 +84,20 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const openRef    = useRef(false);
   useEffect(() => { openRef.current = open; }, [open]);
 
-  // Auto-open sau 10 giây — chỉ khi standalone (không controlled)
+  // Auto-open — chỉ khi standalone + chatAutoOpenEnabled bật
   useEffect(() => {
     if (isControlled) return;
+    if (!settings?.chatAutoOpenEnabled) return;
     if (sessionStorage.getItem(AUTO_OPEN_KEY)) return;
+    const delay = (settings?.chatAutoOpenDelay ?? 20) * 1000;
     const timer = setTimeout(() => {
       if (openRef.current) return;
       sessionStorage.setItem(AUTO_OPEN_KEY, '1');
       playNotifSound();
       _setOpen(true);
-    }, 10000);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [isControlled]);
+  }, [isControlled, settings?.chatAutoOpenEnabled, settings?.chatAutoOpenDelay]);
 
   useEffect(() => {
     if (!open) return;
@@ -299,10 +301,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     try {
       setIsThinking(true);
       const todayStr = new Date().toISOString().split('T')[0];
-      const [{ data: sess }, { data: scriptData }, { data: promoData }] = await Promise.all([
+      const [{ data: sess }, { data: scriptData }, { data: promoData }, { data: faqData }] = await Promise.all([
         supabase.from('chat_sessions').select('stage').eq('id', sid).maybeSingle(),
         supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
         supabase.from('promotions').select('title, short_desc, emoji, end_date, content').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(3),
+        supabase.from('customer_faqs').select('question, answer, category').eq('is_approved', true).order('usage_count', { ascending: false }).limit(30),
       ]);
 
       const thinkingDelay = settings?.chatBotThinkingDelay ?? 1200;
@@ -315,6 +318,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           message: customerMessage,
           stage: (sess as any)?.stage || 'new',
           scripts: scriptData || [],
+          faqs: faqData || [],
           history: currentMessages.slice(-10),
           integrationConfig,
           activePromos: promoData || [],
