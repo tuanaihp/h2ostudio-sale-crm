@@ -728,6 +728,13 @@ CREATE POLICY "Admin all access" ON customer_faqs FOR ALL USING (auth.role() = '
 - `manual` — admin tự thêm tay trong AdminKnowledgeBase
 - `from_chat` — admin click "📌 Lưu vào kho" trong AdminChatPanel  
 - `from_chat_auto` — bot tự ghi khi score=0 (pending, is_approved=false)
+- `H2O_CHAT_0001` (và các `H2O_CHAT_*` tiếp theo) — import từ hội thoại thực tế H2O Studio, ngôn ngữ chính xác của sale, is_approved=true
+
+**Import thực tế:**
+- `supabase_import_thucte_001.sql` — 12 FAQs + 14 scripts từ hội thoại thực H2O_CHAT_0001
+- File `noidunggoc.md` — kho lưu các cuộc hội thoại gốc để phân tích và import
+- File `kich_ban_chot_sale.md` — kịch bản chốt sale tổng hợp từ hội thoại thực
+- Quy trình: thêm hội thoại mới vào `noidunggoc.md` → phân tích → tạo SQL → import
 
 ### src/utils/synonyms.ts
 
