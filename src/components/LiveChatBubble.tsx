@@ -78,8 +78,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const [formSaving, setFormSaving] = useState(false);
   const [formDone, setFormDone]     = useState(false);
 
-  const bottomRef  = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const bottomRef      = useRef<HTMLDivElement>(null);
+  const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRef    = useRef(false);
   useEffect(() => { openRef.current = open; }, [open]);
 
@@ -285,6 +286,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const botNow = new Date().toISOString();
       await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+      scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot Tầng 1 error:', e);
     } finally {
@@ -330,6 +332,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const botNow = new Date().toISOString();
       await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+      scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot Tầng 2 error:', e);
     } finally {
@@ -337,9 +340,48 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     }
   };
 
+  // Kiểm tra giờ hoạt động của bot
+  const isWithinBotSchedule = (): boolean => {
+    if (!settings?.botScheduleEnabled) return true;
+    try {
+      const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
+      const parts = fmt.formatToParts(new Date());
+      const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+      const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+      const cur = h * 60 + m;
+      const [sh, sm] = (settings?.botScheduleStart || '08:00').split(':').map(Number);
+      const [eh, em] = (settings?.botScheduleEnd || '22:00').split(':').map(Number);
+      return cur >= sh * 60 + sm && cur < eh * 60 + em;
+    } catch { return true; }
+  };
+
+  // Kiểm tra đối tượng bot nên phản hồi
+  const shouldBotRespond = (): boolean => {
+    const audience = settings?.botAudience || 'all';
+    if (audience === 'team_only') return false;
+    if (audience === 'first_time' && !isAnon) return false;
+    return isWithinBotSchedule();
+  };
+
+  // Lên lịch trao đổi thêm sau khoảng thời gian im lặng
+  const scheduleFollowUp = (sid: string) => {
+    const delayMins = settings?.botFollowUpDelay ?? 0;
+    if (!delayMins) return;
+    if (followUpTimerRef.current) clearTimeout(followUpTimerRef.current);
+    followUpTimerRef.current = setTimeout(async () => {
+      followUpTimerRef.current = null;
+      const followUpText = 'Anh/chị ơi, không biết em có thể hỗ trợ thêm gì cho anh/chị không ạ? 😊';
+      const botId = crypto.randomUUID();
+      const botNow = new Date().toISOString();
+      await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: followUpText, created_at: botNow });
+      await supabase.from('chat_sessions').update({ last_message: followUpText, last_message_at: botNow }).eq('id', sid);
+    }, delayMins * 60 * 1000);
+  };
+
   const send = async () => {
     if (!input.trim() || !sessionId || sending) return;
     setSending(true);
+    if (followUpTimerRef.current) { clearTimeout(followUpTimerRef.current); followUpTimerRef.current = null; }
     const id      = crypto.randomUUID();
     const now     = new Date().toISOString();
     const content = input.trim();
@@ -380,11 +422,13 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     if (isAnon && !formDone) setTimeout(() => setShowForm(true), 800);
     setSending(false);
 
-    // Tầng 2 ưu tiên hơn Tầng 1; nếu cả hai đều bật thì chạy Tầng 2
-    if (chatBotTier2Enabled && sessionId) {
-      callBotTier2(content, nextMsgs, sessionId);
-    } else if (chatBotEnabled && sessionId) {
-      callBotTier1(content, sessionId);
+    // Kiểm tra đối tượng + lịch trước khi gọi bot
+    if (shouldBotRespond()) {
+      if (chatBotTier2Enabled && sessionId) {
+        callBotTier2(content, nextMsgs, sessionId);
+      } else if (chatBotEnabled && sessionId) {
+        callBotTier1(content, sessionId);
+      }
     }
   };
 

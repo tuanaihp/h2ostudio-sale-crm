@@ -925,6 +925,68 @@ export default function AdminBotStudio() {
                   </div>
                 </div>
               )}
+              {/* Đối tượng */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                <div className="flex items-start gap-3 mb-3"><span className="text-xl">👥</span><div><p className="text-sm font-semibold text-gray-800">Đối tượng phản hồi</p><p className="text-xs text-gray-400">Chọn ai bot nên trả lời tự động</p></div></div>
+                <div className="space-y-2">
+                  {[
+                    { value: 'all', label: 'Mọi người', desc: 'Bot phản hồi tất cả khách nhắn tin' },
+                    { value: 'first_time', label: 'Chỉ khách nhắn lần đầu', desc: 'Bỏ qua khách đã từng nhắn (có SĐT)' },
+                    { value: 'team_only', label: 'Chỉ đội ngũ (tắt bot)', desc: 'Bot không tự phản hồi — chỉ nhân viên trả lời' },
+                  ].map(opt => (
+                    <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${(settings?.botAudience || 'all') === opt.value ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <input type="radio" name="botAudience" value={opt.value} checked={(settings?.botAudience || 'all') === opt.value} onChange={() => updateSettings({ botAudience: opt.value as any })} className="mt-0.5 accent-purple-600" />
+                      <div><p className="text-sm font-semibold text-gray-800">{opt.label}</p><p className="text-xs text-gray-400">{opt.desc}</p></div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lên lịch */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start gap-3"><span className="text-xl">🕐</span><div><p className="text-sm font-semibold text-gray-800">Lên lịch hoạt động</p><p className="text-xs text-gray-400">Giới hạn giờ bot tự động phản hồi</p></div></div>
+                  <button onClick={() => toggle('botScheduleEnabled')} className={`transition-colors ${settings?.botScheduleEnabled ? 'text-purple-500' : 'text-gray-300'}`}>
+                    {settings?.botScheduleEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                  </button>
+                </div>
+                {settings?.botScheduleEnabled && (
+                  <div className="mt-2 flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-14">Từ</span>
+                      <input type="time" value={settings?.botScheduleStart || '08:00'}
+                        onChange={e => updateSettings({ botScheduleStart: e.target.value })}
+                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-14">đến</span>
+                      <input type="time" value={settings?.botScheduleEnd || '22:00'}
+                        onChange={e => updateSettings({ botScheduleEnd: e.target.value })}
+                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
+                    </div>
+                    <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1">GMT+7 · Việt Nam</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Trao đổi thêm */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                <div className="flex items-start gap-3 mb-3"><span className="text-xl">💬</span><div><p className="text-sm font-semibold text-gray-800">Trao đổi thêm</p><p className="text-xs text-gray-400">Bot tự nhắn lại nếu khách không phản hồi sau một khoảng thời gian</p></div></div>
+                <select value={settings?.botFollowUpDelay ?? 0} onChange={e => updateSettings({ botFollowUpDelay: Number(e.target.value) })}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
+                  <option value={0}>Không trao đổi thêm</option>
+                  <option value={5}>Trao đổi thêm sau 5 phút</option>
+                  <option value={15}>Trao đổi thêm sau 15 phút</option>
+                  <option value={30}>Trao đổi thêm sau 30 phút</option>
+                  <option value={60}>Trao đổi thêm sau 1 giờ</option>
+                  <option value={120}>Trao đổi thêm sau 2 giờ</option>
+                  <option value={480}>Trao đổi thêm sau 8 giờ</option>
+                </select>
+                {(settings?.botFollowUpDelay ?? 0) > 0 && (
+                  <p className="text-xs text-purple-600 mt-2">Bot sẽ nhắn: "Anh/chị ơi, không biết em có thể hỗ trợ thêm gì không ạ? 😊"</p>
+                )}
+              </div>
+
               <Link to="/admin/settings" className="flex items-center gap-1.5 text-sm text-purple-600 font-medium hover:underline px-1">
                 Cài đặt nâng cao (API key, Zalo, Telegram...) <ExternalLink size={13} />
               </Link>

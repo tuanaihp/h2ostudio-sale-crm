@@ -177,6 +177,11 @@ export interface AppSettings {
   botStudioInfo?: string;
   botPaymentInfo?: string;
   botCollectLeads?: boolean;
+  botAudience?: 'all' | 'first_time' | 'team_only';
+  botScheduleEnabled?: boolean;
+  botScheduleStart?: string;
+  botScheduleEnd?: string;
+  botFollowUpDelay?: number;
   bannerItems?: BannerItem[];
   bannerSpeed?: number;
   promoGridItems?: PromoGridItem[]; // 3 thẻ bảng trái Two Panel
