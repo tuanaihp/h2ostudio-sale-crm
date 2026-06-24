@@ -5,7 +5,7 @@ const SYNONYM_GROUPS: [string, string[]][] = [
   ['cưới', ['đám cưới', 'ngày cưới', 'hôn lễ', 'kết hôn', 'lễ cưới', 'hôn nhân', 'ngày trọng đại', 'hôn lễ', 'ăn hỏi']],
   ['album', ['ảnh', 'hình', 'bộ ảnh', 'hình ảnh', 'ảnh cưới', 'bộ hình', 'ảnh đẹp', 'hình cưới', 'bộ album']],
   ['lịch', ['ngày', 'đặt lịch', 'book', 'đặt', 'ngày chụp', 'hẹn lịch', 'đặt hẹn', 'đặt ngày', 'booking', 'hẹn']],
-  ['chụp', ['chụp ảnh', 'chụp hình', 'shoot', 'quay', 'chụp cưới', 'phóng sự']],
+  ['chụp', ['chụp ảnh', 'chụp hình', 'shoot', 'chụp cưới', 'phóng sự']],
   ['thời gian', ['bao lâu', 'lâu không', 'mấy ngày', 'khi nào', 'mấy tuần', 'mấy tháng', 'nhanh không', 'nhanh ko', 'bao nhiêu ngày']],
   ['giao ảnh', ['nhận ảnh', 'giao hàng', 'trả ảnh', 'nhận hình', 'nhận bộ', 'khi nào có ảnh', 'khi nào nhận', 'ra ảnh']],
   ['ngoại cảnh', ['outdoor', 'ngoài trời', 'phong cảnh', 'công viên', 'chụp ngoài', 'thiên nhiên', 'sân vườn']],
