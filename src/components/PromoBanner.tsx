@@ -15,7 +15,7 @@ const dbToPromo = (row: DbPromotionRow): Promotion => ({
   bgColor: row.bg_color || '#FFF5F3',
   startDate: row.start_date,
   endDate: row.end_date,
-  ctaText: row.cta_text || 'Đăng ký nhận ưu đãi',
+  ctaText: row.cta_text || 'Xem ngay ưu đãi!',
   showOnWebsite: row.show_on_website !== false,
   enabled: row.enabled !== false,
   createdAt: row.created_at,

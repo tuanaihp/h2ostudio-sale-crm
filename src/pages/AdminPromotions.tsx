@@ -57,7 +57,7 @@ const BLANK_FORM = {
   bgColor: '#FFF0F0',
   startDate: format(new Date(), 'yyyy-MM-dd'),
   endDate: format(new Date(), 'yyyy-MM-dd'),
-  ctaText: 'Đăng ký nhận ưu đãi',
+  ctaText: 'Xem ngay ưu đãi!',
   showOnWebsite: true,
   enabled: true,
   imageUrl: '',
@@ -97,7 +97,7 @@ const dbToPromo = (row: DbPromotionRow): Promotion => ({
   bgColor: row.bg_color || '#FFF5F3',
   startDate: row.start_date,
   endDate: row.end_date,
-  ctaText: row.cta_text || 'Đăng ký nhận ưu đãi',
+  ctaText: row.cta_text || 'Xem ngay ưu đãi!',
   showOnWebsite: row.show_on_website !== false,
   enabled: row.enabled !== false,
   createdAt: row.created_at,
@@ -398,7 +398,7 @@ export default function AdminPromotions() {
         title: p.title, short_desc: p.shortDesc, content: p.content,
         emoji: p.emoji || '🎉', color: p.color || '#A4756B', bg_color: p.bgColor || '#FFF5F3',
         start_date: p.startDate, end_date: p.endDate,
-        cta_text: p.ctaText || 'Đăng ký nhận ưu đãi',
+        cta_text: p.ctaText || 'Xem ngay ưu đãi!',
         show_on_website: true, enabled: true,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       });
@@ -1126,7 +1126,7 @@ export default function AdminPromotions() {
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Nút CTA (trên website)</label>
                 <input
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="Đăng ký nhận ưu đãi"
+                  placeholder="Xem ngay ưu đãi!"
                   value={form.ctaText}
                   onChange={e => setForm(f => ({ ...f, ctaText: e.target.value }))}
                 />
