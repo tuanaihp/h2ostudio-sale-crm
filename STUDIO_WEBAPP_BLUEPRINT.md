@@ -774,11 +774,24 @@ const [{ data: faqData }, { data: scriptData }, { data: promoData }] = await Pro
 
 // Mở rộng từ khóa
 const words = expandQuery(customerMessage);
-const isPriceQuery = ['giá', 'chi phí', 'bao nhiêu', 'báo giá', 'ưu đãi', 'khuyến mãi'].some(k => customerMessage.includes(k));
 
-// Xây promoFooter để inject vào câu trả lời
-// Score FAQ: question +4, tags +2, answer +1
-// Score Script: title +3, tags +2, content +1
+// TF-IDF: tính IDF từ toàn bộ corpus (FAQ + kịch bản)
+// → từ phổ biến như "có/không/bao" → trọng số thấp
+// → từ đặc trưng như "ngoại cảnh/đặt cọc" → trọng số cao
+const allDocs = [
+  ...(faqData||[]).map(f => [f.question, f.answer, ...(f.tags||[])].join(' ').toLowerCase()),
+  ...(scriptData||[]).map(s => [s.title, s.content, ...(s.tags||[])].join(' ').toLowerCase()),
+];
+const N = Math.max(allDocs.length, 1);
+const df: Record<string,number> = {};
+allDocs.forEach(doc => {
+  new Set(doc.split(/\s+/).filter(w=>w.length>=2)).forEach(w => { df[w]=(df[w]||0)+1; });
+});
+const idf = (w: string) => Math.log((N+1)/((df[w]||0)+1)) + 1; // smoothed IDF
+
+// Score = Σ(base_weight × IDF(word))
+// FAQ:    question ×4, tags ×2, answer ×1  + usage_count boost log1p×0.3
+// Script: title ×3,   tags ×2, content ×1
 
 if (best && best.score > 0) {
   // Trả lời + inject promoFooter nếu câu hỏi về giá hoặc kịch bản offer/fomo/closing
@@ -795,6 +808,8 @@ if (best && best.score > 0) {
 ```
 
 > ⚠️ **Deeplink Zalo/Hotline** trong fallback dùng `APP_CONFIG` từ `src/data/mockData.ts`, KHÔNG phải `settings?.zaloUrl` (AppSettings không có field này).
+
+> 💡 **TF-IDF** tính toán hoàn toàn trong memory mỗi request — không cần API, không cần DB thêm. Corpus là toàn bộ FAQ + kịch bản đã fetch cùng request đó.
 
 ---
 
@@ -838,16 +853,15 @@ const STAGE_TO_CRM_STATUS: Record<string, string> = {
 // Khi admin đổi stage → tự cập nhật consultations.status
 ```
 
-### D — Vercel Cron Jobs (4 jobs)
+### D — Vercel Cron Jobs (3 jobs — Hobby plan)
 
 | File | Schedule (UTC) | Giờ VN | Mục đích |
 |------|----------------|--------|---------|
 | `api/cron-digest.ts` | `0 1 * * *` | 8:00 | Tổng lead mới qua đêm |
 | `api/cron-stale.ts` | `30 1 * * *` | 8:30 | Lead >48h chưa xử lý |
 | `api/cron-shoots.ts` | `0 10 * * *` | 17:00 | Lịch chụp D-1/D-3 |
-| `api/cron-followup.ts` | `0 */2 * * *` | Mỗi 2h | Lead mới 2–6h (Lark + Telegram) |
 
-`cron-followup.ts` là file mới nhất — focus vào golden window 2–6h đầu (tỷ lệ chuyển đổi cao nhất). Gửi đồng thời Lark và Telegram (các cron khác chỉ gửi Lark).
+> ⚠️ **`api/cron-followup.ts`** (golden window 2–6h) đã bị **xóa khỏi `vercel.json`** vì Vercel Hobby plan chỉ cho phép daily cron (`0 */2 * * *` bị chặn). File `api/cron-followup.ts` vẫn tồn tại trong code nhưng không được schedule.
 
 ### E — Badge ⭐ Xin review
 
@@ -868,6 +882,46 @@ Trong bảng CRM (`AdminConsultations.tsx`), hiện badge màu vàng khi `getSho
 [Đã xem: Rustic ×2, Vintage, Modern ×3]
 ```
 Sale thấy ngay khách quan tâm style nào mà không cần hỏi.
+
+### G — HOT TRENDING tự động (album_likes)
+
+Badge **HOT TRENDING** trên AlbumCard được tính từ lượt thích thực tế, không hardcode.
+
+**Supabase table cần tạo:**
+```sql
+CREATE TABLE album_likes (
+  album_id   text,
+  session_id text,
+  created_at timestamptz DEFAULT now(),
+  PRIMARY KEY (album_id, session_id)
+);
+ALTER TABLE album_likes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public rw" ON album_likes FOR ALL USING (true) WITH CHECK (true);
+```
+
+**Logic:**
+- Khách nhấn ❤️ → ghi `(album_id, session_id)` vào `album_likes` (session_id từ localStorage, anonymous)
+- `StyleDetail.tsx` fetch `album_likes` → đếm per album → top 3 nhiều like nhất = HOT TRENDING
+- Nếu chưa có data thực → fallback legacy: `index < 5 && displayLikes >= 5000`
+- Admin vẫn chỉnh được `displayLikes` (số hiển thị); khách thấy `displayLikes + realLikeCount`
+
+**Files liên quan:** `AuthContext.tsx` (`toggleFavorite`), `StyleDetail.tsx` (`albumLikeCounts`, `hotAlbumIds`), `AlbumCard.tsx` (`isHot`, `realLikeCount` props), `types.ts` (`realLikeCount?: number`)
+
+### H — Staff Access qua Settings
+
+`isAdmin` trong `useApp()` check 2 nguồn:
+```typescript
+// AppContext.tsx
+const staffPhones = settingsCtx.settings?.staffPhones || [];
+const isAdmin = auth.isAdmin ||
+  (auth.user !== null && auth.checkPhoneInWhitelist(auth.userPhone, staffPhones));
+```
+
+- **`auth.isAdmin`**: phone nằm trong `HARDCODED_STAFF_PHONES` (cứng trong code) hoặc superAdmin email
+- **`staffPhones` from Settings**: admin thêm số điện thoại qua trang Admin → Settings → "Số điện thoại nhân viên"
+- **Yêu cầu Supabase auth**: `auth.user !== null` để tránh bypass — nhân viên phải đăng nhập qua `staff@h2ostudio.com`
+
+**Auto-create staff account** (`AdminLogin.tsx`): nếu `signInWithPassword` trả về "Invalid login credentials" → tự `signUp` rồi login lại — không cần tạo thủ công trên Supabase Dashboard.
 
 ---
 

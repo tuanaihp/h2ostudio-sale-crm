@@ -177,20 +177,38 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       // Mở rộng từ khóa bằng từ điển đồng nghĩa
       const words = expandQuery(customerMessage);
 
+      // TF-IDF: tính IDF cho từng từ từ toàn bộ kho FAQ + kịch bản
+      // Từ xuất hiện ở nhiều doc (phổ biến như "có", "không") → IDF thấp → ít điểm
+      // Từ xuất hiện ít doc (đặc trưng như "ngoại cảnh", "đặt cọc") → IDF cao → nhiều điểm
+      const allDocs: string[] = [
+        ...(faqData || []).map((f: any) => [f.question, f.answer, ...(f.tags || [])].join(' ').toLowerCase()),
+        ...(scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase()),
+      ];
+      const N = Math.max(allDocs.length, 1);
+      const df: Record<string, number> = {};
+      allDocs.forEach(doc => {
+        new Set(doc.split(/\s+/).filter(w => w.length >= 2)).forEach(w => { df[w] = (df[w] || 0) + 1; });
+      });
+      // Smoothed IDF: log((N+1)/(df+1)) + 1 — tránh chia cho 0, từ lạ vẫn được tính
+      const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
+
       const scoreItem = (text1: string, text2: string, tags: string[], w3: number, w2: number, w1: number) => {
         let score = 0;
         words.forEach(w => {
-          if (text1.toLowerCase().includes(w)) score += w3;
-          if (tags.some(t => t.toLowerCase().includes(w))) score += w2;
-          if (text2.toLowerCase().includes(w)) score += w1;
+          const weight = idf(w); // từ phổ biến → nhỏ; từ đặc trưng → lớn
+          if (text1.toLowerCase().includes(w)) score += w3 * weight;
+          if (tags.some(t => t.toLowerCase().includes(w))) score += w2 * weight;
+          if (text2.toLowerCase().includes(w)) score += w1 * weight;
         });
         return score;
       };
 
       // FAQ thực tế: câu hỏi (+4), tags (+2), câu trả lời (+1)
+      // + usage_count boost: FAQ được dùng nhiều → ưu tiên cao hơn (log scale tránh FAQ cũ lấn át)
       const scoredFaqs = (faqData || []).map((f: any) => ({
         type: 'faq' as const, item: f,
-        score: scoreItem(f.question, f.answer, f.tags || [], 4, 2, 1),
+        score: scoreItem(f.question, f.answer, f.tags || [], 4, 2, 1)
+          + Math.log1p(f.usage_count || 0) * 0.3,
       }));
 
       // Kịch bản: tiêu đề (+3), tags (+2), nội dung (+1)
