@@ -156,7 +156,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     // Gửi lời chào đầu tiên tự động cho khách mới
     const greetId  = crypto.randomUUID();
     const greetNow = new Date().toISOString();
-    const greetText = 'Chào em nha! Em đang muốn tham khảo “ 𝑻𝒓𝒐̣𝒏 𝒈𝒐́𝒊 𝒄𝒉𝒖̣𝒑 𝒂̉𝒏𝒉 𝒄𝒖̛𝒐̛́𝒊 “ hay “ 𝑽𝒂́𝒚 𝒄𝒖̛𝒐̛́𝒊 “ ? Để chị tư vấn chi tiết cho em nhé!\n(Nếu trường hợp cần hỗ trợ gấp hãy gọi ngay Mrs.Thủy H2O 0783327323 or 0399558699)';
+    const DEFAULT_GREETING = 'Chào em nha! Em đang muốn tham khảo “ 𝑻𝒓𝒐̣𝒏 𝒈𝒐́𝒊 𝒄𝒉𝒖̣𝒑 𝒂̉𝒏𝒉 𝒄𝒖̛𝒐̛́𝒊 “ hay “ 𝑽𝒂́𝒚 𝒄𝒖̛𝒐̛́𝒊 “ ? Để chị tư vấn chi tiết cho em nhé!\n(Nếu trường hợp cần hỗ trợ gấp hãy gọi ngay Mrs.Thủy H2O 0783327323 or 0399558699)';
+    const greetText = settings?.chatBotGreeting || DEFAULT_GREETING;
     const greetMsg: Msg = { id: greetId, sender: 'admin', content: greetText, created_at: greetNow };
     setMessages([greetMsg]);
     supabase.from('chat_messages').insert({ id: greetId, session_id: sid, sender: 'admin', content: greetText, created_at: greetNow }).then(() => {});
@@ -315,6 +316,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           history: currentMessages.slice(-10),
           integrationConfig,
           activePromos: promoData || [],
+          customInstructions: settings?.chatBotCustomInstructions || '',
         }),
       });
       if (!res.ok) return;

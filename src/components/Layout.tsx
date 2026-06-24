@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, MessageCircle, Share2, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2, Bell } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Share2, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2, Bell, Bot } from 'lucide-react';
 import { APP_CONFIG } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { getDisplayImageUrl } from '../utils/image';
@@ -135,8 +135,15 @@ export const Layout: React.FC<LayoutProps> = ({
                             <SettingsIcon size={20} />
                           </Link>
                         )}
-                        <Link 
-                          to="/admin/trash" 
+                        <Link
+                          to="/admin/bot"
+                          className="p-2 hover:bg-light-gray rounded-full transition-colors text-dark/70"
+                          title="H2O Bot AI Studio"
+                        >
+                          <Bot size={20} />
+                        </Link>
+                        <Link
+                          to="/admin/trash"
                           className="p-2 hover:bg-light-gray rounded-full transition-colors text-dark/70"
                           title="Thùng rác"
                         >

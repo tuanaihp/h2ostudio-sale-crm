@@ -2,7 +2,7 @@
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { message, stage, scripts, history, integrationConfig, activePromos } = req.body || {};
+  const { message, stage, scripts, history, integrationConfig, activePromos, customInstructions } = req.body || {};
 
   // Build system prompt từ kịch bản
   const scriptsText = (scripts || []).slice(0, 12)
@@ -25,6 +25,7 @@ Giai đoạn hiện tại: ${stage || 'new'}
 KỊCH BẢN TƯ VẤN:
 ${scriptsText || 'Chào khách, hỏi nhu cầu và tư vấn nhiệt tình.'}${promoContext}
 
+${customInstructions ? `\nHƯỚNG DẪN THÊM:\n${customInstructions}\n` : ''}
 QUY TẮC QUAN TRỌNG:
 - Xưng "em", gọi khách là "anh/chị"
 - Trả lời ngắn gọn, tự nhiên (2-3 câu), không rườm rà
