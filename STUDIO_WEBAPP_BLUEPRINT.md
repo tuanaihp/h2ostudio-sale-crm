@@ -670,19 +670,31 @@ const insertAlbumLink = (style: Style, album: Album) => {
 - Browser Notification khi tab ẩn (`document.hidden`)
 - `chatPanelOpenRef` (useRef) để tránh toast khi panel đang mở
 
-### Bật/tắt trong AdminSettings
+### Quản lý qua AdminBotStudio (`/admin/bot`)
+
+Page hub tập trung cho toàn bộ bot — sidebar 5 tab:
+- **Home**: stats + bật/tắt Tier 1/2 + unanswered alert + top FAQs
+- **Kiến thức AI**: FAQ CRUD + Kịch bản CRUD (inline, không cần trang riêng)
+- **Hướng dẫn**: greeting, thông tin studio, thông tin thanh toán, blocked topics, custom instructions
+- **Chat thử**: test Tier 1 với debug panel (matched item + score)
+- **Cài đặt**: toggles + thinking delay + auto-open delay
+
+### Bật/tắt trong AdminBotStudio → Cài đặt
 
 | Setting | Key | Mặc định |
 |---------|-----|---------|
 | Widget CHAT website | `liveChatEnabled` | `true` |
-| Bot Tầng 1 · Kịch bản | `chatBotEnabled` | `false` |
+| Bot Tầng 1 · TF-IDF | `chatBotEnabled` | `false` |
 | Bot Tầng 2 · AI API | `chatBotTier2Enabled` | `false` |
+| Tự động thu thập SĐT | `botCollectLeads` | `false` |
 
-3 setting **độc lập nhau**:
-- `liveChatEnabled = false`: ẩn nút CHAT + widget (nhưng bot vẫn chạy standalone nếu bật)
 - `chatBotEnabled = true`: Bot Tầng 1 tự khớp kịch bản → trả lời miễn phí
-- `chatBotTier2Enabled = true`: Bot Tầng 2 gọi Gemini/ChatGPT → thông minh hơn, tốn API cost  
-  → Khi Tầng 2 bật, Tầng 2 ưu tiên hoàn toàn (Tầng 1 không chạy song song)
+- `chatBotTier2Enabled = true`: Bot Tầng 2 gọi Gemini/ChatGPT → Tầng 2 ưu tiên hoàn toàn
+- `botCollectLeads = true`: regex `0[3-9]\d{8}` trong tin khách → tự tạo consultation + link session
+
+### Tier 2 context injection (api/live-chat-bot.ts)
+
+System prompt được build từ: kịch bản → khuyến mãi → `botStudioInfo` → `botPaymentInfo` → `chatBotCustomInstructions` → `chatBotBlockedTopics`
 
 ---
 
@@ -1259,10 +1271,16 @@ export interface AppSettings {
   telegramChatId?: string;
   telegramNotificationEnabled?: boolean;
 
-  // Live Chat & Bot AI — 3 setting độc lập
+  // Live Chat & Bot AI — setting độc lập
   liveChatEnabled?: boolean;        // hiển thị widget CHAT trên website (default: true)
   chatBotEnabled?: boolean;         // Bot Tầng 1: keyword match kịch bản, miễn phí (default: false)
   chatBotTier2Enabled?: boolean;    // Bot Tầng 2: Gemini/ChatGPT + kịch bản context (default: false)
+  chatBotGreeting?: string;         // lời chào tự động khi khách mở chat lần đầu
+  chatBotCustomInstructions?: string; // hướng dẫn thêm cho Tier 2 system prompt
+  chatBotBlockedTopics?: string;    // chủ đề bot từ chối lịch sự (inject vào Tier 2 prompt)
+  botStudioInfo?: string;           // thông tin studio (địa chỉ, giờ, liên hệ) cho Tier 2 context
+  botPaymentInfo?: string;          // thông tin thanh toán/đặt cọc cho Tier 2 context
+  botCollectLeads?: boolean;        // tự động nhận diện SĐT 0[3-9]XX trong tin khách → tạo lead
 
   // AI tư vấn (legacy AiChatBubble)
   aiConsultantEnabled?: boolean;
