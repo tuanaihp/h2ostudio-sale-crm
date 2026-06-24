@@ -2,7 +2,7 @@
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { message, stage, scripts, history, integrationConfig, activePromos, customInstructions, blockedTopics, studioInfo, paymentInfo } = req.body || {};
+  const { message, stage, scripts, history, integrationConfig, activePromos, customInstructions, blockedTopics, studioInfo, paymentInfo, knowledgeContext } = req.body || {};
 
   // Build system prompt từ kịch bản
   const scriptsText = (scripts || []).slice(0, 12)
@@ -24,7 +24,7 @@ Giai đoạn hiện tại: ${stage || 'new'}
 
 KỊCH BẢN TƯ VẤN:
 ${scriptsText || 'Chào khách, hỏi nhu cầu và tư vấn nhiệt tình.'}${promoContext}
-${studioInfo ? `\nTHÔNG TIN STUDIO (dùng khi khách hỏi về studio, địa chỉ, lịch làm việc):\n${studioInfo}\n` : ''}${paymentInfo ? `\nTHÔNG TIN THANH TOÁN (dùng khi khách hỏi về đặt cọc, thanh toán):\n${paymentInfo}\n` : ''}${customInstructions ? `\nHƯỚNG DẪN THÊM:\n${customInstructions}\n` : ''}${blockedTopics ? `\nCHỦ ĐỀ KHÔNG TƯ VẤN (từ chối lịch sự nếu khách hỏi về các chủ đề này):\n${blockedTopics}\n` : ''}
+${knowledgeContext ? `\nKIẾN THỨC VỀ DOANH NGHIỆP (dùng khi khách hỏi):\n${knowledgeContext}\n` : ''}${studioInfo ? `\nTHÔNG TIN STUDIO:\n${studioInfo}\n` : ''}${paymentInfo ? `\nTHÔNG TIN THANH TOÁN:\n${paymentInfo}\n` : ''}${customInstructions ? `\nHƯỚNG DẪN THÊM:\n${customInstructions}\n` : ''}${blockedTopics ? `\nCHỦ ĐỀ KHÔNG TƯ VẤN (từ chối lịch sự):\n${blockedTopics}\n` : ''}
 QUY TẮC QUAN TRỌNG:
 - Xưng "em", gọi khách là "anh/chị"
 - Trả lời ngắn gọn, tự nhiên (2-3 câu), không rườm rà

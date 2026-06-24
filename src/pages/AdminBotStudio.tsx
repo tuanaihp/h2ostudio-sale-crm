@@ -10,7 +10,8 @@ import {
   ExternalLink, TrendingUp, HelpCircle, Scroll, Gift, AlertCircle,
   CheckCircle2, Plus, Search, Edit2, Trash2, X, Check, Copy,
   Edit3, Tag, ChevronRight, ChevronDown, ChevronUp, CheckCircle,
-  BookMarked, Download,
+  BookMarked, Download, Building2, Phone, Mail, MapPin, Clock,
+  Package, ShoppingBag, ChevronLeft,
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -211,7 +212,7 @@ const ScriptCard: React.FC<{
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'home' | 'knowledge' | 'instructions' | 'test' | 'settings';
+type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings';
 type KnowledgeTab = 'faqs' | 'scripts';
 interface TestMsg {
   role: 'user' | 'bot'; text: string;
@@ -272,6 +273,20 @@ export default function AdminBotStudio() {
   const [instrSaving, setInstrSaving] = useState(false);
   const [instrSaveOk, setInstrSaveOk] = useState(false);
 
+  // ── Info tab state ──
+  interface CustomInfoItem { id: string; title: string; content: string; }
+  const [infoSearch, setInfoSearch] = useState('');
+  const [customInfoItems, setCustomInfoItems] = useState<CustomInfoItem[]>([]);
+  const [customInfoModal, setCustomInfoModal] = useState<{ open: boolean; item: CustomInfoItem | null }>({ open: false, item: null });
+  const [customInfoForm, setCustomInfoForm] = useState({ title: '', content: '' });
+  const [priceListModal, setPriceListModal] = useState(false);
+  const [priceListDraft, setPriceListDraft] = useState('');
+  const [basicInfoModal, setBasicInfoModal] = useState(false);
+  const [basicInfoForm, setBasicInfoForm] = useState({ name: '', description: '', website: '', phone: '', email: '', address: '', hours: '' });
+  const [purchaseModal, setPurchaseModal] = useState(false);
+  const [purchaseForm, setPurchaseForm] = useState({ purchaseInfo: '', paymentMethods: '', returnPolicy: '', discountPolicy: '' });
+  const [infoModalSaving, setInfoModalSaving] = useState(false);
+
   // ── Test chat ──
   const [testMsgs, setTestMsgs] = useState<TestMsg[]>([]);
   const [testInput, setTestInput] = useState('');
@@ -290,8 +305,21 @@ export default function AdminBotStudio() {
       setBlockedTopics(settings.chatBotBlockedTopics || '');
       setStudioInfo(settings.botStudioInfo || '');
       setPaymentInfo(settings.botPaymentInfo || '');
+      // Info tab
+      try { setCustomInfoItems(JSON.parse(settings.botCustomInfoItems || '[]')); } catch { setCustomInfoItems([]); }
+      setPriceListDraft(settings.botPriceList || '');
+      setBasicInfoForm({
+        name: settings.botBusinessName || '', description: settings.botBusinessDescription || '',
+        website: settings.botBusinessWebsite || '', phone: settings.botBusinessPhone || '',
+        email: settings.botBusinessEmail || '', address: settings.botBusinessAddress || '',
+        hours: settings.botBusinessHours || '',
+      });
+      setPurchaseForm({
+        purchaseInfo: settings.botPurchaseInfo || '', paymentMethods: settings.botPaymentMethods || '',
+        returnPolicy: settings.botReturnPolicy || '', discountPolicy: settings.botDiscountPolicy || '',
+      });
     }
-  }, [settings?.chatBotGreeting, settings?.chatBotCustomInstructions, settings?.chatBotBlockedTopics, settings?.botStudioInfo, settings?.botPaymentInfo]);
+  }, [settings?.chatBotGreeting, settings?.chatBotCustomInstructions, settings?.chatBotBlockedTopics, settings?.botStudioInfo, settings?.botPaymentInfo, settings?.botCustomInfoItems, settings?.botPriceList, settings?.botBusinessName, settings?.botPurchaseInfo]);
 
   // ── Home stats ──
   const loadHomeStats = async () => {
@@ -399,6 +427,48 @@ export default function AdminBotStudio() {
   // ── Settings ──
   const toggle = (key: string) => updateSettings({ [key]: !(settings as any)?.[key] });
 
+  // ── Info tab functions ──
+  const saveCustomInfo = async () => {
+    if (!customInfoForm.title.trim() || !customInfoForm.content.trim()) return;
+    setInfoModalSaving(true);
+    const item = customInfoModal.item;
+    const newItems: CustomInfoItem[] = item
+      ? customInfoItems.map(i => i.id === item.id ? { ...i, ...customInfoForm } : i)
+      : [...customInfoItems, { id: crypto.randomUUID(), title: customInfoForm.title.trim(), content: customInfoForm.content.trim() }];
+    setCustomInfoItems(newItems);
+    await updateSettings({ botCustomInfoItems: JSON.stringify(newItems) });
+    setInfoModalSaving(false);
+    setCustomInfoModal({ open: false, item: null });
+  };
+  const deleteCustomInfo = async (id: string) => {
+    const newItems = customInfoItems.filter(i => i.id !== id);
+    setCustomInfoItems(newItems);
+    await updateSettings({ botCustomInfoItems: JSON.stringify(newItems) });
+  };
+  const savePriceList = async () => {
+    setInfoModalSaving(true);
+    await updateSettings({ botPriceList: priceListDraft });
+    setInfoModalSaving(false); setPriceListModal(false);
+  };
+  const saveBasicInfo = async () => {
+    setInfoModalSaving(true);
+    await updateSettings({
+      botBusinessName: basicInfoForm.name, botBusinessDescription: basicInfoForm.description,
+      botBusinessWebsite: basicInfoForm.website, botBusinessPhone: basicInfoForm.phone,
+      botBusinessEmail: basicInfoForm.email, botBusinessAddress: basicInfoForm.address,
+      botBusinessHours: basicInfoForm.hours,
+    });
+    setInfoModalSaving(false); setBasicInfoModal(false);
+  };
+  const savePurchaseInfo = async () => {
+    setInfoModalSaving(true);
+    await updateSettings({
+      botPurchaseInfo: purchaseForm.purchaseInfo, botPaymentMethods: purchaseForm.paymentMethods,
+      botReturnPolicy: purchaseForm.returnPolicy, botDiscountPolicy: purchaseForm.discountPolicy,
+    });
+    setInfoModalSaving(false); setPurchaseModal(false);
+  };
+
   // ── Test bot ──
   const runTestBot = async () => {
     if (!testInput.trim() || testLoading) return;
@@ -453,11 +523,12 @@ export default function AdminBotStudio() {
   const currentPhase = PHASES.find(p => p.key === selectedPhase);
 
   const NAV = [
-    { id: 'home', label: 'Trang chủ', icon: Home },
-    { id: 'knowledge', label: 'Kiến thức AI', icon: BookOpen },
-    { id: 'instructions', label: 'Hướng dẫn', icon: FileText },
-    { id: 'test', label: 'Chat thử', icon: MessageSquare },
-    { id: 'settings', label: 'Cài đặt', icon: Settings },
+    { id: 'home',         label: 'Trang chủ',      icon: Home },
+    { id: 'knowledge',    label: 'Kiến thức AI',    icon: BookOpen },
+    { id: 'info',         label: 'Thông tin',       icon: Building2 },
+    { id: 'instructions', label: 'Hướng dẫn',       icon: FileText },
+    { id: 'test',         label: 'Chat thử',        icon: MessageSquare },
+    { id: 'settings',     label: 'Cài đặt',         icon: Settings },
   ] as const;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -852,6 +923,141 @@ export default function AdminBotStudio() {
           </div>
         )}
 
+        {/* ══ THÔNG TIN CỦA BẠN ══ */}
+        {tab === 'info' && (
+          <div className="flex-1 overflow-auto">
+            <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
+
+              {/* Header */}
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Thông tin của bạn</h2>
+                <p className="text-sm text-gray-500">Dạy AI cách phản hồi câu hỏi của khách hàng.</p>
+              </div>
+
+              {/* CTA buttons */}
+              <div className="flex gap-3 flex-wrap">
+                <button onClick={() => { setCustomInfoForm({ title: '', content: '' }); setCustomInfoModal({ open: true, item: null }); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                  <Plus size={15} /> Thêm thông tin
+                </button>
+                <button onClick={() => { setPriceListDraft(settings?.botPriceList || ''); setPriceListModal(true); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                  <span className="text-base leading-none">📋</span> Thêm bảng giá
+                </button>
+              </div>
+
+              {/* Quản lý thông tin */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-3">Quản lý thông tin</h3>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                      placeholder="Tìm kiếm thông tin..." value={infoSearch} onChange={e => setInfoSearch(e.target.value)} />
+                  </div>
+                </div>
+
+                {/* Thông tin về sản phẩm/dịch vụ */}
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="px-5 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center"><Package size={16} className="text-blue-600" /></div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Thông tin về sản phẩm</p>
+                        <p className="text-xs text-gray-400">{stats.faqs} câu hỏi FAQ · {stats.scripts} kịch bản sale</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => { setTab('knowledge'); setKTab('faqs'); }} className="text-xs text-purple-600 font-medium hover:underline">FAQ</button>
+                      <button onClick={() => { setTab('knowledge'); setKTab('scripts'); }} className="text-xs text-purple-600 font-medium hover:underline">Kịch bản</button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bảng giá */}
+                {(!infoSearch || 'bảng giá'.includes(infoSearch.toLowerCase())) && (
+                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                    <div className="px-5 py-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center"><span className="text-base">📋</span></div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Bảng giá</p>
+                          <p className="text-xs text-gray-400">{settings?.botPriceList ? 'Đã cập nhật' : 'Chưa có bảng giá'}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => { setPriceListDraft(settings?.botPriceList || ''); setPriceListModal(true); }}
+                        className="text-xs text-purple-600 font-medium hover:underline">
+                        {settings?.botPriceList ? 'Chỉnh sửa' : '+ Thêm'}
+                      </button>
+                    </div>
+                    {settings?.botPriceList && (
+                      <div className="px-5 pb-4 border-t border-gray-50">
+                        <p className="text-xs text-gray-500 line-clamp-2 whitespace-pre-line pt-3">{settings.botPriceList}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Custom info items */}
+                {customInfoItems.filter(i => !infoSearch || i.title.toLowerCase().includes(infoSearch.toLowerCase()) || i.content.toLowerCase().includes(infoSearch.toLowerCase())).map(item => (
+                  <div key={item.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                    <div className="px-5 py-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center"><span className="text-base">📝</span></div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                          <p className="text-xs text-gray-400 line-clamp-1">{item.content.slice(0, 60)}...</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => { setCustomInfoForm({ title: item.title, content: item.content }); setCustomInfoModal({ open: true, item }); }} className="text-xs text-purple-600 font-medium hover:underline">Sửa</button>
+                        <button onClick={() => deleteCustomInfo(item.id)} className="text-xs text-red-400 hover:text-red-600 hover:underline">Xoá</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Thông tin doanh nghiệp */}
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-3">Thông tin doanh nghiệp</h3>
+                  <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                    {/* Thông tin cơ bản */}
+                    <button onClick={() => setBasicInfoModal(true)}
+                      className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center"><Building2 size={16} className="text-amber-600" /></div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Thông tin cơ bản</p>
+                          <p className="text-xs text-gray-400">
+                            {settings?.botBusinessName || 'Tên studio, địa chỉ, giờ mở cửa, liên hệ'}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                    </button>
+
+                    {/* Mua hàng & thanh toán */}
+                    <button onClick={() => setPurchaseModal(true)}
+                      className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center"><ShoppingBag size={16} className="text-green-600" /></div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Mua hàng, thanh toán và vận chuyển</p>
+                          <p className="text-xs text-gray-400">
+                            {settings?.botPurchaseInfo ? 'Đã cập nhật' : 'Thêm thông tin đặt cọc, phương thức thanh toán'}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ══ TEST CHAT ══ */}
         {tab === 'test' && (
           <div className="flex flex-1 overflow-hidden min-h-0">
@@ -1168,6 +1374,146 @@ export default function AdminBotStudio() {
 
       {/* ── Script Modal ── */}
       {scriptModal.open && <ScriptModal script={scriptModal.script} defaultPhase={selectedPhase} saving={scriptSaving} onSave={handleScriptSave} onClose={() => setScriptModal({ open: false, script: null })} />}
+
+      {/* ── Custom Info Modal ── */}
+      {customInfoModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-bold text-gray-900">{customInfoModal.item ? '✏️ Sửa thông tin' : '➕ Thêm thông tin'}</h3>
+              <button onClick={() => setCustomInfoModal({ open: false, item: null })} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Tiêu đề <span className="text-red-500">*</span></label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                  placeholder="VD: Chính sách hoàn tiền, Quy trình chụp ảnh..."
+                  value={customInfoForm.title} onChange={e => setCustomInfoForm(f => ({ ...f, title: e.target.value }))} autoFocus />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Nội dung <span className="text-red-500">*</span></label>
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={6}
+                  placeholder="Nhập nội dung chi tiết..."
+                  value={customInfoForm.content} onChange={e => setCustomInfoForm(f => ({ ...f, content: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button onClick={() => setCustomInfoModal({ open: false, item: null })} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Huỷ</button>
+              <button onClick={saveCustomInfo} disabled={!customInfoForm.title.trim() || !customInfoForm.content.trim() || infoModalSaving}
+                className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40">
+                {infoModalSaving ? 'Đang lưu...' : customInfoModal.item ? '✅ Cập nhật' : '💾 Lưu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Price List Modal ── */}
+      {priceListModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-bold text-gray-900">📋 Bảng giá</h3>
+              <button onClick={() => setPriceListModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5">
+              <p className="text-xs text-gray-400 mb-3">Nhập bảng giá dạng văn bản. Bot sẽ dùng thông tin này để trả lời câu hỏi về giá.</p>
+              <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono" rows={10}
+                placeholder={"Gói Cơ Bản: 5.000.000đ\n- Bao gồm: 2 bộ trang phục, 60 ảnh đã chỉnh sửa\n- Thời gian: 4-6 tiếng\n\nGói Premium: 8.000.000đ\n- Bao gồm: 3 bộ trang phục, 100 ảnh, album in\n- Thời gian: 6-8 tiếng"}
+                value={priceListDraft} onChange={e => setPriceListDraft(e.target.value)} />
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button onClick={() => setPriceListModal(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Huỷ</button>
+              <button onClick={savePriceList} disabled={infoModalSaving}
+                className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40">
+                {infoModalSaving ? 'Đang lưu...' : '💾 Lưu bảng giá'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Basic Info Modal ── */}
+      {basicInfoModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-2"><Building2 size={18} className="text-amber-600" /><h3 className="font-bold text-gray-900">Thông tin cơ bản</h3></div>
+              <button onClick={() => setBasicInfoModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {[
+                { key: 'name', label: 'Tên studio', placeholder: 'VD: H2O Studio', icon: '🏷️' },
+                { key: 'description', label: 'Mô tả ngắn', placeholder: 'VD: Studio chụp ảnh cưới chuyên nghiệp tại TP.HCM', icon: '📝' },
+                { key: 'website', label: 'Website', placeholder: 'VD: https://h2ostudio.vn', icon: '🌐' },
+                { key: 'phone', label: 'Điện thoại', placeholder: 'VD: 0901 234 567', icon: '📞' },
+                { key: 'email', label: 'Email', placeholder: 'VD: hello@h2ostudio.vn', icon: '✉️' },
+                { key: 'address', label: 'Địa chỉ', placeholder: 'VD: 123 Nguyễn Huệ, Q.1, TP.HCM', icon: '📍' },
+                { key: 'hours', label: 'Giờ mở cửa', placeholder: 'VD: Thứ 2-7: 8h-20h, CN: 9h-18h', icon: '🕐' },
+              ].map(field => (
+                <div key={field.key}>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">{field.icon} {field.label}</label>
+                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                    placeholder={field.placeholder}
+                    value={(basicInfoForm as any)[field.key]} onChange={e => setBasicInfoForm(f => ({ ...f, [field.key]: e.target.value }))} />
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
+              <button onClick={() => setBasicInfoModal(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Huỷ</button>
+              <button onClick={saveBasicInfo} disabled={infoModalSaving}
+                className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40">
+                {infoModalSaving ? 'Đang lưu...' : '💾 Lưu thông tin'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Purchase Info Modal ── */}
+      {purchaseModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-2"><ShoppingBag size={18} className="text-green-600" /><h3 className="font-bold text-gray-900">Mua hàng, thanh toán và vận chuyển</h3></div>
+              <button onClick={() => setPurchaseModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">📅 Thông tin đặt lịch / đặt cọc</label>
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={4}
+                  placeholder="VD: Để giữ lịch chụp, khách cần đặt cọc 30% tổng giá trị gói. Liên hệ qua Zalo hoặc hotline để xác nhận ngày."
+                  value={purchaseForm.purchaseInfo} onChange={e => setPurchaseForm(f => ({ ...f, purchaseInfo: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">💳 Phương thức thanh toán</label>
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={3}
+                  placeholder="VD: Chuyển khoản ngân hàng, tiền mặt, MoMo, ZaloPay"
+                  value={purchaseForm.paymentMethods} onChange={e => setPurchaseForm(f => ({ ...f, paymentMethods: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">🔄 Chính sách huỷ / thay đổi lịch</label>
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={3}
+                  placeholder="VD: Huỷ trước 7 ngày: hoàn 50% cọc. Huỷ dưới 3 ngày: mất cọc. Dời lịch miễn phí 1 lần."
+                  value={purchaseForm.returnPolicy} onChange={e => setPurchaseForm(f => ({ ...f, returnPolicy: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">🎁 Chính sách khuyến mãi / giảm giá</label>
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={3}
+                  placeholder="VD: Giảm 10% cho khách đặt trước 3 tháng. Tặng album mini cho cặp đôi chia sẻ Facebook."
+                  value={purchaseForm.discountPolicy} onChange={e => setPurchaseForm(f => ({ ...f, discountPolicy: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
+              <button onClick={() => setPurchaseModal(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Huỷ</button>
+              <button onClick={savePurchaseInfo} disabled={infoModalSaving}
+                className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40">
+                {infoModalSaving ? 'Đang lưu...' : '💾 Lưu thông tin'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -182,6 +182,20 @@ export interface AppSettings {
   botScheduleStart?: string;
   botScheduleEnd?: string;
   botFollowUpDelay?: number;
+  // Thông tin của bạn (Knowledge tab)
+  botBusinessName?: string;
+  botBusinessDescription?: string;
+  botBusinessWebsite?: string;
+  botBusinessPhone?: string;
+  botBusinessEmail?: string;
+  botBusinessAddress?: string;
+  botBusinessHours?: string;
+  botPriceList?: string;
+  botPurchaseInfo?: string;
+  botPaymentMethods?: string;
+  botReturnPolicy?: string;
+  botDiscountPolicy?: string;
+  botCustomInfoItems?: string;
   bannerItems?: BannerItem[];
   bannerSpeed?: number;
   promoGridItems?: PromoGridItem[]; // 3 thẻ bảng trái Two Panel

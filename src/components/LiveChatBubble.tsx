@@ -322,6 +322,30 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           blockedTopics: settings?.chatBotBlockedTopics || '',
           studioInfo: settings?.botStudioInfo || '',
           paymentInfo: settings?.botPaymentInfo || '',
+          knowledgeContext: (() => {
+            const s = settings;
+            const parts: string[] = [];
+            if (s?.botBusinessName || s?.botBusinessPhone || s?.botBusinessAddress) {
+              let bi = 'THÔNG TIN CƠ BẢN:';
+              if (s?.botBusinessName) bi += `\n• Tên: ${s.botBusinessName}`;
+              if (s?.botBusinessDescription) bi += `\n• Mô tả: ${s.botBusinessDescription}`;
+              if (s?.botBusinessPhone) bi += `\n• SĐT: ${s.botBusinessPhone}`;
+              if (s?.botBusinessEmail) bi += `\n• Email: ${s.botBusinessEmail}`;
+              if (s?.botBusinessAddress) bi += `\n• Địa chỉ: ${s.botBusinessAddress}`;
+              if (s?.botBusinessHours) bi += `\n• Giờ mở cửa: ${s.botBusinessHours}`;
+              parts.push(bi);
+            }
+            if (s?.botPriceList) parts.push(`BẢNG GIÁ:\n${s.botPriceList}`);
+            if (s?.botPurchaseInfo) parts.push(`THÔNG TIN ĐẶT LỊCH/CỌC:\n${s.botPurchaseInfo}`);
+            if (s?.botPaymentMethods) parts.push(`PHƯƠNG THỨC THANH TOÁN:\n${s.botPaymentMethods}`);
+            if (s?.botReturnPolicy) parts.push(`CHÍNH SÁCH HỦY/THAY ĐỔI:\n${s.botReturnPolicy}`);
+            if (s?.botDiscountPolicy) parts.push(`KHUYẾN MÃI:\n${s.botDiscountPolicy}`);
+            try {
+              const items = JSON.parse(s?.botCustomInfoItems || '[]') as Array<{title: string; content: string}>;
+              items.forEach(item => parts.push(`${item.title.toUpperCase()}:\n${item.content}`));
+            } catch {}
+            return parts.join('\n\n---\n\n');
+          })(),
         }),
       });
       if (!res.ok) return;
