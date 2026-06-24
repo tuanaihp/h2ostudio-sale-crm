@@ -2,7 +2,7 @@
 // Mỗi nhóm: [từ chính, ...từ đồng nghĩa]
 const SYNONYM_GROUPS: [string, string[]][] = [
   ['giá', ['tiền', 'chi phí', 'bao nhiêu', 'phí', 'báo giá', 'giá tiền', 'bảng giá', 'giá cả', 'tốn', 'mấy tiền', 'giá chụp', 'phí chụp']],
-  ['cưới', ['đám cưới', 'ngày cưới', 'hôn lễ', 'kết hôn', 'lễ cưới', 'hôn nhân', 'ngày trọng đại', 'hôn lễ', 'ăn hỏi']],
+  ['cưới', ['đám cưới', 'ngày cưới', 'hôn lễ', 'kết hôn', 'lễ cưới', 'hôn nhân', 'ngày trọng đại']],
   ['album', ['ảnh', 'hình', 'bộ ảnh', 'hình ảnh', 'ảnh cưới', 'bộ hình', 'ảnh đẹp', 'hình cưới', 'bộ album']],
   ['lịch', ['ngày', 'đặt lịch', 'book', 'đặt', 'ngày chụp', 'hẹn lịch', 'đặt hẹn', 'đặt ngày', 'booking', 'hẹn']],
   ['chụp', ['chụp ảnh', 'chụp hình', 'shoot', 'chụp cưới', 'phóng sự']],
