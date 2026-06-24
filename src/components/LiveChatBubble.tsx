@@ -184,6 +184,40 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const thinkingDelay1 = settings?.chatBotThinkingDelay ?? 1200;
       await new Promise(r => setTimeout(r, thinkingDelay1 + Math.random() * 500));
 
+      // Virtual FAQs từ settings — cho phép Tầng 1 trả lời về địa chỉ, giá, liên hệ...
+      const sv = settings;
+      const virtualFaqs: Array<{id: string; question: string; answer: string; tags: string[]; usage_count: number; category: string}> = [];
+      if (sv?.botBusinessAddress || sv?.botBusinessHours) {
+        let ans = sv?.botBusinessName ? `📍 ${sv.botBusinessName}\n` : '';
+        if (sv?.botBusinessAddress) ans += `Địa chỉ: ${sv.botBusinessAddress}\n`;
+        if (sv?.botBusinessHours) ans += `Giờ mở cửa: ${sv.botBusinessHours}`;
+        virtualFaqs.push({ id: '__virt_addr__', question: 'studio ở đâu địa chỉ vị trí cơ sở tìm đến', answer: ans.trim(), tags: ['địa chỉ', 'ở đâu', 'vị trí', 'cơ sở', 'địa điểm', 'tìm đến', 'đường', 'quận'], usage_count: 0, category: 'khac' });
+      }
+      if (sv?.botBusinessPhone || sv?.botBusinessEmail) {
+        let ans = '';
+        if (sv?.botBusinessPhone) ans += `📞 SĐT: ${sv.botBusinessPhone}\n`;
+        if (sv?.botBusinessEmail) ans += `✉️ Email: ${sv.botBusinessEmail}`;
+        virtualFaqs.push({ id: '__virt_contact__', question: 'số điện thoại liên hệ hotline email liên lạc', answer: ans.trim(), tags: ['số điện thoại', 'sdt', 'hotline', 'liên hệ', 'contact', 'email', 'gọi'], usage_count: 0, category: 'khac' });
+      }
+      if (sv?.botPriceList) {
+        virtualFaqs.push({ id: '__virt_price__', question: 'giá bảng giá chi phí gói chụp tiền phí bao nhiêu', answer: sv.botPriceList, tags: ['giá', 'bảng giá', 'chi phí', 'gói', 'tiền', 'bao nhiêu', 'phí', 'giá tiền', 'giá cả'], usage_count: 0, category: 'closing' });
+      }
+      if (sv?.botPurchaseInfo || sv?.botPaymentMethods) {
+        let ans = '';
+        if (sv?.botPurchaseInfo) ans += sv.botPurchaseInfo + '\n\n';
+        if (sv?.botPaymentMethods) ans += `Phương thức thanh toán: ${sv.botPaymentMethods}`;
+        virtualFaqs.push({ id: '__virt_payment__', question: 'đặt cọc thanh toán cách đặt lịch phương thức chuyển khoản', answer: ans.trim(), tags: ['đặt cọc', 'thanh toán', 'đặt lịch', 'cọc', 'chuyển khoản', 'payment', 'tiền cọc', 'đặt'], usage_count: 0, category: 'closing' });
+      }
+      if (sv?.botReturnPolicy) {
+        virtualFaqs.push({ id: '__virt_cancel__', question: 'hủy lịch đổi lịch hoàn tiền chính sách hủy', answer: sv.botReturnPolicy, tags: ['hủy', 'đổi lịch', 'hoàn tiền', 'cancel', 'chính sách', 'hủy cọc'], usage_count: 0, category: 'faq' });
+      }
+      try {
+        const customItems = JSON.parse(sv?.botCustomInfoItems || '[]') as Array<{id: string; title: string; content: string}>;
+        customItems.forEach(item => virtualFaqs.push({ id: `__virt_c_${item.id}__`, question: item.title, answer: item.content, tags: item.title.toLowerCase().split(/\W+/).filter(w => w.length >= 2), usage_count: 0, category: 'khac' }));
+      } catch {}
+
+      const allFaqs = [...(faqData || []), ...virtualFaqs];
+
       // Mở rộng từ khóa bằng từ điển đồng nghĩa
       const words = expandQuery(customerMessage);
 
@@ -191,7 +225,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       // Từ xuất hiện ở nhiều doc (phổ biến như "có", "không") → IDF thấp → ít điểm
       // Từ xuất hiện ít doc (đặc trưng như "ngoại cảnh", "đặt cọc") → IDF cao → nhiều điểm
       const allDocs: string[] = [
-        ...(faqData || []).map((f: any) => [f.question, f.answer, ...(f.tags || [])].join(' ').toLowerCase()),
+        ...allFaqs.map((f: any) => [f.question, f.answer, ...(f.tags || [])].join(' ').toLowerCase()),
         ...(scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase()),
       ];
       const N = Math.max(allDocs.length, 1);
@@ -213,9 +247,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         return score;
       };
 
-      // FAQ thực tế: câu hỏi (+4), tags (+2), câu trả lời (+1)
+      // FAQ thực tế + virtual: câu hỏi (+4), tags (+2), câu trả lời (+1)
       // + usage_count boost: FAQ được dùng nhiều → ưu tiên cao hơn (log scale tránh FAQ cũ lấn át)
-      const scoredFaqs = (faqData || []).map((f: any) => ({
+      const scoredFaqs = allFaqs.map((f: any) => ({
         type: 'faq' as const, item: f,
         score: scoreItem(f.question, f.answer, f.tags || [], 4, 2, 1)
           + Math.log1p(f.usage_count || 0) * 0.3,
@@ -246,9 +280,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       if (best && best.score > 0) {
         if (best.type === 'faq') {
           text = best.item.answer;
-          supabase.from('customer_faqs')
-            .update({ usage_count: (best.item.usage_count || 0) + 1 })
-            .eq('id', best.item.id).then(() => {});
+          if (!String(best.item.id).startsWith('__virt')) {
+            supabase.from('customer_faqs')
+              .update({ usage_count: (best.item.usage_count || 0) + 1 })
+              .eq('id', best.item.id).then(() => {});
+          }
           // Thêm promo nếu câu hỏi về giá hoặc FAQ thuộc nhóm offer/fomo/closing
           const promoPhases = ['offer', 'fomo', 'closing'];
           if ((isPriceQuery || promoPhases.includes(best.item.category)) && promoFooter) {
