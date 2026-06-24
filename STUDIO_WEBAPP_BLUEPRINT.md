@@ -672,12 +672,13 @@ const insertAlbumLink = (style: Style, album: Album) => {
 
 ### Quản lý qua AdminBotStudio (`/admin/bot`)
 
-Page hub tập trung cho toàn bộ bot — sidebar 5 tab:
+Page hub tập trung cho toàn bộ bot — sidebar 6 tab:
 - **Home**: stats + bật/tắt Tier 1/2 + unanswered alert + top FAQs
 - **Kiến thức AI**: FAQ CRUD + Kịch bản CRUD (inline, không cần trang riêng)
 - **Hướng dẫn**: greeting, thông tin studio, thông tin thanh toán, blocked topics, custom instructions
-- **Chat thử**: test Tier 1 với debug panel (matched item + score)
-- **Cài đặt**: toggles + thinking delay + auto-open delay
+- **Thông tin của bạn**: knowledge base cho bot (custom info CRUD, bảng giá, thông tin cơ bản, thanh toán/vận chuyển)
+- **Chat thử**: 2-panel layout giống Meta Business Agent — brand card, messages, suggested chips, right guide panel
+- **Cài đặt**: toggles, đối tượng phản hồi, lên lịch GMT+7, trao đổi thêm (follow-up delay)
 
 ### Bật/tắt trong AdminBotStudio → Cài đặt
 
@@ -687,14 +688,22 @@ Page hub tập trung cho toàn bộ bot — sidebar 5 tab:
 | Bot Tầng 1 · TF-IDF | `chatBotEnabled` | `false` |
 | Bot Tầng 2 · AI API | `chatBotTier2Enabled` | `false` |
 | Tự động thu thập SĐT | `botCollectLeads` | `false` |
+| Đối tượng phản hồi | `botAudience` | `'all'` |
+| Lên lịch hoạt động | `botScheduleEnabled` | `false` |
+| Follow-up delay | `botFollowUpDelay` | `0` |
 
 - `chatBotEnabled = true`: Bot Tầng 1 tự khớp kịch bản → trả lời miễn phí
 - `chatBotTier2Enabled = true`: Bot Tầng 2 gọi Gemini/ChatGPT → Tầng 2 ưu tiên hoàn toàn
 - `botCollectLeads = true`: regex `0[3-9]\d{8}` trong tin khách → tự tạo consultation + link session
+- `botAudience`: `'all'` | `'first_time'` (bỏ qua khách có SĐT) | `'team_only'` (tắt bot hoàn toàn)
+- `botScheduleEnabled + botScheduleStart/End`: giới hạn giờ bot hoạt động (Intl.DateTimeFormat GMT+7)
+- `botFollowUpDelay`: bot nhắn lại sau N phút khách im lặng (5/15/30/60/120/480)
 
 ### Tier 2 context injection (api/live-chat-bot.ts)
 
-System prompt được build từ: kịch bản → khuyến mãi → `botStudioInfo` → `botPaymentInfo` → `chatBotCustomInstructions` → `chatBotBlockedTopics`
+System prompt được build từ: kịch bản → khuyến mãi → `knowledgeContext` (compiled từ 13 fields) → `botStudioInfo` → `botPaymentInfo` → `chatBotCustomInstructions` → `chatBotBlockedTopics`
+
+`knowledgeContext` là IIFE trong `callBotTier2()` compile các field: botBusinessName, botBusinessDescription, botBusinessWebsite, botBusinessPhone, botBusinessEmail, botBusinessAddress, botBusinessHours, botPriceList, botPurchaseInfo, botPaymentMethods, botReturnPolicy, botDiscountPolicy, botCustomInfoItems (JSON array)
 
 ---
 
