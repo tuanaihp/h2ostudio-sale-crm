@@ -69,44 +69,44 @@ const STAGE_PIPELINE = [
 
 const QUICK_REPLIES: Record<string, { label: string; text: string }[]> = {
   new: [
-    { label: '👋 Chào', text: 'Dạ H2O Studio xin chào anh/chị! Em có thể hỗ trợ gì cho anh/chị ạ? 😊' },
-    { label: '📋 Hỏi nhu cầu', text: 'Anh/chị đang dự định chụp ảnh cưới vào thời gian nào ạ? Để em tư vấn phù hợp nhất nhé 💕' },
-    { label: '📷 Giới thiệu', text: 'H2O Studio chuyên chụp ảnh cưới concept với nhiều phong cách từ Rustic, Vintage đến Modern. Anh/chị muốn xem bộ nào ạ?' },
+    { label: '👋 Chào', text: 'Chào em nha! Em đang muốn tham khảo "Trọn gói chụp ảnh cưới" hay "Váy cưới"? Để chị tư vấn chi tiết cho em nhé!' },
+    { label: '📋 Hỏi nhu cầu', text: 'Vợ chồng em có ngày cưới chưa bé, vợ chồng em dự định chụp studio hay ngoại cảnh nè em' },
+    { label: '📍 Hỏi vị trí', text: 'Vợ chồng em ở đâu em nhỉ? Vợ chồng em dự định bao giờ chụp chưa nè?' },
   ],
   discovery: [
-    { label: '🎨 Hỏi concept', text: 'Anh/chị thích phong cách ảnh như thế nào ạ? Nhẹ nhàng lãng mạn, hay cá tính hiện đại?' },
-    { label: '📅 Hỏi ngày cưới', text: 'Ngày cưới của anh/chị dự kiến khoảng tháng mấy ạ? Để em kiểm tra lịch chụp phù hợp nhé 😊' },
-    { label: '📍 Studio hay ngoài trời', text: 'Anh/chị muốn chụp tại studio, hay kết hợp thêm ngoại cảnh ngoài trời ạ?' },
+    { label: '⏳ Sắp xếp sớm', text: 'Vậy thời gian này vợ chồng em sắp xếp chụp là vừa thời gian chọn ảnh và duyệt ảnh nữa em nè' },
+    { label: '🎨 Hỏi concept', text: 'Vợ chồng em dự định sẽ chụp mấy concept chưa nè? Để chị gửi thêm ảnh concept cho em xem nha 📸' },
+    { label: '💡 Studio tiện lợi', text: 'Chụp studio thì lúc nào cũng thoải mái rồi em — không bị nóng, không mất thời gian di chuyển, cô dâu bầu nghén cũng không mệt mà concept rất đa dạng em nè' },
   ],
   consulting: [
-    { label: '💎 Gửi album', text: 'Dạ em gửi anh/chị xem thêm một số bộ ảnh mẫu nhé 💕' },
-    { label: '✅ Giải đáp', text: 'Dạ, bên em hoàn toàn có thể hỗ trợ điều đó ạ! Anh/chị yên tâm nhé 😊' },
-    { label: '📞 Mời ghé studio', text: 'Anh/chị có thể ghé studio xem trực tiếp không ạ? Nhìn thật sẽ thích hơn nhiều ạ 😍' },
+    { label: '⏱ Thời gian chụp', text: 'Make up và làm tóc sẽ khoảng 2 tiếng sau đó vck e lên chụp tại studio không phải di chuyển đi đâu nên sẽ không mất nhiều thời gian em nè' },
+    { label: '💄 Tự chọn makeup', text: 'Được nha bé iu. Tất cả từ tone make up, kiểu tóc, concept hay trang phục đều là vợ chồng em chọn hết nè. Bên chị sẽ chỉ tư vấn để đúng với mong muốn của vợ chồng em thôi nha' },
+    { label: '🖼 Gửi concept', text: 'Để chị gửi em xem thêm các concept chụp tại studio nữa cho vck e dễ quyết định nhé. Hai vợ chồng em có concept nào ưng ý chưa nè gửi chị tư vấn thêm cho em nha' },
   ],
   offer: [
-    { label: '💰 Gửi báo giá', text: 'Dạ em gửi bảng báo giá chi tiết để anh/chị tham khảo nhé! 💕' },
-    { label: '🎁 Ưu đãi', text: 'Hiện bên em đang có ưu đãi đặc biệt! Để em gửi thông tin chi tiết cho anh/chị nhé 🎉' },
-    { label: '❓ Tư vấn gói', text: 'Anh/chị muốn em tư vấn gói phù hợp nhất với nhu cầu và ngân sách không ạ?' },
+    { label: '💰 Gửi bảng giá', text: 'Chị gửi chi tiết cho em các gói chụp tại studio nha\n\n📷 Gói 1 concept: 4.999.000đ\n📷 Gói 2 concept: 6.999.000đ\n📷 Combo trọn bộ: 9.999.000đ' },
+    { label: '🔥 Ưu đãi 48h', text: '🔥 ƯU ĐÃI ĐẶC BIỆT DÀNH RIÊNG CHO EM TRONG 48H\n\nBook lịch Online trong 48h được tặng quà trị giá 3.500.000đ:\n🎁 Nâng cấp chất liệu ảnh (1.500.000đ)\n🎁 Voucher nâng cấp váy (1.500.000đ)\n🎁 Makeup chú rể (500.000đ)\n🎁 Ưu tiên chọn lịch chụp' },
+    { label: '🆙 Upsell 12999', text: 'Nếu em muốn đa dạng concept hơn em có thể tham khảo combo 12999 nè — chụp 3 concept, váy cao cấp 6tr, thêm ảnh treo tường. Tính ra chênh không nhiều so với 9999 mà vợ chồng em được nhiều hơn em nè' },
   ],
   fomo: [
-    { label: '⏰ Lịch sắp kín', text: 'Tháng đó lịch bên em khá kín rồi ạ. Anh/chị quyết định sớm em sẽ giữ ngày cho mình nhé! 🙏' },
-    { label: '🔥 Ưu đãi hết hạn', text: 'Ưu đãi này đang chạy đến hết tháng thôi ạ, anh/chị quyết định sớm để không bỏ lỡ nhé 💕' },
-    { label: '📸 Mời xem', text: 'Anh/chị ghé studio xem trực tiếp set chụp đi ạ, nhìn thật sẽ thích ngay thôi 😍' },
+    { label: '📅 Lịch sắp kín', text: 'Hôm nay đã có 4 cặp book rồi, lịch chụp đẹp cuối tuần chỉ còn 1-2 slot thôi em ơi! Em chỉ cần cọc 1 triệu là giữ được ưu đãi luôn nha 🌸' },
+    { label: '⏰ Ưu đãi 48h hết', text: 'Hôm nay là ngày cuối bên chị tặng gói quà 3tr500k cho khách book Online đó em ơi! ✅ Chỉ cần cọc 1 triệu, giữ ưu đãi — chọn lịch chụp sau cũng được nha' },
+    { label: '🖼 Gửi thêm concept', text: 'Chị gửi thêm concept bên chị cho em xem nha — toàn concept độc quyền luôn nè. Nhìn là mê luôn cơ 😍' },
   ],
   closing: [
-    { label: '💳 Chốt cọc', text: 'Dạ anh/chị xác nhận đặt cọc thì bên em giữ ngày ngay cho mình ạ! 🙏' },
-    { label: '🏦 Thông tin CK', text: 'Dạ bên em nhận đặt cọc qua chuyển khoản ạ, em gửi thông tin tài khoản cho anh/chị nhé!' },
-    { label: '✅ Xác nhận chốt', text: 'Cảm ơn anh/chị đã tin tưởng H2O Studio! Em đã ghi nhận và giữ ngày cho mình 🎉💕' },
+    { label: '📝 Lấy thông tin', text: 'Vck em đăng ký giữ lịch chụp gửi chị xin thông tin tên và số điện thoại của vợ chồng em nhé' },
+    { label: '🏦 Thông tin CK', text: 'Em chuyển khoản ghi họ tên của em và gửi chị ảnh chụp màn hình là được nhớ\n\n➡️ MB Bank – STK: 9098688688888 – NGUYEN THU THUY\n➡️ Vietcombank – STK: 0031000367971 – NGUYEN THU THUY' },
+    { label: '✅ Xác nhận cọc', text: 'Chị nhận nha bé\n\nChị hẹn vck em 8h30 [ngày chụp] bé nha\n\nChị gửi phần dặn dò ngày chụp vợ chồng em nhé' },
   ],
   pre_shoot: [
-    { label: '📋 Dặn dò', text: 'Anh/chị nhớ dưỡng da, uống nhiều nước và ngủ đủ giấc trước ngày chụp để da căng mịn nhé 💕' },
-    { label: '👗 Trang phục', text: 'Nhớ chuẩn bị trang phục phù hợp concept đã chọn nhé! Cần tư vấn thêm cứ nhắn em ạ 😊' },
-    { label: '📅 Nhắc lịch', text: 'Nhắc anh/chị nhớ lịch chụp sắp tới nhé! Nếu có thay đổi báo em trước 3 ngày để sắp xếp ạ 🙏' },
+    { label: '📋 Checklist', text: '📝 Chuẩn bị cho ngày chụp nha em:\n\n👰 Cô dâu: quần lót nude/trắng, miếng dán ngực, nails xinh, ngủ đủ giấc, ăn sáng no\n🤵 Chú rể: áo sơ mi trắng, thắt lưng, giày da đen\n🎁 Thiếu gì studio có sẵn — yên tâm nha!\n\n📅 Hẹn gặp vk ck lúc 8h30 nhé 💕' },
+    { label: '💳 Nhắc thanh toán', text: 'Ngày chụp hình vợ chồng em cọc thêm 90% hoặc thanh toán hết giúp chị nhớ nha bé 😊' },
+    { label: '📍 Gửi định vị', text: 'Hẹn gặp vợ chồng em nhé! 📍 H2O Studio - Gần UBND Đại Bản - An Dương - Hải Phòng\n📞 Ms. Thuỷ H2O: 0783 327 323' },
   ],
   followup: [
-    { label: '🌟 Hỏi thăm', text: 'Dạ anh/chị ơi, bên em liên hệ hỏi thăm mình đã quyết định được chưa ạ? Cần tư vấn cứ nhắn em nhé 💕' },
-    { label: '🎁 Ưu đãi mới', text: 'Dạ anh/chị ơi, bên em vừa có ưu đãi mới ạ! Anh/chị quan tâm em tư vấn thêm nhé 🎉' },
-    { label: '⭐ Xin review', text: 'Dạ anh/chị có thể để lại đánh giá cho H2O Studio không ạ? Em cảm ơn rất nhiều 🙏💕' },
+    { label: '💬 Hỏi thăm sau chụp', text: 'Hôm nay đi chụp về em thấy thế nào em nè? 🌸\n\nEm có thấy hài lòng với buổi chụp hôm nay không em?\n\nCó gì cho chị xin feedback của vợ chồng em với nha ❤️' },
+    { label: '📸 Báo giao ảnh', text: 'Chiều mai ekip photo sẽ gửi ảnh cho vợ chồng em trước 14h chiều nhé\n\nCó bạn bè chuẩn bị cưới nhớ giới thiệu qua H2O em nhé 💕' },
+    { label: '🔔 Follow-up chưa chốt', text: 'Chào em nha! Hôm qua chị có tư vấn cho em về các gói chụp cưới, không biết vk ck em đã suy nghĩ xong chưa nè?\n\n📌 Hôm nay là ngày cuối tặng gói quà 3tr5 + ưu tiên chọn lịch đó em ơi! ✅ Chỉ cần cọc 1 triệu là giữ được ngay nha' },
   ],
 };
 
