@@ -56,6 +56,60 @@ const STAGE_TO_PHASES: Record<string, string[]> = {
   followup:   ['followup'],
 };
 
+const STAGE_PIPELINE = [
+  { value: 'new',        short: 'Mới' },
+  { value: 'discovery',  short: 'Khơi gợi' },
+  { value: 'consulting', short: 'Tư vấn' },
+  { value: 'offer',      short: 'Báo giá' },
+  { value: 'fomo',       short: 'Urgency' },
+  { value: 'closing',    short: 'Chốt' },
+  { value: 'pre_shoot',  short: 'Đã chốt' },
+  { value: 'followup',   short: 'Follow-up' },
+];
+
+const QUICK_REPLIES: Record<string, { label: string; text: string }[]> = {
+  new: [
+    { label: '👋 Chào', text: 'Dạ H2O Studio xin chào anh/chị! Em có thể hỗ trợ gì cho anh/chị ạ? 😊' },
+    { label: '📋 Hỏi nhu cầu', text: 'Anh/chị đang dự định chụp ảnh cưới vào thời gian nào ạ? Để em tư vấn phù hợp nhất nhé 💕' },
+    { label: '📷 Giới thiệu', text: 'H2O Studio chuyên chụp ảnh cưới concept với nhiều phong cách từ Rustic, Vintage đến Modern. Anh/chị muốn xem bộ nào ạ?' },
+  ],
+  discovery: [
+    { label: '🎨 Hỏi concept', text: 'Anh/chị thích phong cách ảnh như thế nào ạ? Nhẹ nhàng lãng mạn, hay cá tính hiện đại?' },
+    { label: '📅 Hỏi ngày cưới', text: 'Ngày cưới của anh/chị dự kiến khoảng tháng mấy ạ? Để em kiểm tra lịch chụp phù hợp nhé 😊' },
+    { label: '📍 Studio hay ngoài trời', text: 'Anh/chị muốn chụp tại studio, hay kết hợp thêm ngoại cảnh ngoài trời ạ?' },
+  ],
+  consulting: [
+    { label: '💎 Gửi album', text: 'Dạ em gửi anh/chị xem thêm một số bộ ảnh mẫu nhé 💕' },
+    { label: '✅ Giải đáp', text: 'Dạ, bên em hoàn toàn có thể hỗ trợ điều đó ạ! Anh/chị yên tâm nhé 😊' },
+    { label: '📞 Mời ghé studio', text: 'Anh/chị có thể ghé studio xem trực tiếp không ạ? Nhìn thật sẽ thích hơn nhiều ạ 😍' },
+  ],
+  offer: [
+    { label: '💰 Gửi báo giá', text: 'Dạ em gửi bảng báo giá chi tiết để anh/chị tham khảo nhé! 💕' },
+    { label: '🎁 Ưu đãi', text: 'Hiện bên em đang có ưu đãi đặc biệt! Để em gửi thông tin chi tiết cho anh/chị nhé 🎉' },
+    { label: '❓ Tư vấn gói', text: 'Anh/chị muốn em tư vấn gói phù hợp nhất với nhu cầu và ngân sách không ạ?' },
+  ],
+  fomo: [
+    { label: '⏰ Lịch sắp kín', text: 'Tháng đó lịch bên em khá kín rồi ạ. Anh/chị quyết định sớm em sẽ giữ ngày cho mình nhé! 🙏' },
+    { label: '🔥 Ưu đãi hết hạn', text: 'Ưu đãi này đang chạy đến hết tháng thôi ạ, anh/chị quyết định sớm để không bỏ lỡ nhé 💕' },
+    { label: '📸 Mời xem', text: 'Anh/chị ghé studio xem trực tiếp set chụp đi ạ, nhìn thật sẽ thích ngay thôi 😍' },
+  ],
+  closing: [
+    { label: '💳 Chốt cọc', text: 'Dạ anh/chị xác nhận đặt cọc thì bên em giữ ngày ngay cho mình ạ! 🙏' },
+    { label: '🏦 Thông tin CK', text: 'Dạ bên em nhận đặt cọc qua chuyển khoản ạ, em gửi thông tin tài khoản cho anh/chị nhé!' },
+    { label: '✅ Xác nhận chốt', text: 'Cảm ơn anh/chị đã tin tưởng H2O Studio! Em đã ghi nhận và giữ ngày cho mình 🎉💕' },
+  ],
+  pre_shoot: [
+    { label: '📋 Dặn dò', text: 'Anh/chị nhớ dưỡng da, uống nhiều nước và ngủ đủ giấc trước ngày chụp để da căng mịn nhé 💕' },
+    { label: '👗 Trang phục', text: 'Nhớ chuẩn bị trang phục phù hợp concept đã chọn nhé! Cần tư vấn thêm cứ nhắn em ạ 😊' },
+    { label: '📅 Nhắc lịch', text: 'Nhắc anh/chị nhớ lịch chụp sắp tới nhé! Nếu có thay đổi báo em trước 3 ngày để sắp xếp ạ 🙏' },
+  ],
+  followup: [
+    { label: '🌟 Hỏi thăm', text: 'Dạ anh/chị ơi, bên em liên hệ hỏi thăm mình đã quyết định được chưa ạ? Cần tư vấn cứ nhắn em nhé 💕' },
+    { label: '🎁 Ưu đãi mới', text: 'Dạ anh/chị ơi, bên em vừa có ưu đãi mới ạ! Anh/chị quan tâm em tư vấn thêm nhé 🎉' },
+    { label: '⭐ Xin review', text: 'Dạ anh/chị có thể để lại đánh giá cho H2O Studio không ạ? Em cảm ơn rất nhiều 🙏💕' },
+  ],
+};
+
 const CRM_STATUS_STYLE: Record<string, string> = {
   new:        'bg-red-100 text-red-700',
   called:     'bg-yellow-100 text-yellow-700',
@@ -326,6 +380,30 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
   const displayPhone = (s: Session) => isAnon(s) ? 'Chưa để lại SĐT' : s.phone;
   const initials   = (s: Session) => s.name ? s.name[0].toUpperCase() : (isAnon(s) ? '?' : s.phone.slice(-2));
 
+  // Urgency từ thời gian chờ: low(<1h)=green, medium(1-4h)=yellow, high(>4h)=red
+  const getWaitUrgency = (s: Session) => {
+    if (s.status !== 'waiting') return null;
+    const diffH = (Date.now() - new Date(s.last_message_at).getTime()) / 3600000;
+    if (diffH < 1)  return 'low';
+    if (diffH < 4)  return 'medium';
+    return 'high';
+  };
+  const URGENCY_BADGE: Record<string, string> = {
+    low:    'bg-green-100 text-green-700',
+    medium: 'bg-yellow-100 text-yellow-700',
+    high:   'bg-red-100 text-red-700 font-bold animate-pulse',
+  };
+  const URGENCY_LABEL: Record<string, string> = {
+    low:    'Chờ < 1h',
+    medium: 'Chờ > 1h ⚡',
+    high:   'Chờ > 4h 🔴',
+  };
+  const URGENCY_BORDER: Record<string, string> = {
+    low:    'border-l-green-400',
+    medium: 'border-l-yellow-400',
+    high:   'border-l-red-500',
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex justify-end"
@@ -365,45 +443,55 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
                 Chưa có khách nào chat.<br />Khi khách bắt đầu chat trên website, tin nhắn sẽ hiện ở đây.
               </div>
             )}
-            {filtered.map(session => (
-              <button
-                key={session.id}
-                onClick={() => setActiveId(session.id)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-white transition-colors ${
-                  activeId === session.id ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                    session.status === 'waiting' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-                  }`}>
-                    {initials(session)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="text-xs font-semibold text-gray-900 truncate">{session.name || session.phone}</p>
-                      <span className="text-[10px] text-gray-400 shrink-0">
-                        {formatDistanceToNow(new Date(session.last_message_at), { locale: vi, addSuffix: false })}
-                      </span>
+            {filtered.map(session => {
+              const urgency = getWaitUrgency(session);
+              const isActive = activeId === session.id;
+              return (
+                <button
+                  key={session.id}
+                  onClick={() => setActiveId(session.id)}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-white transition-colors border-l-2 ${
+                    isActive
+                      ? 'bg-blue-50 border-l-blue-500'
+                      : urgency
+                        ? URGENCY_BORDER[urgency]
+                        : 'border-l-transparent'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                      urgency === 'high' ? 'bg-red-100 text-red-600' :
+                      urgency === 'medium' ? 'bg-yellow-100 text-yellow-600' :
+                      'bg-blue-100 text-blue-600'
+                    }`}>
+                      {initials(session)}
                     </div>
-                    {session.name && <p className="text-[10px] text-gray-400">{session.phone}</p>}
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-[11px] text-gray-500 truncate">{session.last_message || 'Bắt đầu trò chuyện'}</p>
-                      {session.unread_admin > 0 && (
-                        <span className="bg-red-500 text-white text-[9px] rounded-full min-w-[16px] h-4 flex items-center justify-center font-bold px-1 shrink-0 ml-1">
-                          {session.unread_admin}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs font-semibold text-gray-900 truncate">{session.name || session.phone}</p>
+                        <span className="text-[10px] text-gray-400 shrink-0">
+                          {formatDistanceToNow(new Date(session.last_message_at), { locale: vi, addSuffix: false })}
+                        </span>
+                      </div>
+                      {session.name && <p className="text-[10px] text-gray-400">{session.phone}</p>}
+                      <div className="flex items-center justify-between mt-0.5">
+                        <p className="text-[11px] text-gray-500 truncate">{session.last_message || 'Bắt đầu trò chuyện'}</p>
+                        {session.unread_admin > 0 && (
+                          <span className="bg-red-500 text-white text-[9px] rounded-full min-w-[16px] h-4 flex items-center justify-center font-bold px-1 shrink-0 ml-1">
+                            {session.unread_admin}
+                          </span>
+                        )}
+                      </div>
+                      {urgency && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${URGENCY_BADGE[urgency]}`}>
+                          {URGENCY_LABEL[urgency]}
                         </span>
                       )}
                     </div>
-                    {session.status === 'waiting' && (
-                      <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold mt-0.5 inline-block">
-                        Chờ phản hồi
-                      </span>
-                    )}
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -420,35 +508,78 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
           <div className="flex-1 flex flex-col min-w-0">
 
             {/* Header */}
-            <div className="border-b px-4 py-3 flex items-center gap-3 bg-white shrink-0">
-              <div className="w-9 h-9 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-sm shrink-0">
-                {activeSession ? initials(activeSession) : '?'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-sm text-gray-900">
-                    {activeSession ? displayName(activeSession) : 'Khách hàng'}
-                    {activeSession && isAnon(activeSession) && (
-                      <span className="ml-2 text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold align-middle">Chưa có SĐT</span>
+            <div className="border-b px-4 py-3 bg-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                  (activeSession && getWaitUrgency(activeSession)) === 'high' ? 'bg-red-100 text-red-600' :
+                  (activeSession && getWaitUrgency(activeSession)) === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  {activeSession ? initials(activeSession) : '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm text-gray-900">
+                      {activeSession ? displayName(activeSession) : 'Khách hàng'}
+                      {activeSession && isAnon(activeSession) && (
+                        <span className="ml-2 text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold align-middle">Chưa có SĐT</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500">{activeSession ? displayPhone(activeSession) : ''}</p>
+                    {linkedConsultation && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${CRM_STATUS_STYLE[linkedConsultation.status] || 'bg-gray-100 text-gray-600'}`}>
+                        CRM: {CRM_STATUS_LABEL[linkedConsultation.status] || linkedConsultation.status}
+                      </span>
                     )}
-                  </p>
-                  <p className="text-xs text-gray-500">{activeSession ? displayPhone(activeSession) : ''}</p>
-                  {linkedConsultation && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${CRM_STATUS_STYLE[linkedConsultation.status] || 'bg-gray-100 text-gray-600'}`}>
-                      CRM: {CRM_STATUS_LABEL[linkedConsultation.status] || linkedConsultation.status}
-                    </span>
-                  )}
+                  </div>
+                  {/* Customer profile mini */}
+                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-400">
+                    {linkedConsultation?.source && (
+                      <span>📥 {linkedConsultation.source.replace(/_/g, ' ')}</span>
+                    )}
+                    {activeSession?.created_at && (
+                      <span>🕐 {formatDistanceToNow(new Date(activeSession.created_at), { locale: vi, addSuffix: true })}</span>
+                    )}
+                    {messages.length > 0 && (
+                      <span>💬 {messages.length} tin</span>
+                    )}
+                    {activeSession && getWaitUrgency(activeSession) && (() => {
+                      const u = getWaitUrgency(activeSession)!;
+                      return (
+                        <span className={`px-1.5 py-0.5 rounded-full font-semibold ${URGENCY_BADGE[u]}`}>
+                          {URGENCY_LABEL[u]}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[10px] text-gray-400">Giai đoạn:</span>
-                  <select
-                    value={activeSession?.stage || 'new'}
-                    onChange={e => updateStage(e.target.value)}
-                    className="text-[10px] border-0 bg-transparent text-blue-600 font-semibold focus:outline-none cursor-pointer"
-                  >
-                    {STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
+              </div>
+
+              {/* Stage pipeline visual */}
+              <div className="mt-2.5 flex items-center gap-0 overflow-x-auto pb-0.5">
+                {STAGE_PIPELINE.map((stage, idx) => {
+                  const currentIdx = STAGE_PIPELINE.findIndex(s => s.value === activeSession?.stage);
+                  const isPast    = idx < currentIdx;
+                  const isCurrent = idx === currentIdx;
+                  return (
+                    <React.Fragment key={stage.value}>
+                      {idx > 0 && (
+                        <div className={`h-px w-2.5 shrink-0 ${isPast ? 'bg-blue-400' : 'bg-gray-200'}`} />
+                      )}
+                      <button
+                        onClick={() => updateStage(stage.value)}
+                        title={STAGE_OPTIONS.find(o => o.value === stage.value)?.label}
+                        className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold transition-all ${
+                          isCurrent ? 'bg-blue-600 text-white shadow-sm' :
+                          isPast    ? 'bg-blue-100 text-blue-500' :
+                          'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        }`}
+                      >
+                        {stage.short}
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
               </div>
             </div>
 
@@ -611,6 +742,21 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Quick reply chips */}
+            {activeSession && !showAlbumPicker && atQuery === null && (
+              <div className="border-t bg-gray-50 px-3 py-2 flex gap-1.5 overflow-x-auto shrink-0">
+                {(QUICK_REPLIES[activeSession.stage || 'new'] || QUICK_REPLIES.new).map((qr, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setInput(qr.text); setTimeout(() => inputRef.current?.focus(), 50); }}
+                    className="shrink-0 text-[11px] bg-white border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-600 hover:text-blue-700 px-2.5 py-1 rounded-full transition-colors font-medium whitespace-nowrap"
+                  >
+                    {qr.label}
+                  </button>
+                ))}
               </div>
             )}
 
