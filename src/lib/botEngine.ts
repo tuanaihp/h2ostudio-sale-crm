@@ -24,32 +24,66 @@ const ABBREVIATIONS: Record<string, string> = {
 // ── Bảng đồng nghĩa cụm từ — chuẩn hóa trước khi so khớp ───────────────────
 // Cụm dài trước để tránh partial match; áp dụng SAU normalizeVietnamese
 const SYNONYM_MAP: [string, string][] = [
-  ['chi phí chụp', 'giá chụp'],
-  ['tiền cọc',     'đặt cọc'],
-  ['cọc trước',    'đặt cọc'],
-  ['tiền đặt',     'đặt cọc'],
-  ['đặt trước',    'đặt cọc'],
-  ['giữ lịch',     'đặt lịch'],
-  ['giữ ngày',     'đặt lịch'],
-  ['hẹn ngày',     'đặt lịch'],
-  ['chụp hình',    'chụp ảnh'],
-  ['hình cưới',    'ảnh cưới'],
-  ['bộ hình',      'bộ ảnh'],
-  ['mấy tiếng',    'bao lâu'],
-  ['mấy giờ',      'bao lâu'],
-  ['lâu không',    'bao lâu'],
-  ['người mập',    'size lớn'],
-  ['cô dâu mập',   'size lớn'],
-  ['người béo',    'size lớn'],
-  ['nặng cân',     'size lớn'],
-  ['đổi ngày',     'đổi lịch'],
-  ['dời lịch',     'đổi lịch'],
-  ['dời ngày',     'đổi lịch'],
-  ['số tài khoản', 'tài khoản'],
-  ['chuyển tiền',  'chuyển khoản'],
-  ['chi phí',      'giá'],
-  ['mấy tiền',     'bao nhiêu'],
-  ['giá tiền',     'giá'],
+  // Giá cả
+  ['chi phí chụp',      'giá chụp'],
+  ['chi phí',           'giá'],
+  ['mấy tiền',          'bao nhiêu'],
+  ['giá tiền',          'giá'],
+  ['học phí',           'giá'],
+  // Đặt cọc
+  ['tiền cọc',          'đặt cọc'],
+  ['cọc trước',         'đặt cọc'],
+  ['tiền đặt',          'đặt cọc'],
+  ['đặt trước',         'đặt cọc'],
+  ['trả trước',         'đặt cọc'],
+  // Đặt lịch
+  ['giữ lịch',          'đặt lịch'],
+  ['giữ ngày',          'đặt lịch'],
+  ['hẹn ngày',          'đặt lịch'],
+  ['đặt hẹn',          'đặt lịch'],
+  ['book ngày',         'đặt lịch'],
+  // Ảnh / hình
+  ['chụp hình',         'chụp ảnh'],
+  ['hình cưới',         'ảnh cưới'],
+  ['bộ hình',           'bộ ảnh'],
+  ['tấm hình',          'tấm ảnh'],
+  // Thời gian
+  ['mấy tiếng',         'bao lâu'],
+  ['mấy giờ',           'bao lâu'],
+  ['mấy ngày',          'bao lâu'],
+  ['lâu không',         'bao lâu'],
+  ['nhanh không',       'bao lâu'],
+  // Ngoại hình — body type (upgrade 1)
+  ['cô dâu béo',        'size lớn'],
+  ['cô dâu mập',        'size lớn'],
+  ['người mập',         'size lớn'],
+  ['người béo',         'size lớn'],
+  ['nặng cân',          'size lớn'],
+  ['cân nặng lớn',      'size lớn'],
+  ['người gầy',         'size nhỏ'],
+  ['cô dâu gầy',        'size nhỏ'],
+  ['dáng nhỏ',          'size nhỏ'],
+  ['người thấp',        'size nhỏ'],
+  // Từ đơn ngoại hình — đứng cuối để không chặn phrase trên
+  ['béo',               'mập'],
+  ['gầy',               'size nhỏ'],
+  // Hủy / đổi lịch
+  ['đổi ngày',          'đổi lịch'],
+  ['dời lịch',          'đổi lịch'],
+  ['dời ngày',          'đổi lịch'],
+  ['hủy bỏ',            'hủy lịch'],
+  ['không đi nữa',      'hủy lịch'],
+  // Thanh toán
+  ['số tài khoản',      'tài khoản'],
+  ['chuyển tiền',       'chuyển khoản'],
+  ['momo',              'chuyển khoản'],
+  ['vnpay',             'chuyển khoản'],
+  ['banking',           'chuyển khoản'],
+  ['internet banking',  'chuyển khoản'],
+  // Liên hệ
+  ['nhắn tin zalo',     'liên hệ'],
+  ['inbox',             'liên hệ'],
+  ['nhắn fb',           'liên hệ'],
 ];
 
 // ── Service types — loại dịch vụ ─────────────────────────────────────────────
@@ -169,7 +203,17 @@ export interface BotMatchResult {
 
 // ── Core functions ────────────────────────────────────────────────────────────
 
-// Tầng 1: Chuẩn hóa văn bản — viết thường + thay thế viết tắt
+// Chuẩn hóa số đo cơ thể — chạy TRƯỚC khi so khớp keyword (upgrade 2)
+function normalizeBodyNumbers(text: string): string {
+  return text
+    .replace(/\b\d+\s*kg\b/gi, 'cân nặng')       // "80kg", "70 kg" → "cân nặng"
+    .replace(/\b\d+\s*cm\b/gi, 'chiều cao')       // "155cm", "160 cm" → "chiều cao"
+    .replace(/\b1m\d{2}\b/gi, 'chiều cao')        // "1m55", "1m60" → "chiều cao"
+    .replace(/\b1[.,]\d{2}\s*m\b/gi, 'chiều cao') // "1.55m", "1,60m" → "chiều cao"
+    .replace(/\b\d+\s*lbs\b/gi, 'cân nặng');      // "180lbs" → "cân nặng"
+}
+
+// Tầng 1: Chuẩn hóa văn bản — viết thường + thay thế viết tắt + số đo
 export function normalizeVietnamese(text: string): string {
   const lower = text.toLowerCase().trim();
   const words = lower.split(/\s+/);
@@ -177,7 +221,8 @@ export function normalizeVietnamese(text: string): string {
     const plain = word.replace(/[^a-z]/gi, '');
     return ABBREVIATIONS[word] || ABBREVIATIONS[plain] || word;
   });
-  return normalized.join(' ').replace(/\s+/g, ' ').trim();
+  const joined = normalized.join(' ').replace(/\s+/g, ' ').trim();
+  return normalizeBodyNumbers(joined);
 }
 
 // Áp dụng synonym map lên chuỗi đã normalize — thay cụm từ đồng nghĩa về dạng chuẩn
@@ -189,11 +234,29 @@ export function expandSynonyms(text: string): string {
   return result;
 }
 
-// Tầng 2: Nhận diện loại dịch vụ
+// Tầng 2a: Nhận diện loại dịch vụ — exact phrase match
 export function detectServiceType(normalizedMsg: string): string | null {
   for (const [stype, keywords] of Object.entries(SERVICE_KEYWORDS)) {
     if (keywords.some(kw => normalizedMsg.includes(kw))) return stype;
   }
+  return null;
+}
+
+// Tầng 2b: Nhận diện dịch vụ lỏng — khi exact match thất bại (upgrade 3)
+// Dùng word set thay vì cụm từ nguyên vẹn → bắt được "sv có chụp ko", "e cần thuê váy"
+function detectServiceTypeLoose(wordSet: Set<string>): string | null {
+  const hasPhoto   = wordSet.has('chụp') || wordSet.has('ảnh') || wordSet.has('hình') || wordSet.has('album');
+  const hasWedding = wordSet.has('cưới') || wordSet.has('lễ cưới') || wordSet.has('ngày cưới');
+  const hasDress   = wordSet.has('váy') || wordSet.has('đầm') || wordSet.has('áo cưới');
+  const hasMakeup  = wordSet.has('makeup') || wordSet.has('trang điểm') || wordSet.has('tóc');
+  const hasVideo   = wordSet.has('quay') || wordSet.has('video') || wordSet.has('phim');
+  const hasAoDai   = wordSet.has('áo') && wordSet.has('dài');
+
+  if (hasAoDai) return 'ao_dai';
+  if (hasDress) return 'vay_cuoi';
+  if (hasMakeup && !hasPhoto) return 'makeup';
+  if (hasVideo && hasWedding) return 'quay_phim';
+  if (hasPhoto) return 'anh_cuoi';
   return null;
 }
 
@@ -248,16 +311,20 @@ export function matchBotFaq(
   faqs: AnyFaq[],
   context: BotContext,
 ): BotMatchResult {
-  const detectedService = detectServiceType(normalizedMsg) ?? context.serviceType;
-  const detectedPhase = detectPhase(normalizedMsg) ?? context.phase;
-
-  // Synonym expansion: "tiền cọc" → "đặt cọc", "chụp hình" → "chụp ảnh", v.v.
+  // Bước expand trước — cần expandedWordSet cho detectServiceTypeLoose (upgrade 3)
   const msgForScoring = expandSynonyms(normalizedMsg);
-  // Union từ expandQuery (synonyms.ts) + từ trong chuỗi đã expand → tập từ đầy đủ nhất
   const expandedWordSet = new Set<string>([
     ...expandedWords,
     ...msgForScoring.split(/\s+/).filter(w => w.length >= 2),
   ]);
+
+  // Nhận diện dịch vụ: exact → exact-on-expanded → loose word-set → context memory
+  const detectedService =
+    detectServiceType(normalizedMsg) ??
+    detectServiceType(msgForScoring) ??
+    detectServiceTypeLoose(expandedWordSet) ??
+    context.serviceType;
+  const detectedPhase = detectPhase(normalizedMsg) ?? context.phase;
 
   const scored = faqs.map(faq => {
     let score: number;
