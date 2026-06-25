@@ -7,7 +7,8 @@ import { expandQuery } from '../utils/synonyms';
 import { useApp } from '../context/AppContext';
 import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 import { APP_CONFIG } from '../data/mockData';
-import { normalizeVietnamese, matchBotFaq, type BotContext } from '../lib/botEngine';
+import Fuse from 'fuse.js';
+import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents, type BotContext } from '../lib/botEngine';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -230,8 +231,27 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const normalizedMsg = normalizeVietnamese(customerMessage);
       const expandedWords = expandQuery(normalizedMsg);
 
-      // Tầng 2–4: Chạy smart matching engine
-      const engineResult = matchBotFaq(normalizedMsg, expandedWords, allFaqs, botContext);
+      // Upgrade 3: Multi-Intent — tách tin nhiều câu hỏi, chạy engine riêng từng đoạn
+      const intentSegments = splitIntents(customerMessage);
+      const isMultiIntent = intentSegments.length > 1;
+      const multiAnswers: string[] = [];
+
+      let engineResult = matchBotFaq(normalizedMsg, expandedWords, allFaqs, botContext);
+
+      if (isMultiIntent) {
+        for (const seg of intentSegments) {
+          const normSeg = normalizeVietnamese(seg);
+          const expSeg  = expandQuery(normSeg);
+          const segResult = matchBotFaq(normSeg, expSeg, allFaqs, botContext);
+          if (segResult.type === 'answer') multiAnswers.push(segResult.answer);
+        }
+        // Dùng kết quả đầu tiên có answer để cập nhật context
+        const firstValid = intentSegments.map(seg => {
+          const n = normalizeVietnamese(seg);
+          return matchBotFaq(n, expandQuery(n), allFaqs, botContext);
+        }).find(r => r.type === 'answer');
+        if (firstValid) engineResult = firstValid;
+      }
 
       // Cập nhật context cho câu hỏi tiếp theo
       const newContext: BotContext = {
@@ -254,7 +274,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       let text: string;
 
-      if (engineResult.type === 'answer' || engineResult.type === 'clarify') {
+      if (isMultiIntent && multiAnswers.length > 1) {
+        // Upgrade 3: Multi-Intent — ghép câu trả lời từng ý
+        text = multiAnswers.map((a, i) => `${i + 1}. ${a}`).join('\n\n');
+        setQuickReplies(engineResult.quickReplies);
+      } else if (engineResult.type === 'answer' || engineResult.type === 'clarify') {
         // Tầng 5: Trả lời + bước tiếp theo
         text = engineResult.answer;
         if (engineResult.type === 'answer' && engineResult.nextQuestion) {
@@ -276,6 +300,29 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         // Hiển thị quick replies (dùng từ engine result)
         setQuickReplies(engineResult.quickReplies);
       } else {
+        // Upgrade 2: Fuse.js Fuzzy — bắt lỗi sai chính tả / cách hỏi khác trước khi TF-IDF
+        const fuseItems = allFaqs
+          .filter(f => f.answer && String(f.answer).length > 5)
+          .map(f => ({
+            id: f.id,
+            answer: f.answer,
+            service_type: (f as any).service_type ?? null,
+            searchText: [f.question, ...((f as any).keywords || [])].join(' '),
+          }));
+        const fuse = new Fuse(fuseItems, {
+          keys: [{ name: 'searchText', weight: 0.7 }, { name: 'answer', weight: 0.3 }],
+          threshold: 0.4,
+          includeScore: true,
+          ignoreLocation: true,
+          minMatchCharLength: 3,
+        });
+        const fuseResults = fuse.search(normalizedMsg);
+        const fuseTop = fuseResults[0];
+
+        if (fuseTop && (fuseTop.score ?? 1) < 0.38 && fuseTop.item.answer) {
+          text = fuseTop.item.answer;
+          setQuickReplies(getQuickReplies(fuseTop.item.service_type));
+        } else {
         // Fallback: thử TF-IDF trên kịch bản sale trước khi báo không hiểu
         const words = expandedWords;
         const allDocs = (scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase());
@@ -328,6 +375,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           }
         }
         setQuickReplies(engineResult.quickReplies);
+        } // end Fuse.js else block
       }
 
       // Kiểm tra handoff trigger — thông báo nhân viên nếu cần

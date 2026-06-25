@@ -147,6 +147,25 @@ const PHASE_KEYWORDS: Record<string, string[]> = {
   ],
 };
 
+// ── Stop words — từ phổ thông không có giá trị phân biệt FAQ ────────────────
+const STOP_WORDS = new Set([
+  'có', 'không', 'ạ', 'và', 'hoặc', 'hay', 'thì', 'là', 'của', 'cho', 'với',
+  'về', 'được', 'đã', 'sẽ', 'bị', 'các', 'những', 'này', 'đó', 'khi', 'nếu',
+  'mà', 'nhưng', 'vì', 'do', 'từ', 'tại', 'ra', 'vào', 'lên', 'xuống',
+  'ở', 'đến', 'qua', 'lại', 'cũng', 'rồi', 'thôi', 'nha', 'nhé', 'đây',
+  'bên', 'mình', 'em', 'anh', 'chị', 'bạn', 'tôi', 'ơi', 'à', 'ừ', 'cơ',
+]);
+
+// Trọng số tự động: cụm nhiều từ = đặc thù hơn = điểm cao hơn
+function getKeywordWeight(kw: string): number {
+  const norm = normalizeVietnamese(kw.toLowerCase()).trim();
+  if (STOP_WORDS.has(norm) || norm.length <= 2) return 0;
+  const wordCount = norm.split(/\s+/).filter(w => w.length >= 2).length;
+  if (wordCount >= 3) return 2.0;  // "chụp ảnh cưới studio" → rất đặc thù
+  if (wordCount === 2) return 1.5;  // "đặt cọc" → đặc thù vừa
+  return 1.0;                       // "giá" → bình thường
+}
+
 // ── Lead score tích lũy theo phase ───────────────────────────────────────────
 
 export const PHASE_LEAD_SCORES: Record<string, number> = {
@@ -273,25 +292,32 @@ export function getQuickReplies(serviceType: string | null): string[] {
   return QUICK_REPLIES_MAP[serviceType ?? 'default'] ?? QUICK_REPLIES_MAP.default;
 }
 
-// Tầng 4: Tính điểm khớp keyword —
-// FAQ có keywords[] (mới): tính % keyword xuất hiện trong câu hỏi khách
-// FAQ không có keywords (cũ): tính overlap từ trong câu hỏi đã lưu
-// expandedWordSet: union từ expandQuery + synonym expansion để match từng từ riêng lẻ
+// Tầng 4: Tính điểm khớp keyword với trọng số (Weighted Keyword Matching)
+// - Stop word → bỏ qua (weight 0)
+// - Cụm 3+ từ → weight 2.0 (rất đặc thù)
+// - Cụm 2 từ → weight 1.5
+// - Từ đơn → weight 1.0
+// - Pass 1: phrase match; Pass 2: word-set fallback
 function scoreKeywords(
   normalizedMsg: string,
   expandedWordSet: Set<string>,
   keywords: string[],
 ): number {
   if (!keywords || keywords.length === 0) return 0;
-  const matched = keywords.filter(kw => {
+  let totalWeight = 0;
+  let matchedWeight = 0;
+  for (const kw of keywords) {
+    const weight = getKeywordWeight(kw);
+    if (weight === 0) continue;
+    totalWeight += weight;
     const normKw = normalizeVietnamese(kw.toLowerCase());
-    // Pass 1: khớp cụm từ nguyên vẹn (sau synonym expansion)
-    if (normalizedMsg.includes(normKw)) return true;
-    // Pass 2: mọi từ trong keyword đều có trong expanded word set
-    const kwWords = normKw.split(/\s+/).filter(w => w.length >= 2);
-    return kwWords.length > 0 && kwWords.every(w => expandedWordSet.has(w));
-  }).length;
-  return matched / keywords.length;
+    const isMatch = normalizedMsg.includes(normKw) || (() => {
+      const kwWords = normKw.split(/\s+/).filter(w => w.length >= 2);
+      return kwWords.length > 0 && kwWords.every(w => expandedWordSet.has(w));
+    })();
+    if (isMatch) matchedWeight += weight;
+  }
+  return totalWeight === 0 ? 0 : matchedWeight / totalWeight;
 }
 
 function scoreQuestionOverlap(expandedWords: string[], faqQuestion: string): number {
@@ -402,4 +428,24 @@ export function matchBotFaq(
     serviceType: best.faq.service_type ?? detectedService,
     phase: detectedPhase, faqId: best.faq.id, quickReplies,
   };
+}
+
+// ── Multi-Intent Detection (Upgrade 3) ───────────────────────────────────────
+// Tách một tin nhắn nhiều câu hỏi thành các segment độc lập.
+// Trả về mảng >= 2 phần tử nếu phát hiện nhiều intent, ngược lại [message] nguyên.
+const MULTI_INTENT_SPLITTER = new RegExp(
+  [
+    '[?！]',                                                           // dấu hỏi
+    ',\\s*(?=bao nhiêu|bao lâu|có |chụp|thuê|giá|khi nào|ở đâu|như thế nào|cần|muốn|hết bao|được không|còn lịch)',
+    '\\s+(?:và|còn|thêm nữa|ngoài ra)\\s+(?=bao|có |chụp|thuê|giá|khi|ở đâu)',
+  ].join('|'),
+  'i',
+);
+
+export function splitIntents(message: string): string[] {
+  const segments = message
+    .split(MULTI_INTENT_SPLITTER)
+    .map(s => s.trim())
+    .filter(s => s.length >= 6);
+  return segments.length >= 2 ? segments : [message.trim()];
 }
