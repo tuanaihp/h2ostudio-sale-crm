@@ -341,117 +341,117 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       let text: string;
 
       if (isMultiIntent && multiAnswers.length > 1) {
-        // Upgrade 3: Multi-Intent — ghép câu trả lời từng ý
+        // Multi-Intent — ghép câu trả lời từng ý
         text = multiAnswers.map((a, i) => `${i + 1}. ${a}`).join('\n\n');
         setQuickReplies(engineResult.quickReplies);
-      } else if (engineResult.type === 'answer' || engineResult.type === 'clarify') {
-        // Tầng 5: Trả lời + bước tiếp theo
-        text = engineResult.answer;
-        if (engineResult.type === 'answer' && engineResult.nextQuestion) {
-          text += `\n\n${engineResult.nextQuestion}`;
-        }
-        // Cập nhật usage_count (bỏ qua virtual FAQs)
-        if (engineResult.faqId && !String(engineResult.faqId).startsWith('__virt')) {
-          const faqItem = allFaqs.find(f => f.id === engineResult.faqId);
-          supabase.from('customer_faqs')
-            .update({ usage_count: ((faqItem as any)?.usage_count || 0) + 1 })
-            .eq('id', engineResult.faqId).then(() => {});
-        }
-        // Gắn promo nếu hỏi về giá
-        const promoCategories = ['offer', 'fomo', 'closing'];
-        const faqCat = allFaqs.find(f => f.id === engineResult.faqId) as any;
-        if ((isPriceQuery || promoCategories.includes(faqCat?.category)) && promoFooter) {
-          text += promoFooter;
-        }
-        // Hiển thị quick replies (dùng từ engine result)
-        setQuickReplies(engineResult.quickReplies);
       } else {
-        // Fuse.js: chỉ search trong cùng service_type (Intent Gate) + searchText đầy đủ
-        const fuseItems = allFaqs
-          .filter(f => {
-            if (!f.answer || String(f.answer).length <= 5) return false;
-            const fSvc = (f as any).service_type ?? null;
-            // Nếu detect được service_type thì loại FAQ khác service
-            return !engineResult.serviceType || !fSvc || fSvc === engineResult.serviceType;
-          })
-          .map(f => ({
-            id: f.id,
-            answer: f.answer,
-            service_type: (f as any).service_type ?? null,
-            searchText: [
-              f.question,
-              ...((f as any).keywords || []),
-              (f as any).service_type || '',
-              f.category || '',
-            ].filter(Boolean).join(' '),
-          }));
-        const fuse = new Fuse(fuseItems, {
-          keys: [{ name: 'searchText', weight: 0.7 }, { name: 'answer', weight: 0.3 }],
-          threshold: 0.4,
-          includeScore: true,
-          ignoreLocation: true,
-          minMatchCharLength: 3,
-        });
-        const fuseResults = fuse.search(normalizedMsg);
-        const fuseTop = fuseResults[0];
-
-        if (fuseTop && (fuseTop.score ?? 1) < 0.25 && fuseTop.item.answer) {
-          text = fuseTop.item.answer;
-          setQuickReplies(getQuickReplies(fuseTop.item.service_type));
-        } else {
-        // Fallback: thử TF-IDF trên kịch bản sale trước khi báo không hiểu
-        const words = expandedWords;
+        // ── Tầng 1: Kịch bản Sale (TF-IDF) — tư vấn theo kịch bản bán hàng TRƯỚC ──
         const allDocs = (scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase());
         const N = Math.max(allDocs.length, 1);
         const df: Record<string, number> = {};
         allDocs.forEach(doc => new Set(doc.split(/\s+/).filter(w => w.length >= 2)).forEach(w => { df[w] = (df[w] || 0) + 1; }));
         const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
         const scoredScripts = (scriptData || []).map((s: any) => {
-          let score = 0;
-          words.forEach(w => {
+          let sc = 0;
+          expandedWords.forEach(w => {
             const wt = idf(w);
-            if (s.title.toLowerCase().includes(w)) score += 3 * wt;
-            if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) score += 2 * wt;
-            if (s.content.toLowerCase().includes(w)) score += 1 * wt;
+            if (s.title.toLowerCase().includes(w)) sc += 3 * wt;
+            if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) sc += 2 * wt;
+            if (s.content.toLowerCase().includes(w)) sc += 1 * wt;
           });
-          return { item: s, score };
+          return { item: s, score: sc };
         });
         const bestScript = scoredScripts.sort((a, b) => b.score - a.score)[0];
 
-        if (bestScript && bestScript.score > 0) {
+        if (bestScript && bestScript.score > 3.5) {
+          // ✅ Tầng 1 HIT: có kịch bản sale phù hợp — dùng script
           const c = bestScript.item.content as string;
           text = c.length > 450 ? c.slice(0, 450) + '...' : c;
           if ((isPriceQuery || ['offer', 'fomo', 'closing'].includes(bestScript.item.phase)) && promoFooter) text += promoFooter;
-        } else {
-          // Tầng 3 Fallback hoàn toàn
-          const zaloUrl = APP_CONFIG.zaloUrl;
-          const hotline = APP_CONFIG.hotline;
-          let cta = '';
-          if (zaloUrl) cta += `\n💬 Chat Zalo ngay: ${zaloUrl}`;
-          if (hotline) cta += `\n📞 Hotline: ${hotline}`;
-          text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
-          if (promoFooter) text += promoFooter;
+          setQuickReplies(engineResult.quickReplies);
 
-          // Log câu chưa trả lời để admin duyệt
-          const q = customerMessage.trim();
-          if (q.length >= 6) {
-            supabase.from('bot_unmatched_logs').insert({
-              session_id: sid, message: q,
-              normalized_message: normalizedMsg,
-              detected_service: engineResult.serviceType,
-              detected_phase: engineResult.phase,
-              created_at: new Date().toISOString(),
-            }).then(() => {});
-            // Lưu vào customer_faqs pending để admin có thể bổ sung câu trả lời
-            supabase.from('customer_faqs').insert({
-              id: crypto.randomUUID(), question: q, answer: '', category: 'khac', tags: [],
-              source: 'from_chat_auto', is_approved: false, usage_count: 0,
-              created_at: new Date().toISOString(),
-            }).then(() => {});
+        } else if (engineResult.type === 'answer' || engineResult.type === 'clarify') {
+          // ── Tầng 2: Kho FAQ — khi không có kịch bản sale khớp ──
+          text = engineResult.answer;
+          if (engineResult.type === 'answer' && engineResult.nextQuestion) {
+            text += `\n\n${engineResult.nextQuestion}`;
+          }
+          // Cập nhật usage_count (bỏ qua virtual FAQs)
+          if (engineResult.faqId && !String(engineResult.faqId).startsWith('__virt')) {
+            const faqItem = allFaqs.find(f => f.id === engineResult.faqId);
+            supabase.from('customer_faqs')
+              .update({ usage_count: ((faqItem as any)?.usage_count || 0) + 1 })
+              .eq('id', engineResult.faqId).then(() => {});
+          }
+          // Gắn promo nếu hỏi về giá
+          const promoCategories = ['offer', 'fomo', 'closing'];
+          const faqCat = allFaqs.find(f => f.id === engineResult.faqId) as any;
+          if ((isPriceQuery || promoCategories.includes(faqCat?.category)) && promoFooter) {
+            text += promoFooter;
+          }
+          setQuickReplies(engineResult.quickReplies);
+
+        } else {
+          // ── Tầng 3: Fuse.js trên FAQ (sửa chính tả, cùng service_type) ──
+          const fuseItems = allFaqs
+            .filter(f => {
+              if (!f.answer || String(f.answer).length <= 5) return false;
+              const fSvc = (f as any).service_type ?? null;
+              return !engineResult.serviceType || !fSvc || fSvc === engineResult.serviceType;
+            })
+            .map(f => ({
+              id: f.id,
+              answer: f.answer,
+              service_type: (f as any).service_type ?? null,
+              searchText: [
+                f.question,
+                ...((f as any).keywords || []),
+                (f as any).service_type || '',
+                f.category || '',
+              ].filter(Boolean).join(' '),
+            }));
+          const fuse = new Fuse(fuseItems, {
+            keys: [{ name: 'searchText', weight: 0.7 }, { name: 'answer', weight: 0.3 }],
+            threshold: 0.4,
+            includeScore: true,
+            ignoreLocation: true,
+            minMatchCharLength: 3,
+          });
+          const fuseTop = fuse.search(normalizedMsg)[0];
+
+          if (fuseTop && (fuseTop.score ?? 1) < 0.25 && fuseTop.item.answer) {
+            // ✅ Tầng 3 HIT: fuzzy FAQ match
+            text = fuseTop.item.answer;
+            setQuickReplies(getQuickReplies(fuseTop.item.service_type));
+          } else {
+            // ── Tầng 4: Fallback hoàn toàn — chuyển nhân viên ──
+            const zaloUrl = APP_CONFIG.zaloUrl;
+            const hotline = APP_CONFIG.hotline;
+            let cta = '';
+            if (zaloUrl) cta += `\n💬 Chat Zalo ngay: ${zaloUrl}`;
+            if (hotline) cta += `\n📞 Hotline: ${hotline}`;
+            text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
+            if (promoFooter) text += promoFooter;
+
+            // Log câu chưa trả lời để admin duyệt
+            const q = customerMessage.trim();
+            if (q.length >= 6) {
+              supabase.from('bot_unmatched_logs').insert({
+                session_id: sid, message: q,
+                normalized_message: normalizedMsg,
+                detected_service: engineResult.serviceType,
+                detected_phase: engineResult.phase,
+                created_at: new Date().toISOString(),
+              }).then(() => {});
+              supabase.from('customer_faqs').insert({
+                id: crypto.randomUUID(), question: q, answer: '', category: 'khac', tags: [],
+                source: 'from_chat_auto', is_approved: false, usage_count: 0,
+                created_at: new Date().toISOString(),
+              }).then(() => {});
+            }
+            setQuickReplies(engineResult.quickReplies);
           }
         }
-        setQuickReplies(engineResult.quickReplies);
-        } // end Fuse.js else block
       }
 
       // Kiểm tra handoff trigger — thông báo nhân viên nếu cần

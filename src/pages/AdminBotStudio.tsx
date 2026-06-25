@@ -659,25 +659,26 @@ export default function AdminBotStudio() {
       const engineResult = matchBotFaq(normalizedMsg, expandedWords, faqData || [], testCtx);
       let text: string;
       let matched: TestMsg['matched'];
-      if (engineResult.type !== 'fallback') {
+
+      // Tầng 1: Kịch bản Sale (TF-IDF) — thứ tự GIỐNG live chat
+      const N = Math.max((scriptData || []).length, 1);
+      const df: Record<string, number> = {};
+      (scriptData || []).forEach((s: any) => new Set([s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2)).forEach((w: string) => { df[w] = (df[w] || 0) + 1; }));
+      const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
+      const scriptScore = (s: any) => { let sc = 0; expandedWords.forEach(w => { const wt = idf(w); if (s.title.toLowerCase().includes(w)) sc += 3 * wt; if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) sc += 2 * wt; if (s.content.toLowerCase().includes(w)) sc += wt; }); return sc; };
+      const best = (scriptData || []).map((s: any) => ({ s, sc: scriptScore(s) })).sort((a: any, b: any) => b.sc - a.sc)[0];
+
+      if (best && best.sc > 3.5) {
+        // ✅ Kịch bản sale khớp
+        text = (best.s.content as string).slice(0, 450);
+        matched = { type: 'script', title: best.s.title, score: Math.round(best.sc * 10) / 10, phase: best.s.phase };
+      } else if (engineResult.type !== 'fallback') {
+        // Tầng 2: Kho FAQ
         text = engineResult.answer;
         const mFaq = engineResult.faqId ? (faqData || []).find((f: any) => f.id === String(engineResult.faqId)) : null;
         if (mFaq) matched = { type: 'faq', title: mFaq.question, score: Math.round(engineResult.score * 100), phase: engineResult.phase ?? mFaq.category };
       } else {
-        // Script TF-IDF fallback (matchBotFaq không search scripts)
-        const words = expandedWords;
-        const N = Math.max((scriptData || []).length, 1);
-        const df: Record<string, number> = {};
-        (scriptData || []).forEach((s: any) => new Set([s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2)).forEach((w: string) => { df[w] = (df[w] || 0) + 1; }));
-        const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
-        const scriptScore = (s: any) => { let sc = 0; words.forEach(w => { const wt = idf(w); if (s.title.toLowerCase().includes(w)) sc += 3 * wt; if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) sc += 2 * wt; if (s.content.toLowerCase().includes(w)) sc += wt; }); return sc; };
-        const best = (scriptData || []).map((s: any) => ({ s, sc: scriptScore(s) })).sort((a: any, b: any) => b.sc - a.sc)[0];
-        if (best?.sc > 0) {
-          text = (best.s.content as string).slice(0, 450);
-          matched = { type: 'script', title: best.s.title, score: Math.round(best.sc * 10) / 10, phase: best.s.phase };
-        } else {
-          text = 'Không tìm thấy câu trả lời phù hợp. Bạn có thể thêm FAQ hoặc bật Bot Tầng 2 (AI).';
-        }
+        text = 'Không tìm thấy câu trả lời phù hợp. Bạn có thể thêm FAQ hoặc bật Bot Tầng 2 (AI).';
       }
       setTestMsgs(prev => [...prev, { role: 'bot', text, tier: 1, matched }]);
     } catch { setTestMsgs(prev => [...prev, { role: 'bot', text: 'Lỗi khi chạy test.' }]); }
