@@ -211,6 +211,12 @@ export interface CustomerFaq {
   source: 'manual' | 'from_chat' | 'from_chat_auto';
   isApproved: boolean;
   createdAt: string;
+  // Smart matching fields (added for botEngine v2)
+  keywords?: string[];
+  nextQuestion?: string;
+  leadScore?: number;
+  serviceType?: string;
+  handoffTrigger?: boolean;
 }
 
 export interface DbCustomerFaqRow {
@@ -224,6 +230,12 @@ export interface DbCustomerFaqRow {
   is_approved: boolean;
   created_at: string;
   updated_at?: string;
+  // Smart matching fields
+  keywords?: string[] | null;
+  next_question?: string | null;
+  lead_score?: number | null;
+  service_type?: string | null;
+  handoff_trigger?: boolean | null;
 }
 
 export interface SaleScript {

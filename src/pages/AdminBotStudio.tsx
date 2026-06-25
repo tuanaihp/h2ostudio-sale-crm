@@ -69,6 +69,11 @@ const dbToFaq = (row: DbCustomerFaqRow): CustomerFaq => ({
   id: row.id, question: row.question, answer: row.answer, category: row.category,
   tags: row.tags || [], usageCount: row.usage_count,
   source: row.source as CustomerFaq['source'], isApproved: row.is_approved, createdAt: row.created_at,
+  keywords: row.keywords || [],
+  nextQuestion: row.next_question || '',
+  leadScore: row.lead_score || 0,
+  serviceType: row.service_type || '',
+  handoffTrigger: row.handoff_trigger || false,
 });
 const dbToScript = (row: Record<string, unknown>): SaleScript => ({
   id: row.id as string, phase: row.phase as string, title: row.title as string,
@@ -212,7 +217,7 @@ const ScriptCard: React.FC<{
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings';
+type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings' | 'unanswered';
 type KnowledgeTab = 'faqs' | 'scripts';
 interface TestMsg {
   role: 'user' | 'bot'; text: string;
@@ -235,6 +240,11 @@ export default function AdminBotStudio() {
   const [topFaqs, setTopFaqs] = useState<any[]>([]);
   const [unansweredList, setUnansweredList] = useState<any[]>([]);
 
+  // ── Unmatched logs (Chưa trả lời) ──
+  const [unmatchedLogs, setUnmatchedLogs] = useState<any[]>([]);
+  const [unmatchedLoading, setUnmatchedLoading] = useState(false);
+  const [unmatchedCount, setUnmatchedCount] = useState(0);
+
   // ── FAQ state ──
   const [faqs, setFaqs] = useState<CustomerFaq[]>([]);
   const [pendingFaqs, setPendingFaqs] = useState<CustomerFaq[]>([]);
@@ -248,7 +258,10 @@ export default function AdminBotStudio() {
   const [faqExpandedId, setFaqExpandedId] = useState<string | null>(null);
   const [faqModal, setFaqModal] = useState(false);
   const [editingFaq, setEditingFaq] = useState<CustomerFaq | null>(null);
-  const [faqForm, setFaqForm] = useState({ question: '', answer: '', category: 'faq', tags: '' });
+  const [faqForm, setFaqForm] = useState({
+    question: '', answer: '', category: 'faq', tags: '',
+    keywords: '', next_question: '', lead_score: 0, service_type: '', handoff_trigger: false,
+  });
   const [faqSaving, setFaqSaving] = useState(false);
   const [faqDeleteId, setFaqDeleteId] = useState<string | null>(null);
   const [pushedIds, setPushedIds] = useState<Set<string>>(new Set());
@@ -298,6 +311,7 @@ export default function AdminBotStudio() {
   useEffect(() => { loadHomeStats(); }, []);
   useEffect(() => { if (tab === 'knowledge' && kTab === 'faqs' && faqs.length === 0) loadFaqs(); }, [tab, kTab]);
   useEffect(() => { if (tab === 'knowledge' && kTab === 'scripts' && scripts.length === 0) loadScripts(); }, [tab, kTab]);
+  useEffect(() => { if (tab === 'unanswered') loadUnmatchedLogs(); }, [tab]);
   useEffect(() => { testBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [testMsgs]);
   useEffect(() => {
     if (settings) {
@@ -353,18 +367,61 @@ export default function AdminBotStudio() {
     setPendingEdits(edits);
     setFaqLoading(false);
   };
-  const openAddFaq = () => { setEditingFaq(null); setFaqForm({ question: '', answer: '', category: 'faq', tags: '' }); setFaqModal(true); };
-  const openEditFaq = (faq: CustomerFaq) => { setEditingFaq(faq); setFaqForm({ question: faq.question, answer: faq.answer, category: faq.category, tags: faq.tags.join(', ') }); setFaqModal(true); };
+  const openAddFaq = (preQ = '', preService = '') => {
+    setEditingFaq(null);
+    setFaqForm({ question: preQ, answer: '', category: 'faq', tags: '', keywords: '', next_question: '', lead_score: 0, service_type: preService, handoff_trigger: false });
+    setFaqModal(true);
+  };
+  const openEditFaq = (faq: CustomerFaq) => {
+    setEditingFaq(faq);
+    setFaqForm({
+      question: faq.question, answer: faq.answer, category: faq.category, tags: faq.tags.join(', '),
+      keywords: (faq.keywords || []).join(', '),
+      next_question: faq.nextQuestion || '',
+      lead_score: faq.leadScore || 0,
+      service_type: faq.serviceType || '',
+      handoff_trigger: faq.handoffTrigger || false,
+    });
+    setFaqModal(true);
+  };
   const saveFaq = async () => {
     if (!faqForm.question.trim() || !faqForm.answer.trim()) return;
     setFaqSaving(true);
     const tags = faqForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+    const keywords = faqForm.keywords ? faqForm.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : null;
+    const extraFields = {
+      keywords,
+      next_question: faqForm.next_question.trim() || null,
+      lead_score: faqForm.lead_score || 0,
+      service_type: faqForm.service_type || null,
+      handoff_trigger: faqForm.handoff_trigger,
+    };
     if (editingFaq) {
-      await supabase.from('customer_faqs').update({ question: faqForm.question.trim(), answer: faqForm.answer.trim(), category: faqForm.category, tags, updated_at: new Date().toISOString() }).eq('id', editingFaq.id);
+      await supabase.from('customer_faqs').update({ question: faqForm.question.trim(), answer: faqForm.answer.trim(), category: faqForm.category, tags, updated_at: new Date().toISOString(), ...extraFields }).eq('id', editingFaq.id);
     } else {
-      await supabase.from('customer_faqs').insert({ id: crypto.randomUUID(), question: faqForm.question.trim(), answer: faqForm.answer.trim(), category: faqForm.category, tags, source: 'manual', is_approved: true, usage_count: 0, created_at: new Date().toISOString() });
+      await supabase.from('customer_faqs').insert({ id: crypto.randomUUID(), question: faqForm.question.trim(), answer: faqForm.answer.trim(), category: faqForm.category, tags, source: 'manual', is_approved: true, usage_count: 0, created_at: new Date().toISOString(), ...extraFields });
     }
     setFaqSaving(false); setFaqModal(false); loadFaqs(); loadHomeStats();
+  };
+
+  // ── Unmatched logs CRUD ──
+  const loadUnmatchedLogs = async () => {
+    setUnmatchedLoading(true);
+    const { data, count } = await supabase
+      .from('bot_unmatched_logs').select('*', { count: 'exact' })
+      .eq('reviewed', false).order('created_at', { ascending: false }).limit(60);
+    setUnmatchedLogs(data || []);
+    setUnmatchedCount(count || 0);
+    setUnmatchedLoading(false);
+  };
+  const markLogReviewed = async (id: string) => {
+    await supabase.from('bot_unmatched_logs').update({ reviewed: true }).eq('id', id);
+    setUnmatchedLogs(prev => prev.filter(l => l.id !== id));
+    setUnmatchedCount(prev => Math.max(0, prev - 1));
+  };
+  const createFaqFromLog = (log: any) => {
+    markLogReviewed(log.id);
+    openAddFaq(log.message, log.detected_service || '');
   };
   const deleteFaq = async (id: string) => { await supabase.from('customer_faqs').delete().eq('id', id); setFaqDeleteId(null); setFaqs(prev => prev.filter(f => f.id !== id)); loadHomeStats(); };
   const approvePending = async (faq: CustomerFaq) => {
@@ -584,6 +641,7 @@ export default function AdminBotStudio() {
     { id: 'instructions', label: 'Hướng dẫn',       icon: FileText },
     { id: 'test',         label: 'Chat thử',        icon: MessageSquare },
     { id: 'settings',     label: 'Cài đặt',         icon: Settings },
+    { id: 'unanswered',   label: 'Chưa trả lời',    icon: AlertCircle },
   ] as const;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -612,6 +670,7 @@ export default function AdminBotStudio() {
               {label}
               {id === 'home' && stats.unanswered > 0 && <span className="ml-auto bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 min-w-[18px] text-center">{stats.unanswered}</span>}
               {id === 'knowledge' && pendingFaqs.length > 0 && <span className="ml-auto bg-amber-500 text-white text-[9px] font-bold rounded-full px-1.5 min-w-[18px] text-center">{pendingFaqs.length}</span>}
+              {id === 'unanswered' && unmatchedCount > 0 && <span className="ml-auto bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 min-w-[18px] text-center">{unmatchedCount}</span>}
             </button>
           ))}
         </nav>
@@ -1272,6 +1331,80 @@ export default function AdminBotStudio() {
           </div>
         )}
 
+        {/* ══ UNANSWERED ══ */}
+        {tab === 'unanswered' && (
+          <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><AlertCircle size={20} className="text-red-500" />Câu hỏi Bot chưa trả lời được</h2>
+                <p className="text-sm text-gray-500 mt-0.5">Những câu khách hỏi mà bot không hiểu. Gắn vào FAQ để bot học thêm.</p>
+              </div>
+              <button onClick={loadUnmatchedLogs} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <RefreshCw size={12} />Tải lại
+              </button>
+            </div>
+
+            {unmatchedLoading ? (
+              <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" /></div>
+            ) : unmatchedLogs.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <CheckCircle2 size={40} className="mx-auto mb-3 text-green-300" />
+                <p className="font-semibold text-gray-600">Tuyệt vời! Bot đã trả lời được hết</p>
+                <p className="text-sm mt-1">Không còn câu hỏi nào bị bỏ sót.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {unmatchedLogs.map((log: any) => (
+                  <div key={log.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 mb-1">"{log.message}"</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {log.detected_service && (
+                            <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium">
+                              🎯 {log.detected_service.replace('_', ' ')}
+                            </span>
+                          )}
+                          {log.detected_phase && (
+                            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full font-medium">
+                              📊 {log.detected_phase}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(log.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => createFaqFromLog(log)}
+                          className="text-[11px] bg-purple-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-purple-700 flex items-center gap-1">
+                          <Plus size={11} />Tạo FAQ
+                        </button>
+                        <button onClick={() => markLogReviewed(log.id)}
+                          className="text-[11px] bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg font-bold hover:bg-gray-200 flex items-center gap-1">
+                          <X size={11} />Bỏ qua
+                        </button>
+                      </div>
+                    </div>
+                    {log.normalized_message && log.normalized_message !== log.message && (
+                      <p className="text-[10px] text-gray-400 mt-2 italic">→ Đã chuẩn hóa: "{log.normalized_message}"</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-700 border border-blue-100">
+              <p className="font-semibold mb-1">💡 Cách dùng tab này hiệu quả</p>
+              <ul className="space-y-1 text-xs text-blue-600 list-disc list-inside">
+                <li>Nhấn <strong>Tạo FAQ</strong> → điền câu trả lời → lưu → Bot tự học ngay</li>
+                <li>Thêm <strong>Từ khóa nhận diện</strong> trong form FAQ để bot match chính xác hơn</li>
+                <li>Nhấn <strong>Bỏ qua</strong> để loại câu hỏi không liên quan (spam, test...)</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* ══ SETTINGS ══ */}
         {tab === 'settings' && (
           <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
@@ -1405,9 +1538,12 @@ export default function AdminBotStudio() {
       {/* ── FAQ Modal ── */}
       {faqModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-5 border-b"><h3 className="font-bold text-gray-900">{editingFaq ? '✏️ Sửa câu hỏi' : '➕ Thêm câu hỏi mới'}</h3><button onClick={() => setFaqModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button></div>
-            <div className="p-5 space-y-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b shrink-0">
+              <h3 className="font-bold text-gray-900">{editingFaq ? '✏️ Sửa câu hỏi' : '➕ Thêm câu hỏi mới'}</h3>
+              <button onClick={() => setFaqModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">❓ Câu hỏi của khách <span className="text-red-500">*</span></label>
                 <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={2}
@@ -1415,15 +1551,71 @@ export default function AdminBotStudio() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">💬 Câu trả lời tốt nhất <span className="text-red-500">*</span></label>
-                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={5}
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={4}
                   placeholder="Nhập câu trả lời chốt sale hiệu quả nhất — bot sẽ dùng chính xác câu này..." value={faqForm.answer} onChange={e => setFaqForm(f => ({ ...f, answer: e.target.value }))} />
               </div>
+              {/* Smart matching fields */}
+              <div className="border border-purple-100 rounded-xl p-3 bg-purple-50/50 space-y-3">
+                <p className="text-[11px] font-bold text-purple-700 flex items-center gap-1.5"><Brain size={12} />Cài đặt Smart Matching</p>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">🔑 Từ khóa nhận diện <span className="font-normal text-gray-400">(cách nhau dấu phẩy)</span></label>
+                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                    placeholder="VD: giá chụp, bảng giá, chi phí, bao nhiêu tiền..."
+                    value={faqForm.keywords} onChange={e => setFaqForm(f => ({ ...f, keywords: e.target.value }))} />
+                  <p className="text-[10px] text-gray-400 mt-0.5">Bot so khớp % từ khóa này trong tin nhắn khách. Càng nhiều từ khóa → match càng chính xác.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">💬 Câu hỏi dẫn tiếp theo <span className="font-normal text-gray-400">(tùy chọn)</span></label>
+                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                    placeholder="VD: Em muốn biết thêm gì ạ? Anh/chị quan tâm gói chụp hay ngày chụp? 😊"
+                    value={faqForm.next_question} onChange={e => setFaqForm(f => ({ ...f, next_question: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">🎯 Loại dịch vụ</label>
+                    <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                      value={faqForm.service_type} onChange={e => setFaqForm(f => ({ ...f, service_type: e.target.value }))}>
+                      <option value="">-- Tất cả --</option>
+                      <option value="anh_cuoi">📸 Ảnh cưới</option>
+                      <option value="vay_cuoi">👗 Váy cưới</option>
+                      <option value="makeup">💄 Makeup & tóc</option>
+                      <option value="ao_dai">👘 Áo dài</option>
+                      <option value="quay_phim">🎥 Quay phim</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">📈 Lead score cộng thêm</label>
+                    <input type="number" min={0} max={100} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                      placeholder="0–100" value={faqForm.lead_score} onChange={e => setFaqForm(f => ({ ...f, lead_score: parseInt(e.target.value) || 0 }))} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700">🚨 Yêu cầu nhân viên xử lý</p>
+                    <p className="text-[10px] text-gray-400">Bật để thông báo nhân viên khi khách hỏi câu này</p>
+                  </div>
+                  <button type="button" onClick={() => setFaqForm(f => ({ ...f, handoff_trigger: !f.handoff_trigger }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${faqForm.handoff_trigger ? 'bg-red-500' : 'bg-gray-200'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${faqForm.handoff_trigger ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-bold text-gray-700 mb-1.5">📂 Nhóm</label><select className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" value={faqForm.category} onChange={e => setFaqForm(f => ({ ...f, category: e.target.value }))}>{FAQ_CATEGORIES.filter(c => c.value !== 'all').map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
-                <div><label className="block text-xs font-bold text-gray-700 mb-1.5"># Tags (cách nhau dấu phẩy)</label><input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" placeholder="giá, cưới, gói chụp..." value={faqForm.tags} onChange={e => setFaqForm(f => ({ ...f, tags: e.target.value }))} /></div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">📂 Nhóm</label>
+                  <select className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                    value={faqForm.category} onChange={e => setFaqForm(f => ({ ...f, category: e.target.value }))}>
+                    {FAQ_CATEGORIES.filter(c => c.value !== 'all').map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5"># Tags (cách nhau dấu phẩy)</label>
+                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                    placeholder="giá, cưới, gói chụp..." value={faqForm.tags} onChange={e => setFaqForm(f => ({ ...f, tags: e.target.value }))} />
+                </div>
               </div>
             </div>
-            <div className="flex gap-3 p-5 border-t">
+            <div className="flex gap-3 p-5 border-t shrink-0">
               <button onClick={() => setFaqModal(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Huỷ</button>
               <button onClick={saveFaq} disabled={!faqForm.question.trim() || !faqForm.answer.trim() || faqSaving} className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40">
                 {faqSaving ? 'Đang lưu...' : editingFaq ? '✅ Cập nhật' : '💾 Lưu vào kho'}

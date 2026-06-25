@@ -7,6 +7,7 @@ import { expandQuery } from '../utils/synonyms';
 import { useApp } from '../context/AppContext';
 import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 import { APP_CONFIG } from '../data/mockData';
+import { normalizeVietnamese, matchBotFaq, type BotContext } from '../lib/botEngine';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -70,13 +71,16 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const [messages, setMessages]     = useState<Msg[]>([]);
   const [input, setInput]           = useState('');
   const [sending, setSending]       = useState(false);
-  const [isThinking, setIsThinking] = useState(false); // bot đang gõ...
+  const [isThinking, setIsThinking] = useState(false);
   const [hasNew, setHasNew]         = useState(false);
   const [showForm, setShowForm]     = useState(false);
   const [formName, setFormName]     = useState('');
   const [formPhone, setFormPhone]   = useState('');
   const [formSaving, setFormSaving] = useState(false);
   const [formDone, setFormDone]     = useState(false);
+  // Smart bot context — nhớ service type, phase, lead score trong cuộc trò chuyện
+  const [botContext, setBotContext]   = useState<BotContext>({ serviceType: null, phase: null, leadScore: 0 });
+  const [quickReplies, setQuickReplies] = useState<string[]>([]);
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -128,6 +132,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   };
 
   const initSession = async () => {
+    setBotContext({ serviceType: null, phase: null, leadScore: 0 });
+    setQuickReplies([]);
     const savedId = localStorage.getItem(SESSION_KEY);
     if (savedId) {
       const { data } = await supabase
@@ -170,13 +176,15 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     setTimeout(() => setShowForm(true), 1500);
   };
 
-  // Tầng 1: tìm trong customer_faqs (Q&A thực tế) + sale_scripts, dùng từ điển đồng nghĩa
+  // Bot Tầng 1: Smart Intent + Keyword Matching engine
   const callBotTier1 = async (customerMessage: string, sid: string) => {
     try {
       setIsThinking(true);
       const todayStr = new Date().toISOString().split('T')[0];
       const [{ data: faqData }, { data: scriptData }, { data: promoData }] = await Promise.all([
-        supabase.from('customer_faqs').select('id, question, answer, tags, usage_count').eq('is_approved', true),
+        supabase.from('customer_faqs')
+          .select('id, question, answer, tags, usage_count, keywords, next_question, lead_score, service_type, handoff_trigger, category')
+          .eq('is_approved', true),
         supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
         supabase.from('promotions').select('title, short_desc, emoji, end_date').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(2),
       ]);
@@ -184,86 +192,56 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const thinkingDelay1 = settings?.chatBotThinkingDelay ?? 1200;
       await new Promise(r => setTimeout(r, thinkingDelay1 + Math.random() * 500));
 
-      // Virtual FAQs từ settings — cho phép Tầng 1 trả lời về địa chỉ, giá, liên hệ...
+      // Virtual FAQs từ settings (địa chỉ, giá, liên hệ...)
       const sv = settings;
-      const virtualFaqs: Array<{id: string; question: string; answer: string; tags: string[]; usage_count: number; category: string}> = [];
+      const virtualFaqs: Array<{id: string; question: string; answer: string; tags: string[]; usage_count: number; category: string; keywords: string[]}> = [];
       if (sv?.botBusinessAddress || sv?.botBusinessHours) {
         let ans = sv?.botBusinessName ? `📍 ${sv.botBusinessName}\n` : '';
         if (sv?.botBusinessAddress) ans += `Địa chỉ: ${sv.botBusinessAddress}\n`;
         if (sv?.botBusinessHours) ans += `Giờ mở cửa: ${sv.botBusinessHours}`;
-        virtualFaqs.push({ id: '__virt_addr__', question: 'studio ở đâu địa chỉ vị trí cơ sở tìm đến', answer: ans.trim(), tags: ['địa chỉ', 'ở đâu', 'vị trí', 'cơ sở', 'địa điểm', 'tìm đến', 'đường', 'quận'], usage_count: 0, category: 'khac' });
+        virtualFaqs.push({ id: '__virt_addr__', question: 'studio ở đâu địa chỉ vị trí cơ sở tìm đến', answer: ans.trim(), tags: ['địa chỉ', 'ở đâu', 'vị trí', 'cơ sở', 'địa điểm', 'tìm đến', 'đường', 'quận'], keywords: ['địa chỉ', 'ở đâu', 'vị trí', 'tìm đến', 'cơ sở'], usage_count: 0, category: 'khac' });
       }
       if (sv?.botBusinessPhone || sv?.botBusinessEmail) {
         let ans = '';
         if (sv?.botBusinessPhone) ans += `📞 SĐT: ${sv.botBusinessPhone}\n`;
         if (sv?.botBusinessEmail) ans += `✉️ Email: ${sv.botBusinessEmail}`;
-        virtualFaqs.push({ id: '__virt_contact__', question: 'số điện thoại liên hệ hotline email liên lạc', answer: ans.trim(), tags: ['số điện thoại', 'sdt', 'hotline', 'liên hệ', 'contact', 'email', 'gọi'], usage_count: 0, category: 'khac' });
+        virtualFaqs.push({ id: '__virt_contact__', question: 'số điện thoại liên hệ hotline email liên lạc', answer: ans.trim(), tags: ['số điện thoại', 'sdt', 'hotline', 'liên hệ', 'contact', 'email', 'gọi'], keywords: ['số điện thoại', 'hotline', 'liên hệ', 'email', 'gọi điện'], usage_count: 0, category: 'khac' });
       }
       if (sv?.botPriceList) {
-        virtualFaqs.push({ id: '__virt_price__', question: 'giá bảng giá chi phí gói chụp tiền phí bao nhiêu', answer: sv.botPriceList, tags: ['giá', 'bảng giá', 'chi phí', 'gói', 'tiền', 'bao nhiêu', 'phí', 'giá tiền', 'giá cả'], usage_count: 0, category: 'closing' });
+        virtualFaqs.push({ id: '__virt_price__', question: 'giá bảng giá chi phí gói chụp tiền phí bao nhiêu', answer: sv.botPriceList, tags: ['giá', 'bảng giá', 'chi phí', 'gói', 'tiền', 'bao nhiêu', 'phí', 'giá tiền', 'giá cả'], keywords: ['giá', 'bảng giá', 'bao nhiêu', 'chi phí', 'phí chụp', 'gói chụp'], usage_count: 0, category: 'closing' });
       }
       if (sv?.botPurchaseInfo || sv?.botPaymentMethods) {
         let ans = '';
         if (sv?.botPurchaseInfo) ans += sv.botPurchaseInfo + '\n\n';
         if (sv?.botPaymentMethods) ans += `Phương thức thanh toán: ${sv.botPaymentMethods}`;
-        virtualFaqs.push({ id: '__virt_payment__', question: 'đặt cọc thanh toán cách đặt lịch phương thức chuyển khoản', answer: ans.trim(), tags: ['đặt cọc', 'thanh toán', 'đặt lịch', 'cọc', 'chuyển khoản', 'payment', 'tiền cọc', 'đặt'], usage_count: 0, category: 'closing' });
+        virtualFaqs.push({ id: '__virt_payment__', question: 'đặt cọc thanh toán cách đặt lịch phương thức chuyển khoản', answer: ans.trim(), tags: ['đặt cọc', 'thanh toán', 'đặt lịch', 'cọc', 'chuyển khoản', 'payment', 'tiền cọc', 'đặt'], keywords: ['đặt cọc', 'thanh toán', 'chuyển khoản', 'tiền cọc', 'đặt lịch'], usage_count: 0, category: 'closing' });
       }
       if (sv?.botReturnPolicy) {
-        virtualFaqs.push({ id: '__virt_cancel__', question: 'hủy lịch đổi lịch hoàn tiền chính sách hủy', answer: sv.botReturnPolicy, tags: ['hủy', 'đổi lịch', 'hoàn tiền', 'cancel', 'chính sách', 'hủy cọc'], usage_count: 0, category: 'faq' });
+        virtualFaqs.push({ id: '__virt_cancel__', question: 'hủy lịch đổi lịch hoàn tiền chính sách hủy', answer: sv.botReturnPolicy, tags: ['hủy', 'đổi lịch', 'hoàn tiền', 'cancel', 'chính sách', 'hủy cọc'], keywords: ['hủy lịch', 'hoàn tiền', 'đổi lịch', 'chính sách hủy'], usage_count: 0, category: 'faq' });
       }
       try {
         const customItems = JSON.parse(sv?.botCustomInfoItems || '[]') as Array<{id: string; title: string; content: string}>;
-        customItems.forEach(item => virtualFaqs.push({ id: `__virt_c_${item.id}__`, question: item.title, answer: item.content, tags: item.title.toLowerCase().split(/\W+/).filter(w => w.length >= 2), usage_count: 0, category: 'khac' }));
+        customItems.forEach(item => virtualFaqs.push({ id: `__virt_c_${item.id}__`, question: item.title, answer: item.content, tags: item.title.toLowerCase().split(/\W+/).filter(w => w.length >= 2), keywords: item.title.toLowerCase().split(/\W+/).filter(w => w.length >= 2), usage_count: 0, category: 'khac' }));
       } catch {}
 
       const allFaqs = [...(faqData || []), ...virtualFaqs];
 
-      // Mở rộng từ khóa bằng từ điển đồng nghĩa
-      const words = expandQuery(customerMessage);
+      // Tầng 1: Chuẩn hóa + mở rộng từ khóa
+      const normalizedMsg = normalizeVietnamese(customerMessage);
+      const expandedWords = expandQuery(normalizedMsg);
 
-      // TF-IDF: tính IDF cho từng từ từ toàn bộ kho FAQ + kịch bản
-      // Từ xuất hiện ở nhiều doc (phổ biến như "có", "không") → IDF thấp → ít điểm
-      // Từ xuất hiện ít doc (đặc trưng như "ngoại cảnh", "đặt cọc") → IDF cao → nhiều điểm
-      const allDocs: string[] = [
-        ...allFaqs.map((f: any) => [f.question, f.answer, ...(f.tags || [])].join(' ').toLowerCase()),
-        ...(scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase()),
-      ];
-      const N = Math.max(allDocs.length, 1);
-      const df: Record<string, number> = {};
-      allDocs.forEach(doc => {
-        new Set(doc.split(/\s+/).filter(w => w.length >= 2)).forEach(w => { df[w] = (df[w] || 0) + 1; });
-      });
-      // Smoothed IDF: log((N+1)/(df+1)) + 1 — tránh chia cho 0, từ lạ vẫn được tính
-      const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
+      // Tầng 2–4: Chạy smart matching engine
+      const engineResult = matchBotFaq(normalizedMsg, expandedWords, allFaqs, botContext);
 
-      const scoreItem = (text1: string, text2: string, tags: string[], w3: number, w2: number, w1: number) => {
-        let score = 0;
-        words.forEach(w => {
-          const weight = idf(w); // từ phổ biến → nhỏ; từ đặc trưng → lớn
-          if (text1.toLowerCase().includes(w)) score += w3 * weight;
-          if (tags.some(t => t.toLowerCase().includes(w))) score += w2 * weight;
-          if (text2.toLowerCase().includes(w)) score += w1 * weight;
-        });
-        return score;
+      // Cập nhật context cho câu hỏi tiếp theo
+      const newContext: BotContext = {
+        serviceType: engineResult.serviceType ?? botContext.serviceType,
+        phase: engineResult.phase ?? botContext.phase,
+        leadScore: botContext.leadScore + engineResult.leadScoreAdd,
       };
+      setBotContext(newContext);
 
-      // FAQ thực tế + virtual: câu hỏi (+4), tags (+2), câu trả lời (+1)
-      // + usage_count boost: FAQ được dùng nhiều → ưu tiên cao hơn (log scale tránh FAQ cũ lấn át)
-      const scoredFaqs = allFaqs.map((f: any) => ({
-        type: 'faq' as const, item: f,
-        score: scoreItem(f.question, f.answer, f.tags || [], 4, 2, 1)
-          + Math.log1p(f.usage_count || 0) * 0.3,
-      }));
-
-      // Kịch bản: tiêu đề (+3), tags (+2), nội dung (+1)
-      const scoredScripts = (scriptData || []).map((s: any) => ({
-        type: 'script' as const, item: s,
-        score: scoreItem(s.title, s.content, s.tags || [], 3, 2, 1),
-      }));
-
-      const best = [...scoredFaqs, ...scoredScripts].sort((a, b) => b.score - a.score)[0];
-
-      // Format promotions footer (tối đa 2 KM đang chạy)
+      // Format promotions footer
       const activePromos = promoData || [];
       const promoFooter = activePromos.length > 0
         ? '\n\n🎉 Ưu đãi đang chạy:\n' + activePromos.map((p: any) => {
@@ -271,53 +249,90 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
             return `${p.emoji} ${p.title} — ${p.short_desc} (hết ${endDate})`;
           }).join('\n')
         : '';
-
-      // Kiểm tra câu hỏi có liên quan giá/ưu đãi không
-      const PRICE_KEYWORDS = ['giá', 'phí', 'tiền', 'bao nhiêu', 'ưu đãi', 'khuyến', 'giảm', 'sale', 'offer'];
-      const isPriceQuery = PRICE_KEYWORDS.some(k => customerMessage.toLowerCase().includes(k));
+      const PRICE_KWS = ['giá', 'phí', 'tiền', 'bao nhiêu', 'ưu đãi', 'khuyến', 'giảm'];
+      const isPriceQuery = PRICE_KWS.some(k => normalizedMsg.includes(k));
 
       let text: string;
-      if (best && best.score > 0) {
-        if (best.type === 'faq') {
-          text = best.item.answer;
-          if (!String(best.item.id).startsWith('__virt')) {
-            supabase.from('customer_faqs')
-              .update({ usage_count: (best.item.usage_count || 0) + 1 })
-              .eq('id', best.item.id).then(() => {});
-          }
-          // Thêm promo nếu câu hỏi về giá hoặc FAQ thuộc nhóm offer/fomo/closing
-          const promoPhases = ['offer', 'fomo', 'closing'];
-          if ((isPriceQuery || promoPhases.includes(best.item.category)) && promoFooter) {
-            text += promoFooter;
-          }
-        } else {
-          const c = best.item.content as string;
-          text = c.length > 450 ? c.slice(0, 450) + '...' : c;
-          // Thêm promo nếu kịch bản thuộc giai đoạn báo giá/chốt
-          const promoPhases = ['offer', 'fomo', 'closing'];
-          if ((isPriceQuery || promoPhases.includes(best.item.phase)) && promoFooter) {
-            text += promoFooter;
-          }
+
+      if (engineResult.type === 'answer' || engineResult.type === 'clarify') {
+        // Tầng 5: Trả lời + bước tiếp theo
+        text = engineResult.answer;
+        if (engineResult.type === 'answer' && engineResult.nextQuestion) {
+          text += `\n\n${engineResult.nextQuestion}`;
         }
+        // Cập nhật usage_count (bỏ qua virtual FAQs)
+        if (engineResult.faqId && !String(engineResult.faqId).startsWith('__virt')) {
+          const faqItem = allFaqs.find(f => f.id === engineResult.faqId);
+          supabase.from('customer_faqs')
+            .update({ usage_count: ((faqItem as any)?.usage_count || 0) + 1 })
+            .eq('id', engineResult.faqId).then(() => {});
+        }
+        // Gắn promo nếu hỏi về giá
+        const promoCategories = ['offer', 'fomo', 'closing'];
+        const faqCat = allFaqs.find(f => f.id === engineResult.faqId) as any;
+        if ((isPriceQuery || promoCategories.includes(faqCat?.category)) && promoFooter) {
+          text += promoFooter;
+        }
+        // Hiển thị quick replies (dùng từ engine result)
+        setQuickReplies(engineResult.quickReplies);
       } else {
-        // Fallback: không match được — thêm Zalo/Hotline để khách liên hệ trực tiếp
-        const zaloUrl = APP_CONFIG.zaloUrl;
-        const hotline = APP_CONFIG.hotline;
-        let cta = '';
-        if (zaloUrl) cta += `\n💬 Chat Zalo ngay: ${zaloUrl}`;
-        if (hotline) cta += `\n📞 Hotline: ${hotline}`;
-        text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
-        if (promoFooter) text += promoFooter;
-        // Tự học: lưu câu hỏi chưa trả lời để admin duyệt
-        const q = customerMessage.trim();
-        if (q.length >= 8) {
-          supabase.from('customer_faqs').insert({
-            id: crypto.randomUUID(),
-            question: q, answer: '', category: 'khac', tags: [],
-            source: 'from_chat_auto', is_approved: false, usage_count: 0,
-            created_at: new Date().toISOString(),
-          }).then(() => {});
+        // Fallback: thử TF-IDF trên kịch bản sale trước khi báo không hiểu
+        const words = expandedWords;
+        const allDocs = (scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase());
+        const N = Math.max(allDocs.length, 1);
+        const df: Record<string, number> = {};
+        allDocs.forEach(doc => new Set(doc.split(/\s+/).filter(w => w.length >= 2)).forEach(w => { df[w] = (df[w] || 0) + 1; }));
+        const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
+        const scoredScripts = (scriptData || []).map((s: any) => {
+          let score = 0;
+          words.forEach(w => {
+            const wt = idf(w);
+            if (s.title.toLowerCase().includes(w)) score += 3 * wt;
+            if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) score += 2 * wt;
+            if (s.content.toLowerCase().includes(w)) score += 1 * wt;
+          });
+          return { item: s, score };
+        });
+        const bestScript = scoredScripts.sort((a, b) => b.score - a.score)[0];
+
+        if (bestScript && bestScript.score > 0) {
+          const c = bestScript.item.content as string;
+          text = c.length > 450 ? c.slice(0, 450) + '...' : c;
+          if ((isPriceQuery || ['offer', 'fomo', 'closing'].includes(bestScript.item.phase)) && promoFooter) text += promoFooter;
+        } else {
+          // Tầng 3 Fallback hoàn toàn
+          const zaloUrl = APP_CONFIG.zaloUrl;
+          const hotline = APP_CONFIG.hotline;
+          let cta = '';
+          if (zaloUrl) cta += `\n💬 Chat Zalo ngay: ${zaloUrl}`;
+          if (hotline) cta += `\n📞 Hotline: ${hotline}`;
+          text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
+          if (promoFooter) text += promoFooter;
+
+          // Log câu chưa trả lời để admin duyệt
+          const q = customerMessage.trim();
+          if (q.length >= 6) {
+            supabase.from('bot_unmatched_logs').insert({
+              session_id: sid, message: q,
+              normalized_message: normalizedMsg,
+              detected_service: engineResult.serviceType,
+              detected_phase: engineResult.phase,
+              created_at: new Date().toISOString(),
+            }).then(() => {});
+            // Lưu vào customer_faqs pending để admin có thể bổ sung câu trả lời
+            supabase.from('customer_faqs').insert({
+              id: crypto.randomUUID(), question: q, answer: '', category: 'khac', tags: [],
+              source: 'from_chat_auto', is_approved: false, usage_count: 0,
+              created_at: new Date().toISOString(),
+            }).then(() => {});
+          }
         }
+        setQuickReplies(engineResult.quickReplies);
+      }
+
+      // Kiểm tra handoff trigger — thông báo nhân viên nếu cần
+      if (engineResult.handoffTrigger) {
+        supabase.from('chat_sessions').update({ status: 'waiting', unread_admin: 99 }).eq('id', sid).then(() => {});
       }
 
       const botId  = crypto.randomUUID();
@@ -442,13 +457,14 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     }, delayMins * 60 * 1000);
   };
 
-  const send = async () => {
-    if (!input.trim() || !sessionId || sending) return;
+  const send = async (overrideMsg?: string) => {
+    const content = (overrideMsg ?? input).trim();
+    if (!content || !sessionId || sending) return;
     setSending(true);
+    setQuickReplies([]); // Xóa quick replies khi gửi tin mới
     if (followUpTimerRef.current) { clearTimeout(followUpTimerRef.current); followUpTimerRef.current = null; }
-    const id      = crypto.randomUUID();
-    const now     = new Date().toISOString();
-    const content = input.trim();
+    const id  = crypto.randomUUID();
+    const now = new Date().toISOString();
     const nextMsgs = [...messages, { id, sender: 'customer' as const, content, created_at: now }];
     setMessages(nextMsgs);
     setInput('');
@@ -642,6 +658,18 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         <div ref={bottomRef} />
       </div>
 
+      {/* Quick Replies — gợi ý câu hỏi tiếp theo */}
+      {quickReplies.length > 0 && !isThinking && (
+        <div className="shrink-0 bg-gray-50 px-2 pb-1.5 pt-1 flex flex-wrap gap-1 border-t border-gray-100">
+          {quickReplies.map(qr => (
+            <button key={qr} onClick={() => send(qr)}
+              className="text-[11px] bg-white border border-primary/25 text-primary font-medium px-2.5 py-1 rounded-full hover:bg-primary/5 active:scale-95 transition-all whitespace-nowrap shadow-sm">
+              {qr}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Input */}
       <div className="border-t bg-white p-3 flex gap-2 shrink-0 pb-[max(12px,env(safe-area-inset-bottom))]">
         <input
@@ -652,7 +680,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           disabled={sending} autoFocus={open}
         />
         <button
-          onClick={send} disabled={!input.trim() || sending}
+          onClick={() => send()} disabled={!input.trim() || sending}
           className="bg-gradient-to-br from-secondary to-primary text-white rounded-full p-2.5 disabled:opacity-40 hover:opacity-90 transition-opacity"
         >
           <Send size={15} />

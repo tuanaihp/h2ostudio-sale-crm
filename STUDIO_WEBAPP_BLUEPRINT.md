@@ -249,6 +249,9 @@ src/
 │   ├── image.ts                ← uploadImageToStorage(), getDisplayImageUrl()
 │   ├── phone.ts                ← validateVietnamesePhone()
 │   └── synonyms.ts             ← SYNONYM_GROUPS + expandQuery() cho Bot Tầng 1
+│
+├── lib/
+│   └── botEngine.ts            ← Smart Bot Engine v2: normalize/detect/match/context
 ├── types.ts                    ← tất cả interfaces + DbRow types
 ├── supabase.ts                 ← createClient
 ├── index.css                   ← shimmer, heartBurst keyframes
@@ -787,57 +790,41 @@ expandQuery("bao nhiêu tiền")
   - Answer = tin nhắn admin kế tiếp sau câu hỏi đó (nếu có)
 - Admin chỉnh sửa rồi chọn category + tags → Save (source=`from_chat`, is_approved=true)
 
-### Bot Tầng 1 — search logic (LiveChatBubble.tsx)
+### Bot Tầng 1 — Smart Matching Engine v2 (`src/lib/botEngine.ts`)
 
-```typescript
-// Fetch song song 3 nguồn (FAQ + kịch bản + khuyến mãi đang chạy)
-const todayStr = new Date().toISOString().split('T')[0];
-const [{ data: faqData }, { data: scriptData }, { data: promoData }] = await Promise.all([
-  supabase.from('customer_faqs').select('id, question, answer, tags, usage_count').eq('is_approved', true),
-  supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
-  supabase.from('promotions').select('title, short_desc, emoji, end_date')
-    .eq('enabled', true).eq('show_on_website', true)
-    .lte('start_date', todayStr).gte('end_date', todayStr).limit(2),
-]);
+**Kiến trúc 5 tầng** (thay thế TF-IDF cũ):
 
-// Mở rộng từ khóa
-const words = expandQuery(customerMessage);
-
-// TF-IDF: tính IDF từ toàn bộ corpus (FAQ + kịch bản)
-// → từ phổ biến như "có/không/bao" → trọng số thấp
-// → từ đặc trưng như "ngoại cảnh/đặt cọc" → trọng số cao
-const allDocs = [
-  ...(faqData||[]).map(f => [f.question, f.answer, ...(f.tags||[])].join(' ').toLowerCase()),
-  ...(scriptData||[]).map(s => [s.title, s.content, ...(s.tags||[])].join(' ').toLowerCase()),
-];
-const N = Math.max(allDocs.length, 1);
-const df: Record<string,number> = {};
-allDocs.forEach(doc => {
-  new Set(doc.split(/\s+/).filter(w=>w.length>=2)).forEach(w => { df[w]=(df[w]||0)+1; });
-});
-const idf = (w: string) => Math.log((N+1)/((df[w]||0)+1)) + 1; // smoothed IDF
-
-// Score = Σ(base_weight × IDF(word))
-// FAQ:    question ×4, tags ×2, answer ×1  + usage_count boost log1p×0.3
-// Script: title ×3,   tags ×2, content ×1
-
-if (best && best.score > 0) {
-  // Trả lời + inject promoFooter nếu câu hỏi về giá hoặc kịch bản offer/fomo/closing
-  // + tăng usage_count (non-blocking)
-} else {
-  // Fallback: Zalo/Hotline deeplink từ APP_CONFIG (KHÔNG dùng settings?.zaloUrl)
-  const zaloUrl = APP_CONFIG.zaloUrl;
-  const hotline = APP_CONFIG.hotline;
-  // TỰ HỌC: lưu câu hỏi vào pending (is_approved=false, source='from_chat_auto')
-  if (customerMessage.trim().length >= 8) {
-    supabase.from('customer_faqs').insert({ ..., is_approved: false, source: 'from_chat_auto' })
-  }
-}
+```
+Tầng 1: normalizeVietnamese()  — viết thường + thay viết tắt (bn→bao nhiêu, mk→makeup...)
+Tầng 2: detectServiceType()    — nhận diện loại dịch vụ (anh_cuoi/vay_cuoi/makeup...)
+Tầng 3: detectPhase()          — nhận diện giai đoạn (pricing/booking/deposit/after_sale...)
+Tầng 4: matchBotFaq()          — khớp % keyword: FAQ có keywords[] dùng mới; không có → question overlap cũ
+Tầng 5: answer + next_question — trả lời + câu dẫn tiếp theo
 ```
 
-> ⚠️ **Deeplink Zalo/Hotline** trong fallback dùng `APP_CONFIG` từ `src/data/mockData.ts`, KHÔNG phải `settings?.zaloUrl` (AppSettings không có field này).
+**Ngưỡng khớp:**
+- ≥50%: trả lời ngay + hiện `next_question` nếu có
+- 20–49%: hỏi lại (clarify) 2 lựa chọn
+- <20%: fallback → TF-IDF kịch bản → nếu vẫn không → Zalo/Hotline
 
-> 💡 **TF-IDF** tính toán hoàn toàn trong memory mỗi request — không cần API, không cần DB thêm. Corpus là toàn bộ FAQ + kịch bản đã fetch cùng request đó.
+**Context memory** (trong LiveChatBubble state): nhớ `serviceType`, `phase`, `leadScore` xuyên suốt cuộc hội thoại → câu sau được boost đúng ngữ cảnh.
+
+**Quick Replies**: sau mỗi bot response → hiện 3 chip gợi ý dựa theo `serviceType` đã detect.
+
+**Lead Score**: mỗi message cộng điểm theo phase (pricing+20, deposit+80...) + lead_score của FAQ matched. Khi FAQ có `handoff_trigger=true` → thông báo nhân viên.
+
+**Tự học**: câu không trả lời được → lưu vào `bot_unmatched_logs` + `customer_faqs` pending → admin duyệt trong tab "Chưa trả lời" (/admin/bot → tab Chưa trả lời).
+
+**DB fields mới trong `customer_faqs`** (cần chạy `supabase_bot_smart_matching.sql`):
+| Field | Type | Mô tả |
+|---|---|---|
+| `keywords` | text[] | Từ khóa nhận diện, bot so khớp % |
+| `next_question` | text | Câu dẫn tiếp sau khi trả lời |
+| `lead_score` | integer | Điểm lead cộng thêm khi match |
+| `service_type` | text | anh_cuoi/vay_cuoi/makeup/... |
+| `handoff_trigger` | boolean | Thông báo nhân viên khi match |
+
+> ⚠️ **Backward compatible**: FAQ cũ không có `keywords` → vẫn dùng question word overlap, không bị ảnh hưởng.
 
 ---
 
