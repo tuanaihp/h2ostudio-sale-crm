@@ -21,6 +21,37 @@ const ABBREVIATIONS: Record<string, string> = {
   a: 'anh', e: 'em', c: 'chị', b: 'bạn',
 };
 
+// ── Bảng đồng nghĩa cụm từ — chuẩn hóa trước khi so khớp ───────────────────
+// Cụm dài trước để tránh partial match; áp dụng SAU normalizeVietnamese
+const SYNONYM_MAP: [string, string][] = [
+  ['chi phí chụp', 'giá chụp'],
+  ['tiền cọc',     'đặt cọc'],
+  ['cọc trước',    'đặt cọc'],
+  ['tiền đặt',     'đặt cọc'],
+  ['đặt trước',    'đặt cọc'],
+  ['giữ lịch',     'đặt lịch'],
+  ['giữ ngày',     'đặt lịch'],
+  ['hẹn ngày',     'đặt lịch'],
+  ['chụp hình',    'chụp ảnh'],
+  ['hình cưới',    'ảnh cưới'],
+  ['bộ hình',      'bộ ảnh'],
+  ['mấy tiếng',    'bao lâu'],
+  ['mấy giờ',      'bao lâu'],
+  ['lâu không',    'bao lâu'],
+  ['người mập',    'size lớn'],
+  ['cô dâu mập',   'size lớn'],
+  ['người béo',    'size lớn'],
+  ['nặng cân',     'size lớn'],
+  ['đổi ngày',     'đổi lịch'],
+  ['dời lịch',     'đổi lịch'],
+  ['dời ngày',     'đổi lịch'],
+  ['số tài khoản', 'tài khoản'],
+  ['chuyển tiền',  'chuyển khoản'],
+  ['chi phí',      'giá'],
+  ['mấy tiền',     'bao nhiêu'],
+  ['giá tiền',     'giá'],
+];
+
 // ── Service types — loại dịch vụ ─────────────────────────────────────────────
 
 const SERVICE_KEYWORDS: Record<string, string[]> = {
@@ -149,6 +180,15 @@ export function normalizeVietnamese(text: string): string {
   return normalized.join(' ').replace(/\s+/g, ' ').trim();
 }
 
+// Áp dụng synonym map lên chuỗi đã normalize — thay cụm từ đồng nghĩa về dạng chuẩn
+export function expandSynonyms(text: string): string {
+  let result = text;
+  for (const [from, to] of SYNONYM_MAP) {
+    if (result.includes(from)) result = result.split(from).join(to);
+  }
+  return result;
+}
+
 // Tầng 2: Nhận diện loại dịch vụ
 export function detectServiceType(normalizedMsg: string): string | null {
   for (const [stype, keywords] of Object.entries(SERVICE_KEYWORDS)) {
@@ -173,11 +213,20 @@ export function getQuickReplies(serviceType: string | null): string[] {
 // Tầng 4: Tính điểm khớp keyword —
 // FAQ có keywords[] (mới): tính % keyword xuất hiện trong câu hỏi khách
 // FAQ không có keywords (cũ): tính overlap từ trong câu hỏi đã lưu
-function scoreKeywords(normalizedMsg: string, keywords: string[]): number {
+// expandedWordSet: union từ expandQuery + synonym expansion để match từng từ riêng lẻ
+function scoreKeywords(
+  normalizedMsg: string,
+  expandedWordSet: Set<string>,
+  keywords: string[],
+): number {
   if (!keywords || keywords.length === 0) return 0;
   const matched = keywords.filter(kw => {
     const normKw = normalizeVietnamese(kw.toLowerCase());
-    return normalizedMsg.includes(normKw);
+    // Pass 1: khớp cụm từ nguyên vẹn (sau synonym expansion)
+    if (normalizedMsg.includes(normKw)) return true;
+    // Pass 2: mọi từ trong keyword đều có trong expanded word set
+    const kwWords = normKw.split(/\s+/).filter(w => w.length >= 2);
+    return kwWords.length > 0 && kwWords.every(w => expandedWordSet.has(w));
   }).length;
   return matched / keywords.length;
 }
@@ -202,18 +251,26 @@ export function matchBotFaq(
   const detectedService = detectServiceType(normalizedMsg) ?? context.serviceType;
   const detectedPhase = detectPhase(normalizedMsg) ?? context.phase;
 
+  // Synonym expansion: "tiền cọc" → "đặt cọc", "chụp hình" → "chụp ảnh", v.v.
+  const msgForScoring = expandSynonyms(normalizedMsg);
+  // Union từ expandQuery (synonyms.ts) + từ trong chuỗi đã expand → tập từ đầy đủ nhất
+  const expandedWordSet = new Set<string>([
+    ...expandedWords,
+    ...msgForScoring.split(/\s+/).filter(w => w.length >= 2),
+  ]);
+
   const scored = faqs.map(faq => {
     let score: number;
 
     if (faq.keywords && faq.keywords.length > 0) {
-      score = scoreKeywords(normalizedMsg, faq.keywords);
+      score = scoreKeywords(msgForScoring, expandedWordSet, faq.keywords);
       if (score < 0.3 && faq.tags && faq.tags.length > 0) {
-        score = Math.max(score, scoreKeywords(normalizedMsg, faq.tags) * 0.75);
+        score = Math.max(score, scoreKeywords(msgForScoring, expandedWordSet, faq.tags) * 0.75);
       }
     } else {
-      score = scoreQuestionOverlap(expandedWords, faq.question);
+      score = scoreQuestionOverlap(Array.from(expandedWordSet), faq.question);
       if (score < 0.3 && faq.tags && faq.tags.length > 0) {
-        score = Math.max(score, scoreKeywords(normalizedMsg, faq.tags) * 0.65);
+        score = Math.max(score, scoreKeywords(msgForScoring, expandedWordSet, faq.tags) * 0.65);
       }
     }
 
