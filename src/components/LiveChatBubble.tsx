@@ -87,6 +87,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRef    = useRef(false);
+  // Cache FAQ + kịch bản sale — fetch 1 lần, dùng lại mọi tin nhắn, tự hết hạn sau 10 phút
+  const faqCacheRef       = useRef<any[] | null>(null);
+  const scriptCacheRef    = useRef<any[] | null>(null);
+  const cacheExpiresRef   = useRef<number>(0);
+  const CACHE_TTL_MS      = 10 * 60 * 1000; // 10 phút
   useEffect(() => { openRef.current = open; }, [open]);
 
   // Auto-open — chỉ khi standalone + chatAutoOpenEnabled bật
@@ -182,13 +187,44 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     try {
       setIsThinking(true);
       const todayStr = new Date().toISOString().split('T')[0];
-      const [{ data: faqData }, { data: scriptData }, { data: promoData }] = await Promise.all([
-        supabase.from('customer_faqs')
-          .select('id, question, answer, tags, usage_count, keywords, next_question, lead_score, service_type, handoff_trigger, category')
-          .eq('is_approved', true),
-        supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
-        supabase.from('promotions').select('title, short_desc, emoji, end_date').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(2),
-      ]);
+
+      // Promotions: time-sensitive → luôn fetch mới
+      // FAQ + Scripts: ổn định → cache sau lần đầu, không fetch lại
+      const promoPromise = supabase.from('promotions')
+        .select('title, short_desc, emoji, end_date')
+        .eq('enabled', true).eq('show_on_website', true)
+        .lte('start_date', todayStr).gte('end_date', todayStr).limit(2);
+
+      let faqData:    any[];
+      let scriptData: any[];
+      let promoData:  any[];
+
+      const cacheValid = faqCacheRef.current && scriptCacheRef.current && Date.now() < cacheExpiresRef.current;
+
+      if (cacheValid) {
+        // Cache hit — chỉ chờ promotions (~80ms thay vì ~400ms)
+        const { data: promos } = await promoPromise;
+        faqData    = faqCacheRef.current!;
+        scriptData = scriptCacheRef.current!;
+        promoData  = promos || [];
+      } else {
+        // Cache miss hoặc hết hạn — fetch cả 3 song song
+        const [faqRes, scriptRes, promoRes] = await Promise.all([
+          supabase.from('customer_faqs')
+            .select('id, question, answer, tags, usage_count, keywords, next_question, lead_score, service_type, handoff_trigger, category')
+            .eq('is_approved', true),
+          supabase.from('sale_scripts')
+            .select('id, phase, title, content, tags')
+            .eq('enabled', true).order('order_num', { ascending: true }),
+          promoPromise,
+        ]);
+        faqData    = faqRes.data    || [];
+        scriptData = scriptRes.data || [];
+        promoData  = promoRes.data  || [];
+        faqCacheRef.current    = faqData;
+        scriptCacheRef.current = scriptData;
+        cacheExpiresRef.current = Date.now() + CACHE_TTL_MS;
+      }
 
       const thinkingDelay1 = settings?.chatBotThinkingDelay ?? 1200;
       await new Promise(r => setTimeout(r, thinkingDelay1 + Math.random() * 500));
