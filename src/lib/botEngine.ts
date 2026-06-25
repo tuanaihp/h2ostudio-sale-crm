@@ -361,10 +361,8 @@ export function matchBotFaq(
         score = Math.max(score, scoreKeywords(msgForScoring, expandedWordSet, faq.tags) * 0.75);
       }
     } else {
-      score = scoreQuestionOverlap(Array.from(expandedWordSet), faq.question);
-      if (score < 0.3 && faq.tags && faq.tags.length > 0) {
-        score = Math.max(score, scoreKeywords(msgForScoring, expandedWordSet, faq.tags) * 0.65);
-      }
+      // No keywords → score=0, defer to Fuse.js (scoreQuestionOverlap cho false positive vì synonym expansion quá rộng)
+      score = 0;
     }
 
     // Context boost: cùng service_type → ưu tiên cao hơn

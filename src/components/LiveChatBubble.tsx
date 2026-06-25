@@ -366,14 +366,24 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         // Hiển thị quick replies (dùng từ engine result)
         setQuickReplies(engineResult.quickReplies);
       } else {
-        // Upgrade 2: Fuse.js Fuzzy — bắt lỗi sai chính tả / cách hỏi khác trước khi TF-IDF
+        // Fuse.js: chỉ search trong cùng service_type (Intent Gate) + searchText đầy đủ
         const fuseItems = allFaqs
-          .filter(f => f.answer && String(f.answer).length > 5)
+          .filter(f => {
+            if (!f.answer || String(f.answer).length <= 5) return false;
+            const fSvc = (f as any).service_type ?? null;
+            // Nếu detect được service_type thì loại FAQ khác service
+            return !engineResult.serviceType || !fSvc || fSvc === engineResult.serviceType;
+          })
           .map(f => ({
             id: f.id,
             answer: f.answer,
             service_type: (f as any).service_type ?? null,
-            searchText: [f.question, ...((f as any).keywords || [])].join(' '),
+            searchText: [
+              f.question,
+              ...((f as any).keywords || []),
+              (f as any).service_type || '',
+              f.category || '',
+            ].filter(Boolean).join(' '),
           }));
         const fuse = new Fuse(fuseItems, {
           keys: [{ name: 'searchText', weight: 0.7 }, { name: 'answer', weight: 0.3 }],
@@ -385,7 +395,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         const fuseResults = fuse.search(normalizedMsg);
         const fuseTop = fuseResults[0];
 
-        if (fuseTop && (fuseTop.score ?? 1) < 0.38 && fuseTop.item.answer) {
+        if (fuseTop && (fuseTop.score ?? 1) < 0.25 && fuseTop.item.answer) {
           text = fuseTop.item.answer;
           setQuickReplies(getQuickReplies(fuseTop.item.service_type));
         } else {

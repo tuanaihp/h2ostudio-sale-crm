@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
 import { expandQuery } from '../utils/synonyms';
+import { normalizeVietnamese, matchBotFaq, type BotContext } from '../lib/botEngine';
 import type { CustomerFaq, DbCustomerFaqRow, SaleScript, PricePackage } from '../types';
 import { uploadImageToStorage, compressImage } from '../utils/image';
 import {
@@ -646,35 +647,38 @@ export default function AdminBotStudio() {
       return;
     }
 
-    // Tầng 1: TF-IDF
+    // Tầng 1: matchBotFaq — giống live chat 100% (fix: không dùng TF-IDF riêng nữa)
     try {
       const [{ data: faqData }, { data: scriptData }] = await Promise.all([
-        supabase.from('customer_faqs').select('id, question, answer, tags, usage_count, category').eq('is_approved', true),
+        supabase.from('customer_faqs').select('id, question, answer, tags, usage_count, category, keywords, next_question, lead_score, service_type').eq('is_approved', true),
         supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true),
       ]);
-      const words = expandQuery(msg);
-      const allDocs = [
-        ...(faqData || []).map((f: any) => [f.question, f.answer, ...(f.tags || [])].join(' ').toLowerCase()),
-        ...(scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase()),
-      ];
-      const N = Math.max(allDocs.length, 1);
-      const df: Record<string, number> = {};
-      allDocs.forEach(doc => new Set(doc.split(/\s+/).filter((w: string) => w.length >= 2)).forEach((w: string) => { df[w] = (df[w] || 0) + 1; }));
-      const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
-      const score = (t1: string, t2: string, tags: string[]) => {
-        let s = 0;
-        words.forEach(w => { const wt = idf(w); if (t1.toLowerCase().includes(w)) s += 3 * wt; if (tags.some((t: string) => t.toLowerCase().includes(w))) s += 2 * wt; if (t2.toLowerCase().includes(w)) s += wt; });
-        return s;
-      };
-      const all = [
-        ...(faqData || []).map((f: any) => ({ type: 'faq' as const, item: f, title: f.question, phase: f.category, score: score(f.question, f.answer, f.tags || []) + Math.log1p(f.usage_count || 0) * 0.3 })),
-        ...(scriptData || []).map((s: any) => ({ type: 'script' as const, item: s, title: s.title, phase: s.phase, score: score(s.title, s.content, s.tags || []) })),
-      ].sort((a, b) => b.score - a.score);
-      const best = all[0];
-      const text = best?.score > 0
-        ? (best.type === 'faq' ? best.item.answer : (best.item.content as string).slice(0, 450))
-        : 'Không tìm thấy câu trả lời phù hợp trong kho kiến thức.';
-      const matched = best?.score > 0 ? { type: best.type, title: best.title, score: Math.round(best.score * 10) / 10, phase: best.phase } : undefined;
+      const normalizedMsg = normalizeVietnamese(msg);
+      const expandedWords = expandQuery(normalizedMsg);
+      const testCtx: BotContext = { serviceType: null, phase: null, leadScore: 0 };
+      const engineResult = matchBotFaq(normalizedMsg, expandedWords, faqData || [], testCtx);
+      let text: string;
+      let matched: TestMsg['matched'];
+      if (engineResult.type !== 'fallback') {
+        text = engineResult.answer;
+        const mFaq = engineResult.faqId ? (faqData || []).find((f: any) => f.id === String(engineResult.faqId)) : null;
+        if (mFaq) matched = { type: 'faq', title: mFaq.question, score: Math.round(engineResult.score * 100), phase: engineResult.phase ?? mFaq.category };
+      } else {
+        // Script TF-IDF fallback (matchBotFaq không search scripts)
+        const words = expandedWords;
+        const N = Math.max((scriptData || []).length, 1);
+        const df: Record<string, number> = {};
+        (scriptData || []).forEach((s: any) => new Set([s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2)).forEach((w: string) => { df[w] = (df[w] || 0) + 1; }));
+        const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
+        const scriptScore = (s: any) => { let sc = 0; words.forEach(w => { const wt = idf(w); if (s.title.toLowerCase().includes(w)) sc += 3 * wt; if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) sc += 2 * wt; if (s.content.toLowerCase().includes(w)) sc += wt; }); return sc; };
+        const best = (scriptData || []).map((s: any) => ({ s, sc: scriptScore(s) })).sort((a: any, b: any) => b.sc - a.sc)[0];
+        if (best?.sc > 0) {
+          text = (best.s.content as string).slice(0, 450);
+          matched = { type: 'script', title: best.s.title, score: Math.round(best.sc * 10) / 10, phase: best.s.phase };
+        } else {
+          text = 'Không tìm thấy câu trả lời phù hợp. Bạn có thể thêm FAQ hoặc bật Bot Tầng 2 (AI).';
+        }
+      }
       setTestMsgs(prev => [...prev, { role: 'bot', text, tier: 1, matched }]);
     } catch { setTestMsgs(prev => [...prev, { role: 'bot', text: 'Lỗi khi chạy test.' }]); }
     finally { setTestLoading(false); }
