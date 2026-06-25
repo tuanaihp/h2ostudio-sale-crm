@@ -374,3 +374,30 @@ export interface DbConsultationRow {
 export interface DbUserRoleRow {
   id: string; email: string; phone_number?: string; role: string; display_name?: string;
 }
+
+export interface PricePackage {
+  id: string;
+  title: string;
+  price: string;
+  description: string;
+  imageUrl: string;
+  serviceType: string;
+  keywords: string[];
+  enabled: boolean;
+  orderNum: number;
+  createdAt: string;
+}
+
+export interface DbPricePackageRow {
+  id: string;
+  title: string;
+  price: string;
+  description: string;
+  image_url: string;
+  service_type: string;
+  keywords: string[] | null;
+  enabled: boolean;
+  order_num: number;
+  created_at: string;
+  updated_at?: string;
+}

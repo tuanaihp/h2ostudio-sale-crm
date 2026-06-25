@@ -18,6 +18,7 @@ interface Msg {
   sender: 'customer' | 'admin';
   content: string;
   created_at: string;
+  image_url?: string;
 }
 
 export function playNotifSound() {
@@ -91,6 +92,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const faqCacheRef       = useRef<any[] | null>(null);
   const scriptCacheRef    = useRef<any[] | null>(null);
   const cacheExpiresRef   = useRef<number>(0);
+  const pkgCacheRef       = useRef<any[] | null>(null);
   const CACHE_TTL_MS      = 10 * 60 * 1000; // 10 phút
   useEffect(() => { openRef.current = open; }, [open]);
 
@@ -151,7 +153,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         setIsAnon(anon);
         setFormDone(!anon);
         const { data: msgs } = await supabase
-          .from('chat_messages').select('id, sender, content, created_at')
+          .from('chat_messages').select('id, sender, content, image_url, created_at')
           .eq('session_id', data.id).order('created_at', { ascending: true });
         setMessages((msgs || []) as Msg[]);
         subscribe(data.id);
@@ -198,8 +200,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       let faqData:    any[];
       let scriptData: any[];
       let promoData:  any[];
+      let pkgData:    any[];
 
-      const cacheValid = faqCacheRef.current && scriptCacheRef.current && Date.now() < cacheExpiresRef.current;
+      const cacheValid = faqCacheRef.current && scriptCacheRef.current && pkgCacheRef.current && Date.now() < cacheExpiresRef.current;
 
       if (cacheValid) {
         // Cache hit — chỉ chờ promotions (~80ms thay vì ~400ms)
@@ -207,9 +210,10 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         faqData    = faqCacheRef.current!;
         scriptData = scriptCacheRef.current!;
         promoData  = promos || [];
+        pkgData    = pkgCacheRef.current!;
       } else {
-        // Cache miss hoặc hết hạn — fetch cả 3 song song
-        const [faqRes, scriptRes, promoRes] = await Promise.all([
+        // Cache miss hoặc hết hạn — fetch song song
+        const [faqRes, scriptRes, promoRes, pkgRes] = await Promise.all([
           supabase.from('customer_faqs')
             .select('id, question, answer, tags, usage_count, keywords, next_question, lead_score, service_type, handoff_trigger, category')
             .eq('is_approved', true),
@@ -217,12 +221,15 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
             .select('id, phase, title, content, tags')
             .eq('enabled', true).order('order_num', { ascending: true }),
           promoPromise,
+          supabase.from('price_packages').select('*').eq('enabled', true).order('order_num'),
         ]);
         faqData    = faqRes.data    || [];
         scriptData = scriptRes.data || [];
         promoData  = promoRes.data  || [];
+        pkgData    = pkgRes.data    || [];
         faqCacheRef.current    = faqData;
         scriptCacheRef.current = scriptData;
+        pkgCacheRef.current    = pkgData;
         cacheExpiresRef.current = Date.now() + CACHE_TTL_MS;
       }
 
@@ -231,7 +238,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       // Virtual FAQs từ settings (địa chỉ, giá, liên hệ...)
       const sv = settings;
-      const virtualFaqs: Array<{id: string; question: string; answer: string; tags: string[]; usage_count: number; category: string; keywords: string[]}> = [];
+      const virtualFaqs: Array<{id: string; question: string; answer: string; tags: string[]; usage_count: number; category: string; keywords: string[]; service_type?: string | null}> = [];
       if (sv?.botBusinessAddress || sv?.botBusinessHours) {
         let ans = sv?.botBusinessName ? `📍 ${sv.botBusinessName}\n` : '';
         if (sv?.botBusinessAddress) ans += `Địa chỉ: ${sv.botBusinessAddress}\n`;
@@ -260,6 +267,29 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         const customItems = JSON.parse(sv?.botCustomInfoItems || '[]') as Array<{id: string; title: string; content: string}>;
         customItems.forEach(item => virtualFaqs.push({ id: `__virt_c_${item.id}__`, question: item.title, answer: item.content, tags: item.title.toLowerCase().split(/\W+/).filter(w => w.length >= 2), keywords: item.title.toLowerCase().split(/\W+/).filter(w => w.length >= 2), usage_count: 0, category: 'khac' }));
       } catch {}
+
+      // Package FAQs — chuyển gói báo giá thành FAQ kèm ảnh
+      const pkgImageMap = new Map<string, string>();
+      (pkgData || []).forEach((pkg: any) => {
+        const pkgFaqId = `__pkg_${pkg.id}__`;
+        pkgImageMap.set(pkgFaqId, pkg.image_url || '');
+        const customKws: string[] = pkg.keywords || [];
+        const titleKws = pkg.title.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2);
+        const allKws = [...new Set(['báo giá', 'gói chụp', 'chi tiết gói', ...customKws, ...titleKws])];
+        let answer = `📦 ${pkg.title}`;
+        if (pkg.price) answer += `\n💰 Giá: ${pkg.price}`;
+        if (pkg.description) answer += `\n\n${pkg.description}`;
+        virtualFaqs.push({
+          id: pkgFaqId,
+          question: `${pkg.title} giá bao nhiêu báo giá chi tiết`,
+          answer,
+          tags: ['giá', 'báo giá', 'gói', pkg.service_type].filter(Boolean),
+          keywords: allKws,
+          usage_count: 5,
+          category: 'closing',
+          service_type: pkg.service_type || null,
+        });
+      });
 
       const allFaqs = [...(faqData || []), ...virtualFaqs];
 
@@ -419,9 +449,18 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         supabase.from('chat_sessions').update({ status: 'waiting', unread_admin: 99 }).eq('id', sid).then(() => {});
       }
 
+      // Gắn ảnh báo giá nếu bot match đúng 1 gói cụ thể (single-intent)
+      let botImageUrl: string | null = null;
+      if (!isMultiIntent && engineResult.faqId && pkgImageMap.has(String(engineResult.faqId))) {
+        const imgUrl = pkgImageMap.get(String(engineResult.faqId)) || '';
+        if (imgUrl) botImageUrl = imgUrl;
+      }
+
       const botId  = crypto.randomUUID();
       const botNow = new Date().toISOString();
-      await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
+      const msgInsert: any = { id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow };
+      if (botImageUrl) msgInsert.image_url = botImageUrl;
+      await supabase.from('chat_messages').insert(msgInsert);
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
       scheduleFollowUp(sid);
     } catch (e) {
@@ -680,6 +719,13 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
                 : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
             }`}>
               <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.image_url && (
+                <img
+                  src={msg.image_url} alt="Ảnh báo giá"
+                  className="mt-2 rounded-lg w-full object-cover max-h-52 cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => window.open(msg.image_url, '_blank')}
+                />
+              )}
               <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-white/70' : 'text-gray-400'}`}>
                 {format(new Date(msg.created_at), 'HH:mm')}
               </p>

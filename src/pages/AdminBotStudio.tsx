@@ -3,7 +3,8 @@ import { Link, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
 import { expandQuery } from '../utils/synonyms';
-import type { CustomerFaq, DbCustomerFaqRow, SaleScript } from '../types';
+import type { CustomerFaq, DbCustomerFaqRow, SaleScript, PricePackage } from '../types';
+import { uploadImageToStorage, compressImage } from '../utils/image';
 import {
   Bot, Home, BookOpen, FileText, MessageSquare, Settings,
   ToggleLeft, ToggleRight, Brain, Zap, Save, Send, RefreshCw,
@@ -301,6 +302,14 @@ export default function AdminBotStudio() {
   const [purchaseForm, setPurchaseForm] = useState({ purchaseInfo: '', paymentMethods: '', returnPolicy: '', discountPolicy: '' });
   const [infoModalSaving, setInfoModalSaving] = useState(false);
 
+  // ── Price packages ──
+  const [pricePackages, setPricePackages] = useState<PricePackage[]>([]);
+  const [pkgLoading, setPkgLoading] = useState(false);
+  const [pkgModal, setPkgModal] = useState<{ open: boolean; pkg: PricePackage | null }>({ open: false, pkg: null });
+  const [pkgForm, setPkgForm] = useState({ title: '', price: '', description: '', image_url: '', service_type: '', keywords: '', enabled: true });
+  const [pkgSaving, setPkgSaving] = useState(false);
+  const [pkgImageUploading, setPkgImageUploading] = useState(false);
+
   // ── Test chat ──
   const [testMsgs, setTestMsgs] = useState<TestMsg[]>([]);
   const [testInput, setTestInput] = useState('');
@@ -312,6 +321,7 @@ export default function AdminBotStudio() {
   useEffect(() => { if (tab === 'knowledge' && kTab === 'faqs' && faqs.length === 0) loadFaqs(); }, [tab, kTab]);
   useEffect(() => { if (tab === 'knowledge' && kTab === 'scripts' && scripts.length === 0) loadScripts(); }, [tab, kTab]);
   useEffect(() => { if (tab === 'unanswered') loadUnmatchedLogs(); }, [tab]);
+  useEffect(() => { if (tab === 'info') loadPricePackages(); }, [tab]);
   useEffect(() => { testBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [testMsgs]);
   useEffect(() => {
     if (settings) {
@@ -525,6 +535,56 @@ export default function AdminBotStudio() {
       botReturnPolicy: purchaseForm.returnPolicy, botDiscountPolicy: purchaseForm.discountPolicy,
     });
     setInfoModalSaving(false); setPurchaseModal(false);
+  };
+
+  // ── Price packages CRUD ──
+  const loadPricePackages = async () => {
+    setPkgLoading(true);
+    const { data } = await supabase.from('price_packages').select('*').order('order_num').order('created_at');
+    setPricePackages((data || []).map((row: any): PricePackage => ({
+      id: row.id, title: row.title, price: row.price || '',
+      description: row.description || '', imageUrl: row.image_url || '',
+      serviceType: row.service_type || '', keywords: row.keywords || [],
+      enabled: row.enabled !== false, orderNum: row.order_num || 0,
+      createdAt: row.created_at,
+    })));
+    setPkgLoading(false);
+  };
+  const savePricePackage = async () => {
+    if (!pkgForm.title.trim()) return;
+    setPkgSaving(true);
+    const keywords = pkgForm.keywords ? pkgForm.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : [];
+    const row = {
+      title: pkgForm.title.trim(), price: pkgForm.price.trim(),
+      description: pkgForm.description.trim(), image_url: pkgForm.image_url,
+      service_type: pkgForm.service_type, keywords, enabled: pkgForm.enabled,
+      updated_at: new Date().toISOString(),
+    };
+    if (pkgModal.pkg) {
+      await supabase.from('price_packages').update(row).eq('id', pkgModal.pkg.id);
+    } else {
+      await supabase.from('price_packages').insert({ ...row, id: crypto.randomUUID(), order_num: pricePackages.length, created_at: new Date().toISOString() });
+    }
+    setPkgSaving(false);
+    setPkgModal({ open: false, pkg: null });
+    loadPricePackages();
+  };
+  const deletePricePackage = async (id: string) => {
+    if (!window.confirm('Xóa báo giá này?')) return;
+    await supabase.from('price_packages').delete().eq('id', id);
+    setPricePackages(prev => prev.filter(p => p.id !== id));
+  };
+  const uploadPkgImage = async (file: File) => {
+    setPkgImageUploading(true);
+    try {
+      const base64 = await compressImage(file, 1200, 1200, 0.85);
+      const url = await uploadImageToStorage(base64, `price_packages/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
+      setPkgForm(f => ({ ...f, image_url: url }));
+    } catch (e: any) {
+      alert('Lỗi upload ảnh: ' + (e.message || 'Thử lại'));
+    } finally {
+      setPkgImageUploading(false);
+    }
   };
 
   // ── Test bot ──
@@ -1054,9 +1114,9 @@ export default function AdminBotStudio() {
                   className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
                   <Plus size={15} /> Thêm thông tin
                 </button>
-                <button onClick={() => { setPriceListDraft(settings?.botPriceList || ''); setPriceListModal(true); }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
-                  <span className="text-base leading-none">📋</span> Thêm bảng giá
+                <button onClick={() => { setPkgForm({ title: '', price: '', description: '', image_url: '', service_type: '', keywords: '', enabled: true }); setPkgModal({ open: true, pkg: null }); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors shadow-sm">
+                  <Plus size={15} /> Thêm báo giá mới
                 </button>
               </div>
 
@@ -1088,25 +1148,52 @@ export default function AdminBotStudio() {
                   </div>
                 </div>
 
-                {/* Bảng giá */}
-                {(!infoSearch || 'bảng giá'.includes(infoSearch.toLowerCase())) && (
+                {/* Báo giá & Gói dịch vụ */}
+                {(!infoSearch || 'báo giá gói dịch vụ'.includes(infoSearch.toLowerCase())) && (
                   <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                    <div className="px-5 py-4 flex items-center justify-between">
+                    <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center"><span className="text-base">📋</span></div>
+                        <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center"><Package size={16} className="text-green-600" /></div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">Bảng giá</p>
-                          <p className="text-xs text-gray-400">{settings?.botPriceList ? 'Đã cập nhật' : 'Chưa có bảng giá'}</p>
+                          <p className="text-sm font-semibold text-gray-900">Báo giá & Gói dịch vụ</p>
+                          <p className="text-xs text-gray-400">{pricePackages.length > 0 ? `${pricePackages.filter(p => p.enabled).length} gói đang bật` : 'Chưa có gói báo giá'}</p>
                         </div>
                       </div>
-                      <button onClick={() => { setPriceListDraft(settings?.botPriceList || ''); setPriceListModal(true); }}
-                        className="text-xs text-purple-600 font-medium hover:underline">
-                        {settings?.botPriceList ? 'Chỉnh sửa' : '+ Thêm'}
+                      <button onClick={() => { setPkgForm({ title: '', price: '', description: '', image_url: '', service_type: '', keywords: '', enabled: true }); setPkgModal({ open: true, pkg: null }); }}
+                        className="flex items-center gap-1.5 text-xs bg-purple-50 text-purple-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
+                        <Plus size={12} /> Thêm mới
                       </button>
                     </div>
-                    {settings?.botPriceList && (
-                      <div className="px-5 pb-4 border-t border-gray-50">
-                        <p className="text-xs text-gray-500 line-clamp-2 whitespace-pre-line pt-3">{settings.botPriceList}</p>
+                    {pkgLoading ? (
+                      <div className="py-6 flex justify-center"><div className="w-5 h-5 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" /></div>
+                    ) : pricePackages.length > 0 ? (
+                      <div className="divide-y divide-gray-100">
+                        {pricePackages.map(pkg => (
+                          <div key={pkg.id} className={`px-4 py-3 flex items-center gap-3 ${!pkg.enabled ? 'opacity-50' : ''}`}>
+                            {pkg.imageUrl ? (
+                              <img src={pkg.imageUrl} alt={pkg.title} className="w-14 h-14 rounded-lg object-cover shrink-0 border border-gray-100" />
+                            ) : (
+                              <div className="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 text-2xl">📦</div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{pkg.title}</p>
+                              {pkg.price && <p className="text-xs text-green-600 font-bold">{pkg.price}</p>}
+                              {pkg.serviceType && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full inline-block mt-0.5">{pkg.serviceType.replace('_', ' ')}</span>}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button onClick={() => { setPkgForm({ title: pkg.title, price: pkg.price, description: pkg.description, image_url: pkg.imageUrl, service_type: pkg.serviceType, keywords: pkg.keywords.join(', '), enabled: pkg.enabled }); setPkgModal({ open: true, pkg }); }}
+                                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit3 size={14} /></button>
+                              <button onClick={() => deletePricePackage(pkg.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-8 text-center text-gray-400">
+                        <p className="text-2xl mb-2">📦</p>
+                        <p className="text-sm font-medium text-gray-500">Chưa có gói báo giá nào</p>
+                        <p className="text-xs mt-1">Nhấn "Thêm mới" để tạo gói đầu tiên với ảnh</p>
                       </div>
                     )}
                   </div>
@@ -1717,6 +1804,112 @@ export default function AdminBotStudio() {
               <button onClick={saveBasicInfo} disabled={infoModalSaving}
                 className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40">
                 {infoModalSaving ? 'Đang lưu...' : '💾 Lưu thông tin'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Price Package Modal ── */}
+      {pkgModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-green-600" />
+                <h3 className="font-bold text-gray-900">{pkgModal.pkg ? '✏️ Sửa gói báo giá' : '📦 Thêm gói báo giá mới'}</h3>
+              </div>
+              <button onClick={() => setPkgModal({ open: false, pkg: null })} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Image upload */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2">📷 Ảnh báo giá</label>
+                <div className="flex items-start gap-3">
+                  {pkgForm.image_url ? (
+                    <div className="relative shrink-0">
+                      <img src={pkgForm.image_url} alt="preview" className="w-24 h-24 rounded-xl object-cover border border-gray-200" />
+                      <button onClick={() => setPkgForm(f => ({ ...f, image_url: '' }))}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 shrink-0">
+                      <span className="text-3xl">📷</span>
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <label className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer transition-colors text-sm font-semibold ${pkgImageUploading ? 'border-purple-300 text-purple-400' : 'border-gray-300 text-gray-600 hover:border-purple-400 hover:text-purple-600'}`}>
+                      {pkgImageUploading ? (
+                        <><div className="w-4 h-4 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" />Đang upload...</>
+                      ) : (
+                        <><Plus size={15} />{pkgForm.image_url ? 'Đổi ảnh' : 'Chọn ảnh'}</>
+                      )}
+                      <input type="file" accept="image/*" className="hidden" disabled={pkgImageUploading}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadPkgImage(f); e.target.value = ''; }} />
+                    </label>
+                    <p className="text-[10px] text-gray-400 mt-1.5">JPG, PNG — tối đa 5MB. Ảnh sẽ được nén tự động.</p>
+                  </div>
+                </div>
+              </div>
+              {/* Title */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">📦 Tên gói <span className="text-red-500">*</span></label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                  placeholder="VD: Gói Studio Basic, Gói Premium Áo Dài..."
+                  value={pkgForm.title} onChange={e => setPkgForm(f => ({ ...f, title: e.target.value }))} autoFocus />
+              </div>
+              {/* Price */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">💰 Giá <span className="text-red-500">*</span></label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                  placeholder="VD: 3.999.000đ, Từ 5 triệu, Liên hệ để được báo giá..."
+                  value={pkgForm.price} onChange={e => setPkgForm(f => ({ ...f, price: e.target.value }))} />
+              </div>
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">📝 Mô tả chi tiết</label>
+                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={4}
+                  placeholder={"VD: Bao gồm:\n- 100 ảnh đã chỉnh sửa\n- 2 bộ trang phục thuê tại studio\n- Album ảnh in 20x30cm\n- Thời gian chụp: 4-6 tiếng"}
+                  value={pkgForm.description} onChange={e => setPkgForm(f => ({ ...f, description: e.target.value }))} />
+              </div>
+              {/* Service type + keywords */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">🎯 Loại dịch vụ</label>
+                  <select className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white"
+                    value={pkgForm.service_type} onChange={e => setPkgForm(f => ({ ...f, service_type: e.target.value }))}>
+                    <option value="">-- Tất cả --</option>
+                    <option value="anh_cuoi">📸 Ảnh cưới</option>
+                    <option value="vay_cuoi">👗 Váy cưới</option>
+                    <option value="makeup">💄 Makeup & tóc</option>
+                    <option value="ao_dai">👘 Áo dài</option>
+                    <option value="quay_phim">🎥 Quay phim</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">🔑 Từ khóa nhận diện</label>
+                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                    placeholder="gói basic, studio basic, 3999..."
+                    value={pkgForm.keywords} onChange={e => setPkgForm(f => ({ ...f, keywords: e.target.value }))} />
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 -mt-1">Bot nhận diện gói này khi khách nhắc đến từ khóa. Phân cách bằng dấu phẩy.</p>
+              {/* Enabled toggle */}
+              <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                <div><p className="text-sm font-medium text-gray-800">Hiển thị gói này cho bot dùng</p><p className="text-[10px] text-gray-400">Tắt để tạm ẩn mà không xóa</p></div>
+                <button type="button" onClick={() => setPkgForm(f => ({ ...f, enabled: !f.enabled }))}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${pkgForm.enabled ? 'bg-purple-500' : 'bg-gray-200'}`}>
+                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${pkgForm.enabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
+              <button onClick={() => setPkgModal({ open: false, pkg: null })} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Huỷ</button>
+              <button onClick={savePricePackage} disabled={!pkgForm.title.trim() || !pkgForm.price.trim() || pkgSaving || pkgImageUploading}
+                className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2">
+                {pkgSaving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Đang lưu...</> : <><Save size={15} />{pkgModal.pkg ? 'Cập nhật' : 'Lưu gói báo giá'}</>}
               </button>
             </div>
           </div>
