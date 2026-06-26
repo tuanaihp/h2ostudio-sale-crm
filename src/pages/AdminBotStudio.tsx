@@ -311,7 +311,7 @@ export default function AdminBotStudio() {
   const [pricePackages, setPricePackages] = useState<PricePackage[]>([]);
   const [pkgLoading, setPkgLoading] = useState(false);
   const [pkgModal, setPkgModal] = useState<{ open: boolean; pkg: PricePackage | null }>({ open: false, pkg: null });
-  const [pkgForm, setPkgForm] = useState({ title: '', price: '', description: '', image_url: '', service_type: '', keywords: '', enabled: true });
+  const [pkgForm, setPkgForm] = useState({ title: '', price: '', description: '', image_url: '', album_url: '', service_type: '', keywords: '', enabled: true });
   const [pkgSaving, setPkgSaving] = useState(false);
   const [pkgImageUploading, setPkgImageUploading] = useState(false);
 
@@ -595,6 +595,7 @@ export default function AdminBotStudio() {
     setPricePackages((data || []).map((row: any): PricePackage => ({
       id: row.id, title: row.title, price: row.price || '',
       description: row.description || '', imageUrl: row.image_url || '',
+      albumUrl: row.album_url || '',
       serviceType: row.service_type || '', keywords: row.keywords || [],
       enabled: row.enabled !== false, orderNum: row.order_num || 0,
       createdAt: row.created_at,
@@ -608,6 +609,7 @@ export default function AdminBotStudio() {
     const row = {
       title: pkgForm.title.trim(), price: pkgForm.price.trim(),
       description: pkgForm.description.trim(), image_url: pkgForm.image_url,
+      album_url: pkgForm.album_url.trim() || null,
       service_type: pkgForm.service_type, keywords, enabled: pkgForm.enabled,
       updated_at: new Date().toISOString(),
     };
@@ -1255,10 +1257,13 @@ export default function AdminBotStudio() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate">{pkg.title}</p>
                               {pkg.price && <p className="text-xs text-green-600 font-bold">{pkg.price}</p>}
-                              {pkg.serviceType && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full inline-block mt-0.5">{pkg.serviceType.replace('_', ' ')}</span>}
+                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                {pkg.serviceType && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">{pkg.serviceType.replace('_', ' ')}</span>}
+                                {pkg.albumUrl && <a href={pkg.albumUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 hover:bg-purple-100" onClick={e => e.stopPropagation()}>🔗 Xem album</a>}
+                              </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => { setPkgForm({ title: pkg.title, price: pkg.price, description: pkg.description, image_url: pkg.imageUrl, service_type: pkg.serviceType, keywords: pkg.keywords.join(', '), enabled: pkg.enabled }); setPkgModal({ open: true, pkg }); }}
+                              <button onClick={() => { setPkgForm({ title: pkg.title, price: pkg.price, description: pkg.description, image_url: pkg.imageUrl, album_url: pkg.albumUrl || '', service_type: pkg.serviceType, keywords: pkg.keywords.join(', '), enabled: pkg.enabled }); setPkgModal({ open: true, pkg }); }}
                                 className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit3 size={14} /></button>
                               <button onClick={() => deletePricePackage(pkg.id)}
                                 className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
@@ -1990,6 +1995,14 @@ export default function AdminBotStudio() {
                 <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" rows={4}
                   placeholder={"VD: Bao gồm:\n- 100 ảnh đã chỉnh sửa\n- 2 bộ trang phục thuê tại studio\n- Album ảnh in 20x30cm\n- Thời gian chụp: 4-6 tiếng"}
                   value={pkgForm.description} onChange={e => setPkgForm(f => ({ ...f, description: e.target.value }))} />
+              </div>
+              {/* Album URL */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">🔗 Link album tham khảo <span className="text-gray-400 font-normal">(tùy chọn)</span></label>
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+                  placeholder="VD: https://h2ostudio.vn/album/anh-cuoi-ngoai-canh"
+                  value={pkgForm.album_url} onChange={e => setPkgForm(f => ({ ...f, album_url: e.target.value }))} />
+                <p className="text-[10px] text-gray-400 mt-0.5">Bot sẽ gửi kèm link này khi trả lời về gói. Khách click để xem ảnh mẫu.</p>
               </div>
               {/* Service type + keywords */}
               <div className="grid grid-cols-2 gap-3">

@@ -281,6 +281,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         let answer = `📦 ${pkg.title}`;
         if (pkg.price) answer += `\n💰 Giá: ${pkg.price}`;
         if (pkg.description) answer += `\n\n${pkg.description}`;
+        if (pkg.album_url) answer += `\n\n🖼️ Xem ảnh mẫu: ${pkg.album_url}`;
         virtualFaqs.push({
           id: pkgFaqId,
           question: `${pkg.title} giá bao nhiêu báo giá chi tiết`,

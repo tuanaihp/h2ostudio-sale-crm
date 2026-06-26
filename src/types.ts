@@ -382,6 +382,7 @@ export interface PricePackage {
   price: string;
   description: string;
   imageUrl: string;
+  albumUrl?: string;
   serviceType: string;
   keywords: string[];
   enabled: boolean;
@@ -395,6 +396,7 @@ export interface DbPricePackageRow {
   price: string;
   description: string;
   image_url: string;
+  album_url?: string;
   service_type: string;
   keywords: string[] | null;
   enabled: boolean;
