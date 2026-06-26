@@ -914,6 +914,19 @@ export default function AdminBotStudio() {
     } finally { setScenarioSaving(false); }
   };
 
+  const handleScenarioClone = async (scenario: SaleScenario) => {
+    const newId = crypto.randomUUID();
+    const dbSteps = (scenario.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply, phase: s.phase || null, package_id: (s as any).packageId || null, script_ids: (s as any).scriptIds?.length > 0 ? (s as any).scriptIds : null }));
+    await supabase.from('sale_scenarios').insert({
+      id: newId, name: scenario.name + ' (copy)', description: scenario.description || '',
+      trigger_keywords: scenario.triggerKeywords || [], steps: dbSteps,
+      enabled: false, scenario_type: scenario.scenarioType || 'keyword',
+      followup_delay_minutes: scenario.followupDelayMinutes || 120,
+      order_num: scenarios.length, created_at: new Date().toISOString(),
+    });
+    await loadScenarios();
+  };
+
   const handleScenarioDelete = async (id: string) => {
     await supabase.from('sale_scenarios').delete().eq('id', id);
     setScenarios(prev => prev.filter(s => s.id !== id));
@@ -1305,6 +1318,8 @@ export default function AdminBotStudio() {
                           className={`p-1.5 rounded-lg transition-all ${scenario.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}>
                           {scenario.enabled ? '●' : '○'}
                         </button>
+                        <button onClick={() => handleScenarioClone(scenario)} title="Nhân bản"
+                          className="p-1.5 text-gray-400 hover:text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"><Copy size={14} /></button>
                         <button onClick={() => setScenarioModal({ open: true, scenario })}
                           className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit3 size={14} /></button>
                         {isSuperAdmin && (
