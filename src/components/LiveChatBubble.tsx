@@ -334,6 +334,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           content: s.content || '',
           delaySeconds: s.delay_seconds ?? 0,
           waitForReply: s.wait_for_reply ?? true,
+          phase: s.phase || undefined,
         })),
         enabled: row.enabled !== false,
         scenarioType: row.scenario_type || 'keyword',

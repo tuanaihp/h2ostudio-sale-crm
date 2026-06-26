@@ -383,6 +383,7 @@ export interface ScenarioStep {
   content: string;
   delaySeconds: number;
   waitForReply: boolean;
+  phase?: string; // nếu có → bot dùng TF-IDF trên phase này, content là fallback
 }
 
 export interface SaleScenario {

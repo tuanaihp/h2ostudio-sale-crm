@@ -247,7 +247,7 @@ const ScenarioModal: React.FC<{
   const [followupDelay, setFollowupDelay] = useState(scenario?.followupDelayMinutes ?? 120);
   const [enabled, setEnabled] = useState(scenario?.enabled !== false);
   const [steps, setSteps] = useState<Array<Omit<ScenarioStep, 'id'> & { id: string }>>(
-    (scenario?.steps || [{ id: crypto.randomUUID(), content: '', delaySeconds: 0, waitForReply: true }]).map(s => ({ ...s }))
+    (scenario?.steps || [{ id: crypto.randomUUID(), content: '', delaySeconds: 0, waitForReply: true, phase: '' }]).map(s => ({ ...s, phase: s.phase || '' }))
   );
 
   const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false }]);
@@ -363,11 +363,26 @@ const ScenarioModal: React.FC<{
                         )}
                       </div>
                     </div>
+                    {/* Phase selector — TF-IDF mode */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Giai đoạn (TF-IDF)</label>
+                      <select value={step.phase || ''} onChange={e => updateStep(idx, 'phase', e.target.value)}
+                        className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
+                        <option value="">— Dùng nội dung cố định bên dưới —</option>
+                        {PHASES.map(p => <option key={p.key} value={p.key}>{p.emoji} {p.label}</option>)}
+                      </select>
+                      {step.phase && (
+                        <p className="text-[10px] text-purple-600 mt-0.5 font-medium">
+                          ✓ Bot sẽ dùng TF-IDF chọn kịch bản phù hợp nhất trong giai đoạn "{PHASES.find(p => p.key === step.phase)?.label}"
+                        </p>
+                      )}
+                    </div>
                     <textarea
                       value={step.content}
                       onChange={e => updateStep(idx, 'content', e.target.value)}
-                      rows={3} placeholder={`Nội dung tin nhắn bước ${idx + 1}...`}
-                      className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono"
+                      rows={step.phase ? 2 : 3}
+                      placeholder={step.phase ? `Nội dung dự phòng (dùng khi không tìm được kịch bản phù hợp)` : `Nội dung tin nhắn bước ${idx + 1}...`}
+                      className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono ${step.phase ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
                     />
                     <div className="flex items-center gap-4">
                       {/* Wait for reply toggle */}
@@ -738,7 +753,7 @@ export default function AdminBotStudio() {
     if (data) setScenarios(data.map((row: any) => ({
       id: row.id, name: row.name, description: row.description || '',
       triggerKeywords: row.trigger_keywords || [],
-      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true })),
+      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true, phase: s.phase || '' })),
       enabled: row.enabled !== false, scenarioType: row.scenario_type || 'keyword',
       followupDelayMinutes: row.followup_delay_minutes || 120, orderNum: row.order_num || 0,
     })));
@@ -748,7 +763,7 @@ export default function AdminBotStudio() {
   const handleScenarioSave = async (data: Partial<SaleScenario>) => {
     setScenarioSaving(true);
     try {
-      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply }));
+      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply, phase: s.phase || null }));
       if (data.id) {
         await supabase.from('sale_scenarios').update({
           name: data.name, description: data.description, trigger_keywords: data.triggerKeywords,
@@ -1147,7 +1162,9 @@ export default function AdminBotStudio() {
                               {step.waitForReply
                                 ? <span className="text-blue-500 shrink-0">⏸</span>
                                 : <span className="text-orange-500 shrink-0">▶{step.delaySeconds}s</span>}
-                              <span className="line-clamp-1">{step.content}</span>
+                              {step.phase
+                                ? <span className="text-purple-600 font-medium">[TF-IDF: {PHASES.find(p => p.key === step.phase)?.label || step.phase}]</span>
+                                : <span className="line-clamp-1">{step.content}</span>}
                             </div>
                           ))}
                           {scenario.steps.length > 3 && <p className="text-[10px] text-gray-400 pl-4">...+{scenario.steps.length - 3} bước nữa</p>}

@@ -512,6 +512,26 @@ function buildResponseV2(
 // SCENARIO HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Resolve nội dung của một step: nếu có phase → TF-IDF trên phase đó, fallback về content
+function resolveStepContent(
+  step: SaleScenario['steps'][number],
+  scriptData: any[],
+  allWords: string[],
+  state: ConversationStateV2,
+): string {
+  if (step.phase && scriptData.length > 0) {
+    const phaseCandidates = filterCandidateScripts(scriptData, step.phase as SalesPhase, state);
+    if (phaseCandidates.length > 0) {
+      const { script: best } = rankScriptsV2(phaseCandidates, allWords);
+      if (best?.content) {
+        const expanded = expandScriptContent(best.content, state.slots);
+        if (expanded.trim()) return expanded;
+      }
+    }
+  }
+  return step.content;
+}
+
 // Tính bước tiếp theo cần gửi trong một scenario.
 // fromIdx: chỉ số bước sẽ gửi ngay (main response).
 // Trả về: nội dung main, danh sách auto-step kèm delay, và chỉ số của bước
@@ -519,21 +539,25 @@ function buildResponseV2(
 function advanceScenario(
   scenario: SaleScenario,
   fromIdx: number,
+  scriptData: any[],
+  allWords: string[],
+  state: ConversationStateV2,
 ): { mainContent: string; autoSteps: Array<{content: string; delaySeconds: number}>; nextReplyIdx: number } | null {
   const mainStep = scenario.steps[fromIdx];
   if (!mainStep) return null;
 
+  const mainContent = resolveStepContent(mainStep, scriptData, allWords, state);
   const autoSteps: Array<{content: string; delaySeconds: number}> = [];
   let idx = fromIdx + 1;
 
   while (idx < scenario.steps.length) {
     const s = scenario.steps[idx];
     if (s.waitForReply) break; // bước này yêu cầu khách trả lời → dừng auto-collect
-    autoSteps.push({ content: s.content, delaySeconds: s.delaySeconds });
+    autoSteps.push({ content: resolveStepContent(s, scriptData, allWords, state), delaySeconds: s.delaySeconds });
     idx++;
   }
 
-  return { mainContent: mainStep.content, autoSteps, nextReplyIdx: idx };
+  return { mainContent, autoSteps, nextReplyIdx: idx };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -563,7 +587,7 @@ export function processMessageV2(params: {
     if (state.activeScenarioId) {
       const activeScenario = scenarioData.find(s => s.id === state.activeScenarioId && s.enabled);
       if (activeScenario && state.activeScenarioStep < activeScenario.steps.length) {
-        const result = advanceScenario(activeScenario, state.activeScenarioStep);
+        const result = advanceScenario(activeScenario, state.activeScenarioStep, scriptData, allWords, state);
         if (result) {
           const isDone = result.nextReplyIdx >= activeScenario.steps.length;
           const { slots: updatedSlots } = extractSlotsV2(synonymMapped, state.slots);
@@ -617,7 +641,7 @@ export function processMessageV2(params: {
         }
 
         if (triggered && scenario.steps.length > 0) {
-          const result = advanceScenario(scenario, 0);
+          const result = advanceScenario(scenario, 0, scriptData, allWords, state);
           if (result) {
             const isDone = result.nextReplyIdx >= scenario.steps.length;
             const { slots: updatedSlots } = extractSlotsV2(synonymMapped, state.slots);
