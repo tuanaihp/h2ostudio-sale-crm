@@ -647,22 +647,24 @@ export function processMessageV2(params: {
       // Scenario đã xong hoặc không tìm thấy → reset, tiếp tục bot thường
     }
 
-    // Chưa có scenario → kiểm tra từ khóa kích hoạt
+    // Chưa có scenario → best-match: chọn kịch bản có nhiều keyword khớp nhất
     if (!state.activeScenarioId) {
-      for (const scenario of scenarioData.filter(s => s.enabled && s.steps.length > 0)) {
-        let triggered = false;
-
-        if (scenario.scenarioType === 'keyword' || scenario.scenarioType === 'followup') {
-          triggered = scenario.triggerKeywords.some(kw =>
+      // Tính điểm match cho mỗi scenario (số keyword khớp)
+      const scored = scenarioData
+        .filter(s => s.enabled && s.steps.length > 0 && (s.scenarioType === 'keyword' || s.scenarioType === 'followup'))
+        .map(s => ({
+          scenario: s,
+          matchCount: s.triggerKeywords.filter(kw =>
             kw.trim() && normalized.includes(normalizeVietnamese(kw.trim()))
-          );
-        } else if (scenario.scenarioType === 'objection') {
-          // objection scenario kích hoạt qua intent — xử lý sau bước intent detection
-          // Đặt flag để check sau — skip ở đây, handle bên dưới
-        }
+          ).length,
+        }))
+        .filter(x => x.matchCount > 0)
+        .sort((a, b) => b.matchCount - a.matchCount); // nhiều match nhất lên đầu
 
-        if (triggered && scenario.steps.length > 0) {
-          const result = advanceScenario(scenario, 0, scriptData, allWords, state);
+      const best = scored[0];
+      if (best) {
+        const scenario = best.scenario;
+        const result = advanceScenario(scenario, 0, scriptData, allWords, state);
           if (result) {
             const isDone = result.nextReplyIdx >= scenario.steps.length;
             const { slots: updatedSlots } = extractSlotsV2(synonymMapped, state.slots);
@@ -698,7 +700,6 @@ export function processMessageV2(params: {
               scenarioMainImageUrl: result.mainImageUrl,
             };
           }
-        }
       }
     }
   }
