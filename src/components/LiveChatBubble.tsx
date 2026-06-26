@@ -801,17 +801,21 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick Replies — gợi ý câu hỏi tiếp theo */}
-      {quickReplies.length > 0 && !isThinking && (
-        <div className="shrink-0 bg-gray-50 px-2 pb-1.5 pt-1 flex flex-wrap gap-1 border-t border-gray-100">
-          {quickReplies.map(qr => (
-            <button key={qr} onClick={() => send(qr)}
-              className="text-[11px] bg-white border border-primary/25 text-primary font-medium px-2.5 py-1 rounded-full hover:bg-primary/5 active:scale-95 transition-all whitespace-nowrap shadow-sm">
-              {qr}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Quick Replies — 3 nút cố định */}
+      <div className="shrink-0 bg-gray-50 px-2 pb-1.5 pt-1 flex gap-1.5 border-t border-gray-100">
+        <button onClick={() => send('Xem ưu đãi hiện tại')}
+          className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-white border border-primary/25 text-primary font-medium px-2 py-1.5 rounded-full hover:bg-primary/5 active:scale-95 transition-all shadow-sm whitespace-nowrap">
+          🎁 Xem ưu đãi
+        </button>
+        <button onClick={() => send('Khuyến mãi nhận ngay')}
+          className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-white border border-pink-300 text-pink-600 font-medium px-2 py-1.5 rounded-full hover:bg-pink-50 active:scale-95 transition-all shadow-sm whitespace-nowrap">
+          ❤️ Khuyến mãi
+        </button>
+        <button onClick={() => send('Game vòng quay may mắn')}
+          className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-white border border-amber-300 text-amber-600 font-medium px-2 py-1.5 rounded-full hover:bg-amber-50 active:scale-95 transition-all shadow-sm whitespace-nowrap">
+          🎡 Vòng quay
+        </button>
+      </div>
 
       {/* Input */}
       <div className="border-t bg-white p-3 flex gap-2 shrink-0 pb-[max(12px,env(safe-area-inset-bottom))]">
