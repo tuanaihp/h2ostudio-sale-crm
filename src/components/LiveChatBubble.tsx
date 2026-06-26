@@ -593,6 +593,68 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     }, delayMins * 60 * 1000);
   };
 
+  // ── Helper: post bot message trực tiếp (không qua bot engine) ──
+  const postBotMsg = async (text: string) => {
+    if (!sessionId) return;
+    const botId  = crypto.randomUUID();
+    const botNow = new Date().toISOString();
+    const newMsg = { id: botId, sender: 'admin' as const, content: text, created_at: botNow };
+    setMessages(prev => [...prev, newMsg]);
+    supabase.from('chat_messages').insert({ id: botId, session_id: sessionId, sender: 'admin', content: text, created_at: botNow }).then(() => {});
+    supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sessionId).then(() => {});
+  };
+
+  // ── Nút 🎁 Xem ưu đãi — nội dung cài sẵn trong settings ──
+  const handleQuickOffer = async () => {
+    const offerText = settings?.chatBotOfferContent;
+    if (offerText?.trim()) {
+      await postBotMsg(offerText.trim());
+    } else {
+      // Fallback: fetch promos từ DB
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: promos } = await supabase.from('promotions')
+        .select('title, short_desc, emoji, end_date')
+        .eq('enabled', true).eq('show_on_website', true)
+        .lte('start_date', todayStr).gte('end_date', todayStr)
+        .order('end_date', { ascending: true }).limit(5);
+      if (!promos || promos.length === 0) {
+        await postBotMsg('Dạ hiện tại chưa có ưu đãi đặc biệt đang chạy. Anh/chị để lại số điện thoại để nhận thông báo ưu đãi sớm nhất nhé! 💕');
+      } else {
+        const lines = promos.map((p: any) => {
+          const end = new Date(p.end_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+          return `${p.emoji} ${p.title}\n${p.short_desc} (hết ${end})`;
+        });
+        await postBotMsg('🎁 Ưu đãi hiện tại của H2O Studio:\n\n' + lines.join('\n\n') + '\n\nNhắn chị để được tư vấn chi tiết ngay! 💕');
+      }
+    }
+  };
+
+  // ── Nút ❤️ Khuyến mãi — lịch khuyến mãi tháng hiện tại ──
+  const handleQuickPromo = async () => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const monthLabel = `tháng ${now.getMonth() + 1}/${now.getFullYear()}`;
+    const { data: promos } = await supabase.from('promotions')
+      .select('title, short_desc, emoji, end_date, content')
+      .eq('enabled', true).eq('show_on_website', true)
+      .lte('start_date', todayStr).gte('end_date', todayStr)
+      .order('end_date', { ascending: true });
+    if (!promos || promos.length === 0) {
+      await postBotMsg(`Dạ ${monthLabel} chưa có chương trình khuyến mãi mới. Anh/chị để lại số điện thoại — chị báo ngay khi có ưu đãi nha! 🌸`);
+    } else {
+      const lines = promos.map((p: any) => {
+        const end = new Date(p.end_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+        return `${p.emoji} **${p.title}**\n${p.content || p.short_desc}\n⏰ Hết hạn: ${end}`;
+      });
+      await postBotMsg(`🎉 Khuyến mãi ${monthLabel}:\n\n` + lines.join('\n\n') + '\n\n👉 Nhắn chị để nhận ngay — chỉ áp dụng khi đặt cọc trong tháng! 💕');
+    }
+  };
+
+  // ── Nút 🎡 Vòng quay may mắn ──
+  const handleQuickWheel = () => {
+    window.dispatchEvent(new CustomEvent('open-lucky-wheel'));
+  };
+
   const send = async (overrideMsg?: string) => {
     const content = (overrideMsg ?? input).trim();
     if (!content || !sessionId || sending) return;
@@ -803,15 +865,15 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       {/* Quick Replies — 3 nút cố định */}
       <div className="shrink-0 bg-gray-50 px-2 pb-1.5 pt-1 flex gap-1.5 border-t border-gray-100">
-        <button onClick={() => send('Xem ưu đãi hiện tại')}
+        <button onClick={handleQuickOffer}
           className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-white border border-primary/25 text-primary font-medium px-2 py-1.5 rounded-full hover:bg-primary/5 active:scale-95 transition-all shadow-sm whitespace-nowrap">
           🎁 Xem ưu đãi
         </button>
-        <button onClick={() => send('Khuyến mãi nhận ngay')}
+        <button onClick={handleQuickPromo}
           className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-white border border-pink-300 text-pink-600 font-medium px-2 py-1.5 rounded-full hover:bg-pink-50 active:scale-95 transition-all shadow-sm whitespace-nowrap">
           ❤️ Khuyến mãi
         </button>
-        <button onClick={() => send('Game vòng quay may mắn')}
+        <button onClick={handleQuickWheel}
           className="flex-1 flex items-center justify-center gap-1 text-[11px] bg-white border border-amber-300 text-amber-600 font-medium px-2 py-1.5 rounded-full hover:bg-amber-50 active:scale-95 transition-all shadow-sm whitespace-nowrap">
           🎡 Vòng quay
         </button>

@@ -172,6 +172,7 @@ export interface AppSettings {
   chatAutoOpenEnabled?: boolean;
   chatAutoOpenDelay?: number;
   chatBotGreeting?: string;
+  chatBotOfferContent?: string;
   chatBotCustomInstructions?: string;
   chatBotBlockedTopics?: string;
   botStudioInfo?: string;

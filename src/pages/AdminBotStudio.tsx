@@ -285,6 +285,7 @@ export default function AdminBotStudio() {
   // ── Instructions ──
   const DEFAULT_GREETING = 'Chào em nha! Em đang muốn tham khảo " 𝑻𝒓𝒐̣𝒏 𝒈𝒐́𝒊 𝒄𝒉𝒖̣𝒑 𝒂̉𝒏𝒉 𝒄𝒖̛𝒐̛́𝒊 " hay " 𝑽𝒂́𝒚 𝒄𝒖̛𝒐̛́𝒊 " ? Để chị tư vấn chi tiết cho em nhé!\n(Nếu trường hợp cần hỗ trợ gấp hãy gọi ngay Mrs.Thủy H2O 0783327323 or 0399558699)';
   const [greeting, setGreeting] = useState('');
+  const [offerContent, setOfferContent] = useState('');
   const [customInstr, setCustomInstr] = useState('');
   const [blockedTopics, setBlockedTopics] = useState('');
   const [studioInfo, setStudioInfo] = useState('');
@@ -331,6 +332,7 @@ export default function AdminBotStudio() {
   useEffect(() => {
     if (settings) {
       setGreeting(settings.chatBotGreeting || DEFAULT_GREETING);
+      setOfferContent(settings.chatBotOfferContent || '');
       setCustomInstr(settings.chatBotCustomInstructions || '');
       setBlockedTopics(settings.chatBotBlockedTopics || '');
       setStudioInfo(settings.botStudioInfo || '');
@@ -493,7 +495,7 @@ export default function AdminBotStudio() {
   // ── Instructions ──
   const saveInstructions = async () => {
     setInstrSaving(true);
-    await updateSettings({ chatBotGreeting: greeting, chatBotCustomInstructions: customInstr, chatBotBlockedTopics: blockedTopics, botStudioInfo: studioInfo, botPaymentInfo: paymentInfo });
+    await updateSettings({ chatBotGreeting: greeting, chatBotOfferContent: offerContent, chatBotCustomInstructions: customInstr, chatBotBlockedTopics: blockedTopics, botStudioInfo: studioInfo, botPaymentInfo: paymentInfo });
     setInstrSaving(false); setInstrSaveOk(true); setTimeout(() => setInstrSaveOk(false), 2500);
   };
 
@@ -1083,6 +1085,13 @@ export default function AdminBotStudio() {
               <textarea value={greeting} onChange={e => setGreeting(e.target.value)} rows={4}
                 className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none" />
               <button onClick={() => setGreeting(DEFAULT_GREETING)} className="mt-1.5 text-xs text-gray-400 hover:text-gray-600 underline">Đặt lại mặc định</button>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-800 mb-0.5">🎁 Nội dung nút "Xem ưu đãi hiện tại"</h3>
+              <p className="text-xs text-gray-400 mb-3">Hiển thị khi khách bấm nút 🎁 trong chat. Ghi rõ ưu đãi, combo đặc biệt, điều kiện áp dụng.</p>
+              <textarea value={offerContent} onChange={e => setOfferContent(e.target.value)} rows={5}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none"
+                placeholder={'VD: 🎉 Ưu đãi tháng này:\n\n💎 Combo Studio 9.999k — Tặng thêm 1 concept\n👗 Thuê váy đi bàn giảm 50%\n📅 Book trước 30 ngày tặng album bìa da\n\nNhắn chị để được tư vấn chi tiết ngay! 💕'} />
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-5">
               <h3 className="text-sm font-semibold text-gray-800 mb-0.5">🏠 Thông tin Studio</h3>

@@ -42,15 +42,25 @@ export const LuckyWheelWidget: React.FC = () => {
 
     const timer = setTimeout(() => {
       setShowNotification(true);
-      // Auto-hide notification after 5 seconds
       setTimeout(() => setShowNotification(false), 5000);
-    }, 10000); // 10 seconds
+    }, 10000);
 
     return () => clearTimeout(timer);
   }, [settings.luckyWheelEnabled, settings.luckyWheelNotificationEnabled, favorites.length, isDismissed]);
 
-  // Only show if user has liked at least one album and hasn't dismissed the widget
-  if (settings.luckyWheelEnabled === false || favorites.length === 0 || isDismissed) return null;
+  // Lắng nghe event từ chat bubble — mở wheel khi khách bấm nút 🎡
+  useEffect(() => {
+    const handleOpenFromChat = () => {
+      if (settings.luckyWheelEnabled === false) return;
+      setIsOpen(true);
+      setIsDismissed(false);
+    };
+    window.addEventListener('open-lucky-wheel', handleOpenFromChat);
+    return () => window.removeEventListener('open-lucky-wheel', handleOpenFromChat);
+  }, [settings.luckyWheelEnabled]);
+
+  // Ẩn widget nếu bị tắt hoặc đã dismiss — nhưng vẫn render nếu đang open (từ chat bubble)
+  if (settings.luckyWheelEnabled === false || (favorites.length === 0 && !isOpen) || (isDismissed && !isOpen)) return null;
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
