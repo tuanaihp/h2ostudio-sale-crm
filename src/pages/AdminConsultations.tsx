@@ -1173,7 +1173,7 @@ const AdminConsultations: React.FC = () => {
   const { isAuthReady, consultations, hasMoreConsultations, isLoadingMore, loadMoreConsultations, updateConsultationStatus, updateConsultationRegistration, updateConsultationNotes, updateConsultationTags, updateConsultationField, deleteConsultation, isAdmin, isSuperAdmin, styles, handleLogout, markAllRead } = useApp();
   const [filter, setFilter] = useState<'all' | ConsultationStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list');
+  const [view, setView] = useState<'list' | 'calendar' | 'kanban' | 'finance'>('list');
   const [regModalData, setRegModalData] = useState<Consultation | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -1402,6 +1402,34 @@ const AdminConsultations: React.FC = () => {
     return days !== null && days >= 0 && days <= 7;
   }).length;
 
+  // Báo cáo tài chính — 6 tháng gần nhất
+  const last6Months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    return {
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      label: d.toLocaleString('vi-VN', { month: 'short' }) + ' ' + d.getFullYear(),
+    };
+  }).reverse();
+  const monthlyLeads = last6Months.map(({ key, label }) => ({
+    label,
+    count: consultations.filter(c => {
+      const d = getLeadDate(c);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === key;
+    }).length,
+  }));
+  const monthlyRevenue = last6Months.map(({ key, label }) => ({
+    label,
+    value: consultations
+      .filter(c => {
+        const d = getLeadDate(c);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === key && !!c.contractValue;
+      })
+      .reduce((sum, c) => sum + (c.contractValue || 0), 0),
+  }));
+  const maxMonthlyLeads = Math.max(...monthlyLeads.map(m => m.count), 1);
+  const maxMonthlyRevenue = Math.max(...monthlyRevenue.map(m => m.value), 1);
+
   const extractMessageContent = (text: string | undefined) => {
     if (!text) return { message: '', links: [] };
     
@@ -1424,136 +1452,129 @@ const AdminConsultations: React.FC = () => {
   };
 
   return (
-    <Layout title="Quản lý khách hàng" showBack={true}>
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
-          <div>
-            <h1 className="text-3xl font-bold text-dark">Quản lý khách hàng</h1>
-            <p className="text-dark/60 mt-2">Theo dõi yêu cầu tư vấn và lịch trình chụp ảnh</p>
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+
+      {/* ── Sidebar ── */}
+      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center shadow-sm">
+              <Users size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-800 leading-tight">Quản lý KH</p>
+              <p className="text-[10px] text-gray-400">{totalLeads} khách hàng</p>
+            </div>
           </div>
-          
-          <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
-            {/* Quick Logout for Staff */}
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleLogout();
-              }}
-              className="px-3 py-2 text-dark/40 hover:text-dark rounded-xl text-xs font-medium hover:bg-light-gray transition-all flex items-center gap-1.5 border border-transparent hover:border-light-gray"
-              title="Đăng xuất khỏi hệ thống"
-            >
-              <LogOut size={14} />
-              <span>Đăng xuất</span>
+        </div>
+        <nav className="flex-1 p-3 space-y-0.5">
+          {([
+            ['list',     MessageCircle, 'Danh sách'],
+            ['calendar', Calendar,      'Lịch chụp'],
+            ['kanban',   LayoutGrid,    'Kanban'],
+            ['finance',  TrendingUp,    'Báo cáo TC'],
+          ] as const).map(([key, Icon, label]) => (
+            <button key={key} onClick={() => setView(key as typeof view)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                view === key ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+              }`}>
+              <Icon size={15} />
+              {label}
             </button>
+          ))}
+        </nav>
+        <div className="p-3 space-y-0.5 border-t border-gray-100">
+          <Link to="/admin/promotions"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-pink-50 hover:text-pink-700 transition-colors">
+            <Gift size={15} /> Lịch KM
+          </Link>
+          <Link to="/admin/bot"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+            <Bell size={15} /> Bot AI
+          </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors text-left">
+            <LogOut size={15} /> Đăng xuất
+          </button>
+        </div>
+      </aside>
 
-            {/* Search Bar */}
-            <div className="relative flex-1 min-w-[200px] lg:max-w-xs">
-              <input
-                type="text"
-                placeholder="Tìm tên hoặc số điện thoại..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-light-gray rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
-              />
-              <X 
-                size={14} 
-                className={`absolute right-3 top-1/2 -translate-y-1/2 text-dark/40 cursor-pointer hover:text-dark transition-colors ${searchTerm ? 'opacity-100' : 'opacity-0'}`}
-                onClick={() => setSearchTerm('')}
-              />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-dark/40">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              </div>
+      {/* ── Main ── */}
+      <main className="flex-1 overflow-auto flex flex-col">
+
+        {/* Sticky topbar */}
+        <div className="sticky top-0 z-20 bg-white border-b px-4 py-2.5 flex flex-wrap items-center gap-2 shrink-0">
+          {/* Search */}
+          <div className="relative min-w-[200px] max-w-xs flex-1">
+            <input
+              type="text"
+              placeholder="Tìm tên hoặc số điện thoại..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+            />
+            <X
+              size={13}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer transition-opacity ${searchTerm ? 'opacity-100' : 'opacity-0'}`}
+              onClick={() => setSearchTerm('')}
+            />
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
             </div>
+          </div>
 
-            {/* View Toggle */}
-            <div className="flex bg-white rounded-xl p-1 shadow-sm border border-light-gray">
-              <button
-                onClick={() => setView('list')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  view === 'list' ? 'bg-primary text-white shadow-md' : 'text-dark/60 hover:bg-light-gray'
-                }`}
-              >
-                <MessageCircle size={16} />
-                Danh sách
-              </button>
-              <button
-                onClick={() => setView('calendar')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  view === 'calendar' ? 'bg-primary text-white shadow-md' : 'text-dark/60 hover:bg-light-gray'
-                }`}
-              >
-                <Calendar size={16} />
-                Lịch
-              </button>
-              <button
-                onClick={() => setView('kanban')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  view === 'kanban' ? 'bg-primary text-white shadow-md' : 'text-dark/60 hover:bg-light-gray'
-                }`}
-              >
-                <LayoutGrid size={16} />
-                Kanban
-              </button>
+          {/* Status filter (list view only) */}
+          {view === 'list' && (
+            <div className="flex items-center bg-gray-100 rounded-xl p-0.5 gap-0.5">
+              {([
+                { key: 'all', label: 'Tất cả' },
+                { key: 'new', label: 'Mới' },
+                { key: 'called', label: 'Đã gọi' },
+                { key: 'consulting', label: 'Tư vấn' },
+                { key: 'quoted', label: 'Báo giá' },
+                { key: 'registered', label: 'Đã chốt' },
+              ] as const).map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    filter === f.key ? 'bg-white text-dark shadow-sm' : 'text-dark/60 hover:text-dark'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
+          )}
 
-            {/* Filter Toggle (Only for list view) */}
-            {view === 'list' && (
-              <div className="flex flex-wrap bg-white rounded-xl p-1 shadow-sm border border-light-gray gap-0.5">
-                {([
-                  { key: 'all', label: 'Tất cả' },
-                  { key: 'new', label: 'Mới' },
-                  { key: 'called', label: 'Đã gọi' },
-                  { key: 'consulting', label: 'Tư vấn' },
-                  { key: 'quoted', label: 'Báo giá' },
-                  { key: 'registered', label: 'Đã chốt' },
-                ] as const).map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => setFilter(f.key)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      filter === f.key ? 'bg-dark text-white' : 'text-dark/60 hover:bg-light-gray'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
+          <div className="ml-auto flex items-center gap-2 shrink-0">
             <button
               onClick={() => { setChatInitialPhone(null); setChatPanelOpen(true); setChatUnread(0); }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm hover:bg-blue-100 transition-all relative"
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-xs hover:bg-blue-100 transition-all relative"
             >
-              <MessageCircle size={16} />
+              <MessageCircle size={14} />
               Chat khách
               {chatUnread > 0 && !chatPanelOpen && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold px-1 animate-pulse">
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold px-0.5 animate-pulse">
                   {chatUnread > 99 ? '99+' : chatUnread}
                 </span>
               )}
             </button>
-
-            <Link
-              to="/admin/promotions"
-              className="flex items-center gap-2 px-4 py-2.5 bg-pink-50 text-pink-700 border border-pink-200 rounded-xl font-bold text-sm hover:bg-pink-100 transition-all"
-            >
-              <Gift size={16} />
-              Lịch KM
-            </Link>
-
             {isSuperAdmin && (
               <button
                 onClick={exportToExcel}
-                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-600/20"
+                className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-xl font-bold text-xs hover:bg-green-700 transition-all"
               >
-                <Download size={18} />
-                Xuất Excel (.xlsx)
+                <Download size={14} />
+                Xuất Excel
               </button>
             )}
           </div>
         </div>
+
+        <div className="px-4 py-4 flex-1">
 
         {/* Action Row - Bulk Delete */}
         {selectedIds.length > 0 && isSuperAdmin && view === 'list' && (
@@ -1724,7 +1745,127 @@ const AdminConsultations: React.FC = () => {
           </div>
         )}
 
-        {view === 'calendar' ? (
+        {view === 'finance' ? (
+          <div className="space-y-6">
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-light-gray p-4">
+                <p className="text-[10px] text-dark/50 font-bold uppercase tracking-wider mb-1">Tổng doanh thu</p>
+                <p className="text-2xl font-black text-dark">{totalContractValue > 0 ? (totalContractValue / 1_000_000).toFixed(1) + 'M' : '—'}</p>
+                <p className="text-xs text-dark/40 mt-0.5">từ {registeredLeads} hợp đồng</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-light-gray p-4">
+                <p className="text-[10px] text-dark/50 font-bold uppercase tracking-wider mb-1">Tỷ lệ chốt</p>
+                <p className="text-2xl font-black text-green-600">{conversionRate}%</p>
+                <p className="text-xs text-dark/40 mt-0.5">{registeredLeads}/{totalLeads} khách</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-light-gray p-4">
+                <p className="text-[10px] text-dark/50 font-bold uppercase tracking-wider mb-1">AVG hợp đồng</p>
+                <p className="text-2xl font-black text-dark">{avgContractValue > 0 ? (avgContractValue / 1_000_000).toFixed(1) + 'M' : '—'}</p>
+                <p className="text-xs text-dark/40 mt-0.5">trên mỗi khách chốt</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-light-gray p-4">
+                <p className="text-[10px] text-dark/50 font-bold uppercase tracking-wider mb-1">Tháng này</p>
+                <p className="text-2xl font-black text-primary">{thisMonthRevenue > 0 ? (thisMonthRevenue / 1_000_000).toFixed(1) + 'M' : '—'}</p>
+                <p className="text-xs text-dark/40 mt-0.5">{thisWeekLeads} leads tuần này</p>
+              </div>
+            </div>
+
+            {/* Charts row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Monthly Leads Bar Chart */}
+              <div className="bg-white rounded-2xl border border-light-gray p-5">
+                <h3 className="font-bold text-dark text-sm mb-4">📊 Leads theo tháng (6 tháng gần nhất)</h3>
+                <div className="flex items-end gap-2 h-36">
+                  {monthlyLeads.map((m, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-xs font-bold text-dark/70">{m.count}</span>
+                      <div className="w-full bg-primary/10 rounded-t-lg transition-all duration-500"
+                        style={{ height: `${Math.max(Math.round((m.count / maxMonthlyLeads) * 104), m.count > 0 ? 6 : 0)}px` }} />
+                      <span className="text-[9px] text-dark/40 text-center leading-tight whitespace-nowrap">{m.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Monthly Revenue Bar Chart */}
+              <div className="bg-white rounded-2xl border border-light-gray p-5">
+                <h3 className="font-bold text-dark text-sm mb-4">💰 Doanh thu theo tháng (6 tháng gần nhất)</h3>
+                <div className="flex items-end gap-2 h-36">
+                  {monthlyRevenue.map((m, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-xs font-bold text-dark/70">{m.value > 0 ? (m.value / 1_000_000).toFixed(1) + 'M' : '—'}</span>
+                      <div className="w-full bg-green-100 rounded-t-lg transition-all duration-500"
+                        style={{ height: `${Math.max(Math.round((m.value / maxMonthlyRevenue) * 104), m.value > 0 ? 6 : 0)}px` }} />
+                      <span className="text-[9px] text-dark/40 text-center leading-tight whitespace-nowrap">{m.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Funnel + Source */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+              {/* Pipeline Funnel */}
+              <div className="bg-white rounded-2xl border border-light-gray p-5">
+                <h3 className="font-bold text-dark text-sm mb-4">🔽 Phễu chuyển đổi</h3>
+                <div className="space-y-2.5">
+                  {[
+                    { label: 'Mới',      count: newLeads,        cls: 'bg-red-400' },
+                    { label: 'Đã gọi',   count: calledLeads,     cls: 'bg-yellow-400' },
+                    { label: 'Tư vấn',   count: consultingLeads, cls: 'bg-blue-400' },
+                    { label: 'Báo giá',  count: quotedLeads,     cls: 'bg-purple-400' },
+                    { label: 'Đã chốt',  count: registeredLeads, cls: 'bg-green-500' },
+                  ].map((s) => (
+                    <div key={s.label} className="flex items-center gap-3">
+                      <div className="w-16 text-xs font-semibold text-dark/60 text-right shrink-0">{s.label}</div>
+                      <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                        <div className={`h-full rounded-full flex items-center justify-end pr-2 transition-all duration-500 ${s.cls}`}
+                          style={{ width: `${totalLeads > 0 ? Math.max(Math.round((s.count / totalLeads) * 100), s.count > 0 ? 5 : 0) : 0}%` }}>
+                          {s.count > 0 && <span className="text-white text-[10px] font-bold">{s.count}</span>}
+                        </div>
+                      </div>
+                      <div className="w-8 text-xs text-dark/40 shrink-0 text-right">{totalLeads > 0 ? Math.round((s.count / totalLeads) * 100) : 0}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Source Breakdown */}
+              <div className="bg-white rounded-2xl border border-light-gray p-5">
+                <h3 className="font-bold text-dark text-sm mb-4">📱 Nguồn leads</h3>
+                <div className="space-y-2.5">
+                  {Object.entries(sourceStats).sort((a, b) => b[1] - a[1]).map(([src, cnt]) => (
+                    <div key={src} className="flex items-center gap-3">
+                      <div className="w-24 text-xs font-semibold text-dark/60 text-right truncate shrink-0">{src}</div>
+                      <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                        <div className="h-full bg-primary rounded-full flex items-center justify-end pr-2 transition-all duration-500"
+                          style={{ width: `${totalLeads > 0 ? Math.max(Math.round((cnt / totalLeads) * 100), cnt > 0 ? 5 : 0) : 0}%` }}>
+                          {cnt > 0 && <span className="text-white text-[10px] font-bold">{cnt}</span>}
+                        </div>
+                      </div>
+                      <div className="w-8 text-xs text-dark/40 shrink-0 text-right">{totalLeads > 0 ? Math.round((cnt / totalLeads) * 100) : 0}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Upcoming shoots */}
+            {upcomingShootsCount > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+                <Camera size={20} className="text-amber-600 shrink-0" />
+                <p className="text-sm text-amber-800 font-semibold">
+                  Có <span className="font-black">{upcomingShootsCount}</span> lịch chụp trong 7 ngày tới — chuyển sang tab <strong>Lịch chụp</strong> để xem chi tiết.
+                </p>
+              </div>
+            )}
+
+          </div>
+        ) : view === 'calendar' ? (
           <ScheduleCalendar consultations={consultations} styles={styles} />
         ) : view === 'kanban' ? (
           <KanbanView
@@ -2051,6 +2192,7 @@ const AdminConsultations: React.FC = () => {
           </div>
         )}
       </div>
+      </main>
 
       {regModalData && (
         <RegistrationModal 
@@ -2107,7 +2249,7 @@ const AdminConsultations: React.FC = () => {
           </button>
         </div>
       )}
-    </Layout>
+    </div>
   );
 };
 
