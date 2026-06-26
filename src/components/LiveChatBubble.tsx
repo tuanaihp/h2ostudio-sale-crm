@@ -8,7 +8,9 @@ import { useApp } from '../context/AppContext';
 import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 import { APP_CONFIG } from '../data/mockData';
 import Fuse from 'fuse.js';
-import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents, type BotContext } from '../lib/botEngine';
+import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents } from '../lib/botEngine';
+import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_QUICK_REPLIES } from '../lib/botEngineV2';
+import { createInitialStateV2, type ConversationStateV2 } from '../types/botV2';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -80,8 +82,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const [formPhone, setFormPhone]   = useState('');
   const [formSaving, setFormSaving] = useState(false);
   const [formDone, setFormDone]     = useState(false);
-  // Smart bot context — nhớ service type, phase, lead score trong cuộc trò chuyện
-  const [botContext, setBotContext]   = useState<BotContext>({ serviceType: null, phase: null, leadScore: 0 });
+  // Bot V2 conversation state — nhớ phase, slots, lead score, sent scripts/FAQs
+  const [botStateV2, setBotStateV2] = useState<ConversationStateV2>(() => createInitialStateV2(''));
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
 
   const bottomRef      = useRef<HTMLDivElement>(null);
@@ -140,7 +142,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   };
 
   const initSession = async () => {
-    setBotContext({ serviceType: null, phase: null, leadScore: 0 });
+    setBotStateV2(createInitialStateV2(sid));
     setQuickReplies([]);
     const savedId = localStorage.getItem(SESSION_KEY);
     if (savedId) {
@@ -302,30 +304,36 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const isMultiIntent = intentSegments.length > 1;
       const multiAnswers: string[] = [];
 
-      let engineResult = matchBotFaq(normalizedMsg, expandedWords, allFaqs, botContext);
+      // ── Bot V2: Intent Detection + Phase-Aware Script Selection ──
+      const botContextCompat = {
+        serviceType: botStateV2.slots.serviceType,
+        phase: botStateV2.currentPhase,
+        leadScore: botStateV2.leadScore,
+      };
+
+      const v2Result = processMessageV2({
+        rawMessage: customerMessage,
+        scriptData: scriptData || [],
+        faqData: allFaqs,
+        state: botStateV2,
+      });
+      setBotStateV2(v2Result.newState);
+
+      let engineResult = matchBotFaq(normalizedMsg, expandedWords, allFaqs, botContextCompat);
 
       if (isMultiIntent) {
         for (const seg of intentSegments) {
           const normSeg = normalizeVietnamese(seg);
           const expSeg  = expandQuery(normSeg);
-          const segResult = matchBotFaq(normSeg, expSeg, allFaqs, botContext);
+          const segResult = matchBotFaq(normSeg, expSeg, allFaqs, botContextCompat);
           if (segResult.type === 'answer') multiAnswers.push(segResult.answer);
         }
-        // Dùng kết quả đầu tiên có answer để cập nhật context
         const firstValid = intentSegments.map(seg => {
           const n = normalizeVietnamese(seg);
-          return matchBotFaq(n, expandQuery(n), allFaqs, botContext);
+          return matchBotFaq(n, expandQuery(n), allFaqs, botContextCompat);
         }).find(r => r.type === 'answer');
         if (firstValid) engineResult = firstValid;
       }
-
-      // Cập nhật context cho câu hỏi tiếp theo
-      const newContext: BotContext = {
-        serviceType: engineResult.serviceType ?? botContext.serviceType,
-        phase: engineResult.phase ?? botContext.phase,
-        leadScore: botContext.leadScore + engineResult.leadScoreAdd,
-      };
-      setBotContext(newContext);
 
       // Format promotions footer
       const activePromos = promoData || [];
@@ -341,58 +349,54 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       let text: string;
 
       if (isMultiIntent && multiAnswers.length > 1) {
-        // Multi-Intent — ghép câu trả lời từng ý
         text = multiAnswers.map((a, i) => `${i + 1}. ${a}`).join('\n\n');
-        setQuickReplies(engineResult.quickReplies);
+        setQuickReplies(v2Result.quickReplies.length > 0 ? v2Result.quickReplies : engineResult.quickReplies);
       } else {
-        // ── Tầng 1: Kịch bản Sale (TF-IDF) — tư vấn theo kịch bản bán hàng TRƯỚC ──
-        const allDocs = (scriptData || []).map((s: any) => [s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase());
-        const N = Math.max(allDocs.length, 1);
-        const df: Record<string, number> = {};
-        allDocs.forEach(doc => new Set(doc.split(/\s+/).filter(w => w.length >= 2)).forEach(w => { df[w] = (df[w] || 0) + 1; }));
-        const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
-        const scoredScripts = (scriptData || []).map((s: any) => {
-          let sc = 0;
-          expandedWords.forEach(w => {
-            const wt = idf(w);
-            if (s.title.toLowerCase().includes(w)) sc += 3 * wt;
-            if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) sc += 2 * wt;
-            if (s.content.toLowerCase().includes(w)) sc += 1 * wt;
-          });
-          return { item: s, score: sc };
-        });
-        const bestScript = scoredScripts.sort((a, b) => b.score - a.score)[0];
+        const isFaqPrimary = FAQ_PRIMARY_INTENTS.includes(v2Result.debug.intent);
+        const hasFaqMatch = engineResult.type === 'answer' || engineResult.type === 'clarify';
 
-        if (bestScript && bestScript.score > 3.5) {
-          // ✅ Tầng 1 HIT: có kịch bản sale phù hợp — dùng script
-          const c = bestScript.item.content as string;
-          text = c.length > 450 ? c.slice(0, 450) + '...' : c;
-          if ((isPriceQuery || ['offer', 'fomo', 'closing'].includes(bestScript.item.phase)) && promoFooter) text += promoFooter;
-          setQuickReplies(engineResult.quickReplies);
-
-        } else if (engineResult.type === 'answer' || engineResult.type === 'clarify') {
-          // ── Tầng 2: Kho FAQ — khi không có kịch bản sale khớp ──
+        if (isFaqPrimary && engineResult.type === 'answer') {
+          // ── FAQ Primary: câu hỏi thực tế (benefit/deposit/after_sale) → FAQ ──
           text = engineResult.answer;
-          if (engineResult.type === 'answer' && engineResult.nextQuestion) {
-            text += `\n\n${engineResult.nextQuestion}`;
-          }
-          // Cập nhật usage_count (bỏ qua virtual FAQs)
+          if (engineResult.nextQuestion) text += `\n\n${engineResult.nextQuestion}`;
           if (engineResult.faqId && !String(engineResult.faqId).startsWith('__virt')) {
             const faqItem = allFaqs.find(f => f.id === engineResult.faqId);
             supabase.from('customer_faqs')
               .update({ usage_count: ((faqItem as any)?.usage_count || 0) + 1 })
               .eq('id', engineResult.faqId).then(() => {});
           }
-          // Gắn promo nếu hỏi về giá
           const promoCategories = ['offer', 'fomo', 'closing'];
           const faqCat = allFaqs.find(f => f.id === engineResult.faqId) as any;
-          if ((isPriceQuery || promoCategories.includes(faqCat?.category)) && promoFooter) {
+          if ((isPriceQuery || promoCategories.includes(faqCat?.category)) && promoFooter) text += promoFooter;
+          setQuickReplies(engineResult.quickReplies);
+
+        } else if (v2Result.text) {
+          // ── V2 Script Response: kịch bản sale phase-aware ──
+          text = v2Result.text;
+          if ((isPriceQuery || ['offer', 'fomo', 'closing'].includes(v2Result.newState.currentPhase)) && promoFooter) {
             text += promoFooter;
           }
+          setQuickReplies(v2Result.quickReplies.length > 0 ? v2Result.quickReplies : engineResult.quickReplies);
+
+        } else if (hasFaqMatch) {
+          // ── FAQ Fallback: khi V2 không có script khớp ──
+          text = engineResult.answer;
+          if (engineResult.type === 'answer' && engineResult.nextQuestion) {
+            text += `\n\n${engineResult.nextQuestion}`;
+          }
+          if (engineResult.faqId && !String(engineResult.faqId).startsWith('__virt')) {
+            const faqItem = allFaqs.find(f => f.id === engineResult.faqId);
+            supabase.from('customer_faqs')
+              .update({ usage_count: ((faqItem as any)?.usage_count || 0) + 1 })
+              .eq('id', engineResult.faqId).then(() => {});
+          }
+          const promoCategories = ['offer', 'fomo', 'closing'];
+          const faqCat = allFaqs.find(f => f.id === engineResult.faqId) as any;
+          if ((isPriceQuery || promoCategories.includes(faqCat?.category)) && promoFooter) text += promoFooter;
           setQuickReplies(engineResult.quickReplies);
 
         } else {
-          // ── Tầng 3: Fuse.js trên FAQ (sửa chính tả, cùng service_type) ──
+          // ── Fuse.js trên FAQ (sửa chính tả) ──
           const fuseItems = allFaqs
             .filter(f => {
               if (!f.answer || String(f.answer).length <= 5) return false;
@@ -420,11 +424,10 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           const fuseTop = fuse.search(normalizedMsg)[0];
 
           if (fuseTop && (fuseTop.score ?? 1) < 0.25 && fuseTop.item.answer) {
-            // ✅ Tầng 3 HIT: fuzzy FAQ match
             text = fuseTop.item.answer;
             setQuickReplies(getQuickReplies(fuseTop.item.service_type));
           } else {
-            // ── Tầng 4: Fallback hoàn toàn — chuyển nhân viên ──
+            // ── Fallback hoàn toàn — chuyển nhân viên ──
             const zaloUrl = APP_CONFIG.zaloUrl;
             const hotline = APP_CONFIG.hotline;
             let cta = '';
@@ -433,14 +436,13 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
             text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
             if (promoFooter) text += promoFooter;
 
-            // Log câu chưa trả lời để admin duyệt
             const q = customerMessage.trim();
             if (q.length >= 6) {
               supabase.from('bot_unmatched_logs').insert({
                 session_id: sid, message: q,
                 normalized_message: normalizedMsg,
-                detected_service: engineResult.serviceType,
-                detected_phase: engineResult.phase,
+                detected_service: v2Result.debug.detectedService,
+                detected_phase: v2Result.debug.selectedPhase,
                 created_at: new Date().toISOString(),
               }).then(() => {});
               supabase.from('customer_faqs').insert({
@@ -449,20 +451,21 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
                 created_at: new Date().toISOString(),
               }).then(() => {});
             }
-            setQuickReplies(engineResult.quickReplies);
+            setQuickReplies(v2Result.quickReplies.length > 0 ? v2Result.quickReplies : engineResult.quickReplies);
           }
         }
       }
 
-      // Kiểm tra handoff trigger — thông báo nhân viên nếu cần
-      if (engineResult.handoffTrigger) {
+      // Kiểm tra handoff trigger
+      if (v2Result.handoffTrigger || engineResult.handoffTrigger) {
         supabase.from('chat_sessions').update({ status: 'waiting', unread_admin: 99 }).eq('id', sid).then(() => {});
       }
 
-      // Gắn ảnh báo giá nếu bot match đúng 1 gói cụ thể (single-intent)
+      // Gắn ảnh báo giá nếu bot match đúng 1 gói cụ thể
       let botImageUrl: string | null = null;
-      if (!isMultiIntent && engineResult.faqId && pkgImageMap.has(String(engineResult.faqId))) {
-        const imgUrl = pkgImageMap.get(String(engineResult.faqId)) || '';
+      const imageCheckId = v2Result.faqId ?? (isMultiIntent ? null : engineResult.faqId);
+      if (imageCheckId && pkgImageMap.has(String(imageCheckId))) {
+        const imgUrl = pkgImageMap.get(String(imageCheckId)) || '';
         if (imgUrl) botImageUrl = imgUrl;
       }
 

@@ -3,7 +3,9 @@ import { Link, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
 import { expandQuery } from '../utils/synonyms';
-import { normalizeVietnamese, matchBotFaq, type BotContext } from '../lib/botEngine';
+import { normalizeVietnamese, matchBotFaq } from '../lib/botEngine';
+import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_LABELS } from '../lib/botEngineV2';
+import { createInitialStateV2, type ConversationStateV2, type BotV2Debug } from '../types/botV2';
 import type { CustomerFaq, DbCustomerFaqRow, SaleScript, PricePackage } from '../types';
 import { uploadImageToStorage, compressImage } from '../utils/image';
 import {
@@ -225,6 +227,7 @@ interface TestMsg {
   role: 'user' | 'bot'; text: string;
   tier?: 1 | 2;
   matched?: { type: 'faq' | 'script'; title: string; score: number; phase?: string };
+  debugV2?: BotV2Debug;
 }
 interface PendingEdit { answer: string; category: string; }
 
@@ -315,6 +318,7 @@ export default function AdminBotStudio() {
   const [testMsgs, setTestMsgs] = useState<TestMsg[]>([]);
   const [testInput, setTestInput] = useState('');
   const [testLoading, setTestLoading] = useState(false);
+  const [testStateV2, setTestStateV2] = useState<ConversationStateV2>(() => createInitialStateV2('test-session'));
   const testBottomRef = useRef<HTMLDivElement>(null);
 
   // ── Effects ──
@@ -647,7 +651,7 @@ export default function AdminBotStudio() {
       return;
     }
 
-    // Tầng 1: matchBotFaq — giống live chat 100% (fix: không dùng TF-IDF riêng nữa)
+    // Tầng 1: Bot V2 Engine — giống live chat 100%
     try {
       const [{ data: faqData }, { data: scriptData }] = await Promise.all([
         supabase.from('customer_faqs').select('id, question, answer, tags, usage_count, category, keywords, next_question, lead_score, service_type').eq('is_approved', true),
@@ -655,32 +659,41 @@ export default function AdminBotStudio() {
       ]);
       const normalizedMsg = normalizeVietnamese(msg);
       const expandedWords = expandQuery(normalizedMsg);
-      const testCtx: BotContext = { serviceType: null, phase: null, leadScore: 0 };
-      const engineResult = matchBotFaq(normalizedMsg, expandedWords, faqData || [], testCtx);
+      const botContextCompat = {
+        serviceType: testStateV2.slots.serviceType,
+        phase: testStateV2.currentPhase,
+        leadScore: testStateV2.leadScore,
+      };
+      const engineResult = matchBotFaq(normalizedMsg, expandedWords, faqData || [], botContextCompat);
+      const v2Result = processMessageV2({
+        rawMessage: msg,
+        scriptData: scriptData || [],
+        faqData: faqData || [],
+        state: testStateV2,
+      });
+      setTestStateV2(v2Result.newState);
+
       let text: string;
       let matched: TestMsg['matched'];
 
-      // Tầng 1: Kịch bản Sale (TF-IDF) — thứ tự GIỐNG live chat
-      const N = Math.max((scriptData || []).length, 1);
-      const df: Record<string, number> = {};
-      (scriptData || []).forEach((s: any) => new Set([s.title, s.content, ...(s.tags || [])].join(' ').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2)).forEach((w: string) => { df[w] = (df[w] || 0) + 1; }));
-      const idf = (w: string) => Math.log((N + 1) / ((df[w] || 0) + 1)) + 1;
-      const scriptScore = (s: any) => { let sc = 0; expandedWords.forEach(w => { const wt = idf(w); if (s.title.toLowerCase().includes(w)) sc += 3 * wt; if ((s.tags || []).some((t: string) => t.toLowerCase().includes(w))) sc += 2 * wt; if (s.content.toLowerCase().includes(w)) sc += wt; }); return sc; };
-      const best = (scriptData || []).map((s: any) => ({ s, sc: scriptScore(s) })).sort((a: any, b: any) => b.sc - a.sc)[0];
-
-      if (best && best.sc > 3.5) {
-        // ✅ Kịch bản sale khớp
-        text = (best.s.content as string).slice(0, 450);
-        matched = { type: 'script', title: best.s.title, score: Math.round(best.sc * 10) / 10, phase: best.s.phase };
+      const isFaqPrimary = FAQ_PRIMARY_INTENTS.includes(v2Result.debug.intent);
+      if (isFaqPrimary && engineResult.type === 'answer') {
+        text = engineResult.answer;
+        const mFaq = engineResult.faqId ? (faqData || []).find((f: any) => f.id === String(engineResult.faqId)) : null;
+        if (mFaq) matched = { type: 'faq', title: mFaq.question, score: Math.round(engineResult.score * 100), phase: mFaq.category };
+      } else if (v2Result.text) {
+        text = v2Result.text;
+        if (v2Result.debug.scriptTitle) {
+          matched = { type: 'script', title: v2Result.debug.scriptTitle, score: Math.round(v2Result.debug.scriptScore * 10) / 10, phase: v2Result.debug.selectedPhase };
+        }
       } else if (engineResult.type !== 'fallback') {
-        // Tầng 2: Kho FAQ
         text = engineResult.answer;
         const mFaq = engineResult.faqId ? (faqData || []).find((f: any) => f.id === String(engineResult.faqId)) : null;
         if (mFaq) matched = { type: 'faq', title: mFaq.question, score: Math.round(engineResult.score * 100), phase: engineResult.phase ?? mFaq.category };
       } else {
-        text = 'Không tìm thấy câu trả lời phù hợp. Bạn có thể thêm FAQ hoặc bật Bot Tầng 2 (AI).';
+        text = 'Không tìm thấy câu trả lời. Bạn có thể thêm FAQ hoặc bật Bot Tầng 2 (AI).';
       }
-      setTestMsgs(prev => [...prev, { role: 'bot', text, tier: 1, matched }]);
+      setTestMsgs(prev => [...prev, { role: 'bot', text, tier: 1, matched, debugV2: v2Result.debug }]);
     } catch { setTestMsgs(prev => [...prev, { role: 'bot', text: 'Lỗi khi chạy test.' }]); }
     finally { setTestLoading(false); }
   };
@@ -1273,7 +1286,7 @@ export default function AdminBotStudio() {
 
               {/* Toolbar */}
               <div className="px-4 py-2 flex items-center gap-2 shrink-0">
-                <button onClick={() => setTestMsgs([])} title="Làm mới đoạn chat"
+                <button onClick={() => { setTestMsgs([]); setTestStateV2(createInitialStateV2('test-session')); }} title="Làm mới đoạn chat"
                   className="p-2 hover:bg-black/10 rounded-full text-gray-500 transition-colors">
                   <RefreshCw size={16} />
                 </button>
@@ -1309,6 +1322,31 @@ export default function AdminBotStudio() {
                         <div className="ml-10 bg-purple-50 border border-purple-200 rounded-xl p-2.5 text-xs flex items-center gap-2">
                           <span className="text-purple-600 font-bold">⚡ Bot Tầng 2 (AI)</span>
                           <span className="text-purple-400">— Gemini / Custom LLM</span>
+                        </div>
+                      )}
+                      {m.debugV2 && (
+                        <div className="ml-10 bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-xs space-y-1">
+                          <p className="font-semibold text-blue-800">🧠 Bot V2 Debug</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-blue-700">
+                            <span>Intent: <strong>{m.debugV2.intent}</strong> ({Math.round(m.debugV2.intentConfidence * 100)}%)</span>
+                            <span>Phase: <strong>{PHASE_LABELS[m.debugV2.selectedPhase] ?? m.debugV2.selectedPhase}</strong></span>
+                            {m.debugV2.detectedService && <span>Service: <strong>{m.debugV2.detectedService}</strong></span>}
+                          </div>
+                          {m.debugV2.scriptTitle && (
+                            <div className="text-blue-600">
+                              Script: <strong className="line-clamp-1">"{m.debugV2.scriptTitle}"</strong>
+                              <span className="ml-2">Score: {Math.round(m.debugV2.scriptScore * 10) / 10} · {m.debugV2.candidateScriptCount} ứng viên</span>
+                            </div>
+                          )}
+                          {m.debugV2.injectedFaqTitle && (
+                            <div className="text-blue-600">FAQ kèm: <strong>"{m.debugV2.injectedFaqTitle}"</strong></div>
+                          )}
+                          {m.debugV2.businessRulesFired.length > 0 && (
+                            <div className="text-orange-600">Rules: {m.debugV2.businessRulesFired.join(', ')}</div>
+                          )}
+                          {m.debugV2.slotsFilledThisTurn.length > 0 && (
+                            <div className="text-green-600">Slots: {m.debugV2.slotsFilledThisTurn.join(', ')}</div>
+                          )}
                         </div>
                       )}
                       {m.matched && (

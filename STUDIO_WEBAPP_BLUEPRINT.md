@@ -790,30 +790,46 @@ expandQuery("bao nhiêu tiền")
   - Answer = tin nhắn admin kế tiếp sau câu hỏi đó (nếu có)
 - Admin chỉnh sửa rồi chọn category + tags → Save (source=`from_chat`, is_approved=true)
 
-### Bot Tầng 1 — Smart Matching Engine v2 (`src/lib/botEngine.ts`)
+### Bot Tầng 1 — Bot Engine V2 (`src/lib/botEngineV2.ts` + `src/types/botV2.ts`)
 
-**Kiến trúc 5 tầng** (thay thế TF-IDF cũ):
+**Kiến trúc pipeline 12 bước** — phase-aware sale bot:
 
 ```
-Tầng 1: normalizeVietnamese()  — viết thường + thay viết tắt (bn→bao nhiêu, mk→makeup...)
-Tầng 2: detectServiceType()    — nhận diện loại dịch vụ (anh_cuoi/vay_cuoi/makeup...)
-Tầng 3: detectPhase()          — nhận diện giai đoạn (pricing/booking/deposit/after_sale...)
-Tầng 4: matchBotFaq()          — khớp % keyword: FAQ có keywords[] dùng mới; không có → question overlap cũ
-Tầng 5: answer + next_question — trả lời + câu dẫn tiếp theo
+1.  normalizeVietnamese() + expandQuery() (synonyms)
+2.  detectIntentV2()        — 12 intents: greeting/consult/pricing/benefit/booking/deposit/
+                               schedule/objection/confirm/after_sale/complaint/chitchat
+3.  extractSlotsV2()        — cập nhật slots: location/weddingMonth/budget/phoneNumber/...
+4.  transitionPhaseV2()     — chuyển phase đúng chiều (forward-only, 9 phases)
+5.  filterCandidateScripts()— lọc scripts theo targetPhase (±1 adjacent nếu <2 kết quả)
+6.  TF-IDF trên 3–10 scripts— chỉ chạy trên candidates, không chạy toàn bộ
+7.  expandScriptContent()   — loại bỏ dòng chứa slot đã biết (tránh hỏi lại)
+8.  injectFaq()             — kèm 1 FAQ liên quan sau script (intent → category mapping)
+9.  BusinessRulesEngine     — FOMO append (booking/schedule), deposit CTA (confirm+closing),
+                               handoff (complaint)
+10. buildResponse()         — cắt tối đa 680 ký tự
+11. updateState()           — cập nhật ConversationStateV2: phase, slots, flags, leadScore
+12. return BotV2Result      — text, quickReplies, debug, newState
 ```
 
-**Ngưỡng khớp:**
-- ≥50%: trả lời ngay + hiện `next_question` nếu có
-- 20–49%: hỏi lại (clarify) 2 lựa chọn
-- <20%: fallback → TF-IDF kịch bản → nếu vẫn không → Zalo/Hotline
+**Luồng quyết định trong `callBotTier1`:**
+1. FAQ_PRIMARY_INTENTS (`benefit/deposit/after_sale`) + FAQ match → trả FAQ trực tiếp
+2. `v2Result.text` có nội dung → dùng kịch bản sale V2
+3. FAQ fallback (matchBotFaq V1) → trả FAQ
+4. Fuse.js fuzzy → fallback Zalo/Hotline
 
-**Context memory** (trong LiveChatBubble state): nhớ `serviceType`, `phase`, `leadScore` xuyên suốt cuộc hội thoại → câu sau được boost đúng ngữ cảnh.
+**ConversationStateV2** (React state, reset khi tạo session mới):
+- `currentPhase`: SalesPhase (9 phases: opening→closing→pre_shoot→followup→qa)
+- `slots`: location, weddingMonth, budget, phoneNumber, conceptCount, ...
+- `sentScriptIds`: tránh lặp script đã gửi
+- `flags`: hasSentPricing, hasSentFOMO, hasSentCombo, hasSentUSP
+- `leadScore`: cộng dồn theo phase transitions
 
-**Quick Replies**: sau mỗi bot response → hiện 3 chip gợi ý dựa theo `serviceType` đã detect.
+**Admin Test Chat Debug Panel**: hiện intent, confidence%, phase (tiếng Việt), script title+score, candidate count, injected FAQ, business rules fired, slots filled — sau mỗi bot message.
 
-**Lead Score**: mỗi message cộng điểm theo phase (pricing+20, deposit+80...) + lead_score của FAQ matched. Khi FAQ có `handoff_trigger=true` → thông báo nhân viên.
-
-**Tự học**: câu không trả lời được → lưu vào `bot_unmatched_logs` + `customer_faqs` pending → admin duyệt trong tab "Chưa trả lời" (/admin/bot → tab Chưa trả lời).
+**Files:**
+- `src/types/botV2.ts` — types: CustomerIntent, SalesPhase, ConversationStateV2, BotV2Result, BotV2Debug
+- `src/lib/botEngineV2.ts` — full pipeline implementation
+- `src/lib/botEngine.ts` — V1 engine (matchBotFaq, normalizeVietnamese, ...) vẫn dùng làm FAQ fallback
 
 **DB fields mới trong `customer_faqs`** (cần chạy `supabase_bot_smart_matching.sql`):
 | Field | Type | Mô tả |
@@ -823,8 +839,6 @@ Tầng 5: answer + next_question — trả lời + câu dẫn tiếp theo
 | `lead_score` | integer | Điểm lead cộng thêm khi match |
 | `service_type` | text | anh_cuoi/vay_cuoi/makeup/... |
 | `handoff_trigger` | boolean | Thông báo nhân viên khi match |
-
-> ⚠️ **Backward compatible**: FAQ cũ không có `keywords` → vẫn dùng question word overlap, không bị ảnh hưởng.
 
 ---
 
