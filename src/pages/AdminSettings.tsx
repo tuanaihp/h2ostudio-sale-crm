@@ -70,7 +70,6 @@ type ProviderId = typeof MODEL_PRESETS[number]['id'];
 
 const TABS = [
   { id: 'general', label: 'Logo & Hiển thị', icon: ImageIcon },
-  { id: 'ai_consultant', label: 'AI Tư Vấn', icon: MessageCircle },
   { id: 'integrations', label: 'Cổng kết nối', icon: Cpu },
   { id: 'wheel', label: 'Vòng quay May mắn', icon: Gift },
   { id: 'banner', label: 'Banner QC', icon: Megaphone },
@@ -112,10 +111,6 @@ const AdminSettings: React.FC = () => {
   const [telegramBotToken, setTelegramBotToken] = useState(settings.telegramBotToken || '');
   const [telegramChatId, setTelegramChatId] = useState(settings.telegramChatId || '');
   const [telegramNotificationEnabled, setTelegramNotificationEnabled] = useState(settings.telegramNotificationEnabled === true);
-
-  const [aiConsultantEnabled, setAiConsultantEnabled] = useState(settings.aiConsultantEnabled !== false);
-  const [aiConsultantName, setAiConsultantName] = useState(settings.aiConsultantName || 'Trợ lý H2O');
-  const [aiConsultantPrompt, setAiConsultantPrompt] = useState(settings.aiConsultantPrompt || 'Bạn là nhân viên tư vấn nhiệt tình của H2O Studio. Hãy tư vấn với giọng điệu chuyên nghiệp, thân thiện, trả lời ngắn gọn và dễ hiểu. Bạn có thể sử dụng biểu tượng cảm xúc.');
 
   // Integrations states ("Cổng kết nối")
   const [integrationChatApiEnabled, setIntegrationChatApiEnabled] = useState(settings.integrationChatApiEnabled || false);
@@ -309,9 +304,6 @@ const AdminSettings: React.FC = () => {
         setLogoUrl(finalLogoUrl);
         partialSettings = { brandLogo: finalLogoUrl, watermarkOpacity: opacity, watermarkPosition: position };
       } 
-      else if (section === 'ai_consultant') {
-        partialSettings = { aiConsultantEnabled, aiConsultantName, aiConsultantPrompt };
-      }
       else if (section === 'integrations') {
         partialSettings = {
           integrationChatApiEnabled,
@@ -558,79 +550,6 @@ const AdminSettings: React.FC = () => {
                     />
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'ai_consultant':
-        return (
-          <div className="space-y-6 flex flex-col h-full">
-            <div className="flex items-center justify-between mb-2 border-b border-light-gray pb-4">
-              <h2 className="text-xl font-bold text-dark flex items-center gap-2">
-                <MessageCircle size={24} className="text-secondary" />
-                AI Tư Vấn
-              </h2>
-              <label className="flex flex-col items-center cursor-pointer">
-                <span className="text-xs text-dark/60 font-medium mb-1">
-                  {aiConsultantEnabled ? 'Đang Bật' : 'Đang Tắt'}
-                </span>
-                <div className="relative">
-                  <input 
-                    type="checkbox" 
-                    className="sr-only" 
-                    checked={aiConsultantEnabled} 
-                    onChange={(e) => setAiConsultantEnabled(e.target.checked)} 
-                  />
-                  <div className={`block w-10 h-6 rounded-full transition-colors ${aiConsultantEnabled ? 'bg-secondary' : 'bg-gray-300'}`}></div>
-                  <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${aiConsultantEnabled ? 'transform translate-x-4' : ''}`}></div>
-                </div>
-              </label>
-            </div>
-
-            <div className={`space-y-4 transition-opacity ${!aiConsultantEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-              <div className="bg-light-gray/20 rounded-2xl p-5 border border-light-gray">
-                <h3 className="font-bold text-dark mb-4 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span> 
-                  Thông tin cơ bản
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-bold text-dark mb-2">Tên Trợ lý AI</label>
-                    <input 
-                      type="text" 
-                      value={aiConsultantName} 
-                      onChange={(e) => setAiConsultantName(e.target.value)}
-                      placeholder="VD: Trợ lý H2O, Phương Anh, Chuyên viên Tâm Đan..."
-                      className="w-full p-3 bg-white border border-light-gray rounded-xl focus:outline-none focus:border-secondary transition-colors text-sm"
-                    />
-                    <p className="text-xs text-dark/40 mt-1">Tên này sẽ hiển thị ở khung chat với khách hàng.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-cyan-50/50 rounded-2xl p-5 border border-cyan-100 pb-12">
-                <h3 className="font-bold text-cyan-900 mb-4 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-600"></span> 
-                  Kịch bản/Vai trò của AI (Prompt)
-                </h3>
-                <div>
-                  <textarea 
-                    value={aiConsultantPrompt}
-                    onChange={(e) => setAiConsultantPrompt(e.target.value)}
-                    rows={12}
-                    placeholder="Nhập vai trò, kiến thức tư vấn nghiệp vụ ngành cưới cho AI..."
-                    className="w-full p-4 bg-white border border-cyan-200 rounded-xl focus:outline-none focus:border-cyan-500 resize-y text-sm leading-relaxed"
-                  />
-                  <div className="mt-3 bg-white p-4 rounded-xl border border-cyan-100 space-y-2">
-                    <p className="text-sm font-bold text-cyan-900">Gợi ý cách viết Prompt:</p>
-                    <ul className="text-xs text-cyan-800 list-disc list-inside space-y-1">
-                      <li>Định hình vai trò: "Bạn là {aiConsultantName}, chuyên viên tư vấn cao cấp của H2O Studio."</li>
-                      <li>Khung kịch bản: Cung cấp thông tin giá cả, ví dụ: "Gói basic giá 5tr, VIP 10tr...".</li>
-                      <li>Giới hạn tư vấn: "Chỉ tư vấn các thông tin nằm trong kịch bản. Nếu khách hỏi nằm ngoài chuyên môn, hãy khéo léo xin số điện thoại để quản lý liên hệ lại."</li>
-                    </ul>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
