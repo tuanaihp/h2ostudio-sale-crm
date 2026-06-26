@@ -275,6 +275,34 @@ export function transitionPhaseV2(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// BƯỚC 4b — Slot-Based Phase Promotion
+// Khi slots đủ thông tin → tự tiến phase dù intent không rõ
+// VD: khách trả lời "Tháng 11" → weddingMonth fill → promote discovery → value_prop
+// ══════════════════════════════════════════════════════════════════════════════
+function promotePhaseFromSlots(
+  phase: SalesPhase,
+  slots: CustomerSlots,
+  flags: ConversationStateV2['flags'],
+): SalesPhase {
+  // discovery → value_prop: biết location + tháng cưới → đủ để gửi combo
+  if (phase === 'discovery' && slots.location !== null && slots.weddingMonth !== null) {
+    return 'value_prop';
+  }
+
+  // value_prop → offer: đã gửi bảng giá → tiến sang ưu đãi
+  if (phase === 'value_prop' && flags.hasSentPricing) {
+    return 'offer';
+  }
+
+  // offer → closing: đã tạo FOMO → tiến sang chốt cọc
+  if (phase === 'offer' && flags.hasSentFOMO) {
+    return 'closing';
+  }
+
+  return phase;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // BƯỚC 5 — Rule Engine: lọc scripts theo phase
 // ══════════════════════════════════════════════════════════════════════════════
 function filterCandidateScripts(
@@ -509,7 +537,9 @@ export function processMessageV2(params: {
   if (service && !slots.serviceType) slots.serviceType = service;
 
   // ── Step 5: Phase transition ──
-  const newPhase = transitionPhaseV2(intent, state.currentPhase);
+  const intentPhase = transitionPhaseV2(intent, state.currentPhase);
+  // Step 5b: Slot-based promotion — tiến phase khi slots đủ (VD: biết location+tháng → value_prop)
+  const newPhase = promotePhaseFromSlots(intentPhase, slots, state.flags);
 
   // ── Step 6: Rule Engine — lọc scripts ──
   const candidateScripts = filterCandidateScripts(scriptData, newPhase, state);
