@@ -266,19 +266,28 @@ const ScenarioModal: React.FC<{
   }, []);
 
   const fetchPhaseScripts = async (phaseKey: string) => {
-    if (!phaseKey || phaseScriptsMap[phaseKey] !== undefined) return;
+    if (!phaseKey) return;
+    // Dùng cache nếu đã có data; re-fetch nếu cache rỗng (có thể do lỗi lần trước)
+    if (phaseScriptsMap[phaseKey]?.length > 0) return;
     setLoadingPhase(phaseKey);
-    const { data } = await supabase.from('sale_scripts')
-      .select('id, title, content').eq('phase', phaseKey).eq('enabled', true)
-      .order('order_num').limit(30);
-    const scripts = data || [];
-    setPhaseScriptsMap(prev => ({ ...prev, [phaseKey]: scripts }));
-    setScriptTitleMap(prev => {
-      const next = { ...prev };
-      scripts.forEach(s => { next[s.id] = s.title; });
-      return next;
-    });
-    setLoadingPhase(null);
+    try {
+      const { data, error } = await supabase.from('sale_scripts')
+        .select('id, title, content').eq('phase', phaseKey)
+        .order('order_num').limit(50);
+      if (error) throw error;
+      const scripts = data || [];
+      setPhaseScriptsMap(prev => ({ ...prev, [phaseKey]: scripts }));
+      setScriptTitleMap(prev => {
+        const next = { ...prev };
+        scripts.forEach((s: any) => { next[s.id] = s.title; });
+        return next;
+      });
+    } catch (err) {
+      console.error('fetchPhaseScripts error:', err);
+      setPhaseScriptsMap(prev => ({ ...prev, [phaseKey]: [] }));
+    } finally {
+      setLoadingPhase(null);
+    }
   };
 
   const handlePhaseChange = (idx: number, phaseKey: string) => {
