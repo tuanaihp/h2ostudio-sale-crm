@@ -570,11 +570,14 @@ function advanceScenario(
   const autoSteps: Array<{content: string; delaySeconds: number; imageUrl?: string}> = [];
   let idx = fromIdx + 1;
 
-  while (idx < scenario.steps.length) {
-    const s = scenario.steps[idx];
-    if (s.waitForReply) break;
-    autoSteps.push({ content: resolveStepContent(s, scriptData, allWords, state), delaySeconds: s.delaySeconds, imageUrl: s.imageUrl || undefined });
-    idx++;
+  // Nếu bước hiện tại có waitForReply=true → dừng ngay, không auto-send bước tiếp
+  if (!mainStep.waitForReply) {
+    while (idx < scenario.steps.length) {
+      const s = scenario.steps[idx];
+      if (s.waitForReply) break;
+      autoSteps.push({ content: resolveStepContent(s, scriptData, allWords, state), delaySeconds: s.delaySeconds, imageUrl: s.imageUrl || undefined });
+      idx++;
+    }
   }
 
   return { mainContent, mainImageUrl, autoSteps, nextReplyIdx: idx };
