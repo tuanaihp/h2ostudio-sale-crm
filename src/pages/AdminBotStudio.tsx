@@ -12,7 +12,7 @@ import {
   Bot, Home, BookOpen, FileText, MessageSquare, Settings,
   ToggleLeft, ToggleRight, Brain, Zap, Save, Send, RefreshCw,
   ExternalLink, TrendingUp, HelpCircle, Scroll, Gift, AlertCircle,
-  CheckCircle2, Plus, Search, Edit2, Trash2, X, Check, Copy,
+  CheckCircle2, Plus, Search, Edit2, Trash2, X, Check, Copy, CopyPlus,
   Edit3, Tag, ChevronRight, ChevronDown, ChevronUp, CheckCircle,
   BookMarked, Download, Building2, Phone, Mail, MapPin, Clock,
   Package, ShoppingBag, ChevronLeft,
@@ -172,12 +172,15 @@ const ScriptModal: React.FC<{
 const ScriptCard: React.FC<{
   script: SaleScript; isSuperAdmin: boolean;
   onEdit: (s: SaleScript) => void; onDelete: (id: string) => void; onToggle: (id: string, e: boolean) => void;
-}> = ({ script, isSuperAdmin, onEdit, onDelete, onToggle }) => {
+  onDuplicate: (s: SaleScript) => void;
+}> = ({ script, isSuperAdmin, onEdit, onDelete, onToggle, onDuplicate }) => {
   const [copied, setCopied] = useState(false);
+  const [duplicated, setDuplicated] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const accent = getAccent(script.phase);
   const isLong = script.content.length > 220;
   const copy = () => { navigator.clipboard.writeText(script.content); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  const handleDuplicate = () => { onDuplicate(script); setDuplicated(true); setTimeout(() => setDuplicated(false), 2000); };
   return (
     <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${accent.border} shadow-sm hover:shadow-md transition-shadow ${!script.enabled ? 'opacity-50' : ''}`}>
       <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3">
@@ -195,8 +198,11 @@ const ScriptCard: React.FC<{
             className={`p-1.5 rounded-lg transition-all text-xs font-bold ${script.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}>
             {script.enabled ? '●' : '○'}
           </button>
-          <button onClick={copy} className={`p-1.5 rounded-lg transition-all ${copied ? 'bg-green-500 text-white' : 'text-gray-400 hover:text-purple-500 hover:bg-purple-50'}`}>
+          <button onClick={copy} title="Sao chép nội dung" className={`p-1.5 rounded-lg transition-all ${copied ? 'bg-green-500 text-white' : 'text-gray-400 hover:text-purple-500 hover:bg-purple-50'}`}>
             {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+          <button onClick={handleDuplicate} title="Nhân bản kịch bản" className={`p-1.5 rounded-lg transition-all ${duplicated ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-orange-500 hover:bg-orange-50'}`}>
+            {duplicated ? <Check size={14} /> : <CopyPlus size={14} />}
           </button>
           <button onClick={() => onEdit(script)} className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit3 size={14} /></button>
           {isSuperAdmin && (
@@ -511,6 +517,12 @@ export default function AdminBotStudio() {
     } finally { setScriptSaving(false); }
   };
   const handleScriptDelete = async (id: string) => { await supabase.from('sale_scripts').delete().eq('id', id); setScripts(prev => prev.filter(s => s.id !== id)); loadHomeStats(); };
+  const handleScriptDuplicate = async (s: SaleScript) => {
+    const newId = crypto.randomUUID();
+    const row = { id: newId, phase: s.phase, title: s.title + ' (copy)', content: s.content, tags: s.tags, order_num: s.orderNum + 1, enabled: false, created_at: new Date().toISOString() };
+    await supabase.from('sale_scripts').insert(row);
+    setScripts(prev => { const idx = prev.findIndex(x => x.id === s.id); const copy = { ...s, id: newId, title: s.title + ' (copy)', enabled: false }; const next = [...prev]; next.splice(idx + 1, 0, copy); return next; });
+  };
   const handleScriptToggle = async (id: string, enabled: boolean) => {
     await supabase.from('sale_scripts').update({ enabled, updated_at: new Date().toISOString() }).eq('id', id);
     setScripts(prev => prev.map(s => s.id === id ? { ...s, enabled } : s)); loadHomeStats();
@@ -1113,7 +1125,7 @@ export default function AdminBotStudio() {
                     : displayScripts.length === 0
                       ? <div className="py-16 text-center bg-white rounded-2xl border-2 border-dashed border-gray-200"><BookOpen size={40} className="mx-auto mb-3 text-gray-200" /><p className="text-gray-400 font-medium">{scriptSearch ? `Không tìm thấy "${scriptSearch}"` : 'Chưa có kịch bản nào'}</p>{!scriptSearch && <button onClick={() => setScriptModal({ open: true, script: { phase: selectedPhase, enabled: true } })} className="mt-3 px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-xl hover:bg-purple-700 inline-flex items-center gap-2"><Plus size={15} /> Thêm kịch bản đầu tiên</button>}</div>
                       : <div className="space-y-3">
-                          {displayScripts.map(script => <ScriptCard key={script.id} script={script} isSuperAdmin={isSuperAdmin} onEdit={s => setScriptModal({ open: true, script: s })} onDelete={handleScriptDelete} onToggle={handleScriptToggle} />)}
+                          {displayScripts.map(script => <ScriptCard key={script.id} script={script} isSuperAdmin={isSuperAdmin} onEdit={s => setScriptModal({ open: true, script: s })} onDelete={handleScriptDelete} onToggle={handleScriptToggle} onDuplicate={handleScriptDuplicate} />)}
                           {!isSearching && <button onClick={() => setScriptModal({ open: true, script: { phase: selectedPhase, enabled: true } })} className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-purple-300 hover:text-purple-600 hover:bg-purple-50 transition-all flex items-center justify-center gap-2"><Plus size={15} /> Thêm kịch bản vào giai đoạn này</button>}
                         </div>}
                 </div>
