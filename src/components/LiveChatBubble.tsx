@@ -53,6 +53,18 @@ interface Props {
   };
 }
 
+const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+function renderMsgContent(content: string, sender: 'customer' | 'admin') {
+  const parts = content.split(URL_REGEX);
+  return parts.map((part, i) =>
+    URL_REGEX.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+        className={`underline break-all ${sender === 'customer' ? 'text-blue-200' : 'text-blue-500'}`}
+        onClick={e => e.stopPropagation()}>{part}</a>
+    ) : <React.Fragment key={i}>{part}</React.Fragment>
+  );
+}
+
 export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, integrationConfig }: Props = {}) {
   const { settings } = useApp();
   const isControlled = controlledOpen !== undefined;
@@ -864,7 +876,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
                 ? 'bg-gradient-to-br from-secondary via-primary to-primary text-white rounded-br-sm'
                 : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
             }`}>
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              <p className="whitespace-pre-wrap">{renderMsgContent(msg.content, msg.sender)}</p>
               {msg.image_url && (
                 <img
                   src={msg.image_url} alt="Ảnh báo giá"
