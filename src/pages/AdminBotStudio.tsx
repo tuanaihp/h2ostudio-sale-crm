@@ -703,7 +703,12 @@ export default function AdminBotStudio() {
   const filteredFaqs = faqs.filter(f => {
     const matchCat = faqCatFilter === 'all' || f.category === faqCatFilter;
     const q = faqSearch.toLowerCase();
-    return matchCat && (!q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q) || f.tags.some(t => t.includes(q)));
+    return matchCat && (!q
+      || f.question.toLowerCase().includes(q)
+      || f.answer.toLowerCase().includes(q)
+      || f.tags.some(t => t.toLowerCase().includes(q))
+      || (f.keywords || []).some(k => k.toLowerCase().includes(q))
+    );
   });
   const displayScripts = scripts.filter(s => {
     const matchPhase = isSearching || s.phase === selectedPhase;
