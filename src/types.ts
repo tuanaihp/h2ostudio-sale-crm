@@ -383,9 +383,10 @@ export interface ScenarioStep {
   content: string;
   delaySeconds: number;
   waitForReply: boolean;
-  phase?: string;     // nếu có → bot dùng TF-IDF trên phase này, content là fallback
-  packageId?: string; // nếu có → bot gửi thông tin gói báo giá kèm ảnh
-  imageUrl?: string;  // resolved at runtime từ packageId
+  phase?: string;      // browse filter — dùng khi scriptIds rỗng
+  scriptIds?: string[]; // TF-IDF chỉ trong các scripts đã tag
+  packageId?: string;  // gắn gói báo giá kèm ảnh
+  imageUrl?: string;   // resolved at runtime từ packageId
 }
 
 export interface SaleScenario {

@@ -361,6 +361,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
             delaySeconds: s.delay_seconds ?? 0,
             waitForReply: s.wait_for_reply ?? true,
             phase: s.phase || undefined,
+            scriptIds: s.script_ids?.length > 0 ? s.script_ids : undefined,
             imageUrl,
           };
         }),

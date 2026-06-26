@@ -512,13 +512,30 @@ function buildResponseV2(
 // SCENARIO HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Resolve nội dung của một step: nếu có phase → TF-IDF trên phase đó, fallback về content
+// Resolve nội dung của một step:
+// 1. scriptIds → TF-IDF trên tập scripts đã tag
+// 2. phase → TF-IDF trên tất cả scripts trong phase
+// 3. content cố định
 function resolveStepContent(
   step: SaleScenario['steps'][number],
   scriptData: any[],
   allWords: string[],
   state: ConversationStateV2,
 ): string {
+  // Priority 1: TF-IDF trên tập scripts đã tag
+  if (step.scriptIds && step.scriptIds.length > 0 && scriptData.length > 0) {
+    const tagged = scriptData.filter(s => step.scriptIds!.includes(s.id));
+    if (tagged.length > 0) {
+      const unsent = tagged.filter(s => !state.sentScriptIds.includes(s.id));
+      const candidates = unsent.length > 0 ? unsent : tagged;
+      const { script: best } = rankScriptsV2(candidates, allWords);
+      if (best?.content) {
+        const expanded = expandScriptContent(best.content, state.slots);
+        if (expanded.trim()) return expanded;
+      }
+    }
+  }
+  // Priority 2: TF-IDF trên toàn phase
   if (step.phase && scriptData.length > 0) {
     const phaseCandidates = filterCandidateScripts(scriptData, step.phase as SalesPhase, state);
     if (phaseCandidates.length > 0) {

@@ -246,13 +246,14 @@ const ScenarioModal: React.FC<{
   const [triggerKeywords, setTriggerKeywords] = useState((scenario?.triggerKeywords || []).join(', '));
   const [followupDelay, setFollowupDelay] = useState(scenario?.followupDelayMinutes ?? 120);
   const [enabled, setEnabled] = useState(scenario?.enabled !== false);
-  const [steps, setSteps] = useState<Array<Omit<ScenarioStep, 'id'> & { id: string; packageId: string }>>(
+  const [steps, setSteps] = useState<Array<Omit<ScenarioStep, 'id'> & { id: string; packageId: string; scriptIds: string[] }>>(
     (scenario?.steps || [{ id: crypto.randomUUID(), content: '', delaySeconds: 0, waitForReply: true, phase: '' }])
-      .map(s => ({ ...s, phase: s.phase || '', packageId: (s as any).packageId || '' }))
+      .map(s => ({ ...s, phase: s.phase || '', packageId: (s as any).packageId || '', scriptIds: (s as any).scriptIds || [] }))
   );
   const [packages, setPackages] = useState<Array<{ id: string; title: string; price: string; imageUrl: string; albumUrl?: string; description: string }>>([]);
   const [phaseScriptsMap, setPhaseScriptsMap] = useState<Record<string, Array<{ id: string; title: string; content: string }>>>({});
   const [loadingPhase, setLoadingPhase] = useState<string | null>(null);
+  const [scriptTitleMap, setScriptTitleMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     supabase.from('price_packages').select('id, title, price, image_url, album_url, description')
@@ -270,7 +271,13 @@ const ScenarioModal: React.FC<{
     const { data } = await supabase.from('sale_scripts')
       .select('id, title, content').eq('phase', phaseKey).eq('enabled', true)
       .order('order_num').limit(30);
-    setPhaseScriptsMap(prev => ({ ...prev, [phaseKey]: data || [] }));
+    const scripts = data || [];
+    setPhaseScriptsMap(prev => ({ ...prev, [phaseKey]: scripts }));
+    setScriptTitleMap(prev => {
+      const next = { ...prev };
+      scripts.forEach(s => { next[s.id] = s.title; });
+      return next;
+    });
     setLoadingPhase(null);
   };
 
@@ -279,11 +286,23 @@ const ScenarioModal: React.FC<{
     if (phaseKey) fetchPhaseScripts(phaseKey);
   };
 
-  const pickScript = (idx: number, content: string) => {
-    setSteps(prev => prev.map((s, i) => i === idx ? { ...s, content, phase: '' } : s));
+  const toggleScript = (idx: number, scriptId: string) => {
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== idx) return s;
+      const ids: string[] = (s as any).scriptIds || [];
+      const next = ids.includes(scriptId) ? ids.filter(x => x !== scriptId) : [...ids, scriptId];
+      return { ...s, scriptIds: next };
+    }));
   };
 
-  const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false, packageId: '' }]);
+  const removeScriptTag = (idx: number, scriptId: string) => {
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== idx) return s;
+      return { ...s, scriptIds: ((s as any).scriptIds || []).filter((x: string) => x !== scriptId) };
+    }));
+  };
+
+  const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false, packageId: '', scriptIds: [] }]);
   const removeStep = (idx: number) => setSteps(prev => prev.filter((_, i) => i !== idx));
   const moveStep = (idx: number, dir: -1 | 1) => {
     setSteps(prev => {
@@ -297,7 +316,7 @@ const ScenarioModal: React.FC<{
   const updateStep = (idx: number, key: keyof ScenarioStep, val: any) =>
     setSteps(prev => prev.map((s, i) => i === idx ? { ...s, [key]: val } : s));
 
-  const canSave = name.trim().length > 0 && steps.some(s => s.content.trim().length > 0 || !!s.packageId);
+  const canSave = name.trim().length > 0 && steps.some(s => s.content.trim().length > 0 || !!s.packageId || s.scriptIds.length > 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); if (!canSave) return;
@@ -309,7 +328,7 @@ const ScenarioModal: React.FC<{
       name: name.trim(), description: description.trim(),
       scenarioType, triggerKeywords: kws,
       followupDelayMinutes: followupDelay, enabled,
-      steps: steps.filter(s => s.content.trim() || s.packageId).map(s => ({ ...s, content: s.content.trim() })),
+      steps: steps.filter(s => s.content.trim() || s.packageId || s.scriptIds.length > 0).map(s => ({ ...s, content: s.content.trim() })),
     });
   };
 
@@ -396,44 +415,69 @@ const ScenarioModal: React.FC<{
                         )}
                       </div>
                     </div>
-                    {/* Phase selector — script browser + TF-IDF */}
+                    {/* Script multi-select — TF-IDF trên tập đã tag */}
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">📂 Chọn kịch bản từ giai đoạn</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-gray-500">📂 Tag kịch bản (TF-IDF sẽ chọn cái khớp nhất)</label>
+                        {step.scriptIds.length > 0 && (
+                          <span className="text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">{step.scriptIds.length} đã chọn</span>
+                        )}
+                      </div>
+                      {/* Phase filter dropdown */}
                       <select value={step.phase || ''} onChange={e => handlePhaseChange(idx, e.target.value)}
                         className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
-                        <option value="">— Chọn giai đoạn để xem kịch bản —</option>
+                        <option value="">— Lọc theo giai đoạn —</option>
                         {PHASES.map(p => <option key={p.key} value={p.key}>{p.emoji} {p.label}</option>)}
                       </select>
-                      {/* Script list */}
+                      {/* Script checkbox list */}
                       {step.phase && (
                         <div className="mt-1.5 border border-purple-100 rounded-lg overflow-hidden">
-                          <div className="px-2 py-1 bg-purple-50 flex items-center justify-between">
-                            <span className="text-[10px] font-bold text-purple-600">
-                              Kịch bản trong giai đoạn — click để chọn nội dung
-                            </span>
+                          <div className="px-2 py-1.5 bg-purple-50 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-purple-600">Click để tag/bỏ tag — TF-IDF sẽ chọn cái khớp nhất</span>
                             <button type="button" onClick={() => updateStep(idx, 'phase', '')}
-                              className="text-[10px] text-gray-400 hover:text-gray-600">✕ Đóng</button>
+                              className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
                           </div>
                           {loadingPhase === step.phase ? (
                             <div className="p-3 text-center text-[11px] text-gray-400">Đang tải...</div>
                           ) : (phaseScriptsMap[step.phase] || []).length === 0 ? (
-                            <div className="p-3 text-center text-[11px] text-gray-400">Chưa có kịch bản nào trong giai đoạn này</div>
+                            <div className="p-3 text-center text-[11px] text-gray-400">Chưa có kịch bản nào</div>
                           ) : (
-                            <div className="max-h-52 overflow-y-auto divide-y divide-purple-50">
-                              {(phaseScriptsMap[step.phase] || []).map(script => (
-                                <button key={script.id} type="button"
-                                  onClick={() => pickScript(idx, script.content)}
-                                  className="w-full text-left px-3 py-2 hover:bg-purple-50 transition-colors group">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className="text-[11px] font-bold text-purple-700 leading-tight">{script.title}</p>
-                                    <span className="text-[10px] text-purple-500 opacity-0 group-hover:opacity-100 shrink-0 font-medium">Chọn →</span>
-                                  </div>
-                                  <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 leading-relaxed">{script.content}</p>
-                                </button>
-                              ))}
+                            <div className="max-h-48 overflow-y-auto divide-y divide-purple-50">
+                              {(phaseScriptsMap[step.phase] || []).map(script => {
+                                const isSelected = step.scriptIds.includes(script.id);
+                                return (
+                                  <button key={script.id} type="button"
+                                    onClick={() => toggleScript(idx, script.id)}
+                                    className={`w-full text-left px-3 py-2 transition-colors flex items-start gap-2 ${isSelected ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
+                                    <span className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center text-[10px] ${isSelected ? 'bg-purple-500 border-purple-500 text-white' : 'border-gray-300'}`}>
+                                      {isSelected ? '✓' : ''}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className={`text-[11px] font-bold leading-tight ${isSelected ? 'text-purple-700' : 'text-gray-700'}`}>{script.title}</p>
+                                      <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{script.content}</p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
+                      )}
+                      {/* Selected chips */}
+                      {step.scriptIds.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {step.scriptIds.map(sid => (
+                            <span key={sid} className="inline-flex items-center gap-1 bg-purple-100 text-purple-700 text-[10px] font-medium px-2 py-0.5 rounded-full max-w-[180px]">
+                              <span className="truncate">{scriptTitleMap[sid] || sid.slice(0, 8)}</span>
+                              <button type="button" onClick={() => removeScriptTag(idx, sid)} className="shrink-0 hover:text-red-500">×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {step.scriptIds.length > 0 && (
+                        <p className="text-[10px] text-purple-600 mt-0.5 font-medium">
+                          ✓ Bot dùng TF-IDF chọn kịch bản khớp nhất trong {step.scriptIds.length} kịch bản đã tag
+                        </p>
                       )}
                     </div>
                     {/* Package picker — gắn gói báo giá */}
@@ -839,7 +883,7 @@ export default function AdminBotStudio() {
     if (data) setScenarios(data.map((row: any) => ({
       id: row.id, name: row.name, description: row.description || '',
       triggerKeywords: row.trigger_keywords || [],
-      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true, phase: s.phase || '', packageId: s.package_id || '' })),
+      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true, phase: s.phase || '', packageId: s.package_id || '', scriptIds: s.script_ids || [] })),
       enabled: row.enabled !== false, scenarioType: row.scenario_type || 'keyword',
       followupDelayMinutes: row.followup_delay_minutes || 120, orderNum: row.order_num || 0,
     })));
@@ -849,7 +893,7 @@ export default function AdminBotStudio() {
   const handleScenarioSave = async (data: Partial<SaleScenario>) => {
     setScenarioSaving(true);
     try {
-      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply, phase: s.phase || null, package_id: (s as any).packageId || null }));
+      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply, phase: s.phase || null, package_id: (s as any).packageId || null, script_ids: (s as any).scriptIds?.length > 0 ? (s as any).scriptIds : null }));
       if (data.id) {
         await supabase.from('sale_scenarios').update({
           name: data.name, description: data.description, trigger_keywords: data.triggerKeywords,
