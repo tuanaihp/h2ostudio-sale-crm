@@ -489,65 +489,75 @@ export default function AdminPromotions() {
   const selectedPromoForCustomers = selectedPromoId ? promos.find(p => p.id === selectedPromoId) : null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
 
-      {/* ── Top nav ────────────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link to="/admin/consultations"
-              className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
-            >
-              <ArrowLeft size={18} />
-            </Link>
-            <div className="flex items-center gap-2">
-              <Megaphone size={18} className="text-primary" />
-              <h1 className="font-bold text-gray-900 text-sm">Lịch Khuyến Mãi</h1>
+      {/* ── Sidebar ── */}
+      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-gradient-to-br from-rose-500 to-orange-500 rounded-xl flex items-center justify-center shadow-sm">
+              <Megaphone size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-800 leading-tight">Lịch Khuyến Mãi</p>
+              <p className="text-[10px] text-gray-400">{promos.length} chương trình</p>
             </div>
           </div>
+        </div>
+        <nav className="flex-1 p-3 space-y-0.5">
+          {([
+            ['calendar', Calendar, 'Lịch'],
+            ['list', List, 'Danh sách'],
+            ['stats', TrendingUp, 'Thống kê'],
+            ['customers', Users, 'Khách hàng'],
+          ] as const).map(([key, Icon, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                tab === key ? 'bg-rose-50 text-rose-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+              }`}>
+              <Icon size={15} />
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-gray-100">
+          <Link to="/admin/consultations"
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 transition-colors">
+            ← Về trang Admin
+          </Link>
+        </div>
+      </aside>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            {([
-              ['calendar', Calendar, 'Lịch'],
-              ['list', List, 'Danh sách'],
-              ['stats', TrendingUp, 'Thống kê'],
-              ['customers', Users, 'Khách hàng'],
-            ] as const).map(([key, Icon, label]) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  tab === key ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Icon size={13} />
-                <span className="hidden sm:inline">{label}</span>
-              </button>
-            ))}
-          </div>
+      {/* ── Main ── */}
+      <main className="flex-1 overflow-auto flex flex-col">
 
-          {/* Action buttons */}
+        {/* Action bar */}
+        <div className="sticky top-0 z-20 bg-white border-b px-6 py-3 flex items-center justify-between shrink-0">
+          <h2 className="font-bold text-gray-800 text-sm">
+            {tab === 'calendar' && '📅 Lịch Khuyến Mãi'}
+            {tab === 'list' && '📋 Danh Sách'}
+            {tab === 'stats' && '📈 Thống Kê'}
+            {tab === 'customers' && '👥 Khách Hàng'}
+          </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setAiModal(true); setAiProposals([]); setAiError(''); }}
               className="flex items-center gap-1.5 bg-violet-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-violet-700 transition-colors"
             >
               <Sparkles size={14} />
-              <span className="hidden sm:inline">AI tạo KM</span>
+              AI tạo KM
             </button>
             <button
               onClick={() => openCreate()}
               className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors"
             >
               <Plus size={14} />
-              <span className="hidden sm:inline">Tạo KM</span>
+              Tạo KM
             </button>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="max-w-5xl mx-auto px-6 py-6 w-full">
 
         {/* ════════════════ CALENDAR TAB ════════════════ */}
         {tab === 'calendar' && (
@@ -993,7 +1003,8 @@ export default function AdminPromotions() {
             </div>
           </div>
         )}
-      </div>
+        </div>
+      </main>
 
       {/* ══ Create/Edit Modal ══════════════════════════════════════════════════ */}
       {showModal && (
