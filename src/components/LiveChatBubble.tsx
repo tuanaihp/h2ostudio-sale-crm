@@ -142,7 +142,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   };
 
   const initSession = async () => {
-    setBotStateV2(createInitialStateV2(sid));
+    setBotStateV2(createInitialStateV2(sessionId || ''));
     setQuickReplies([]);
     const savedId = localStorage.getItem(SESSION_KEY);
     if (savedId) {
