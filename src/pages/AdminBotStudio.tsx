@@ -251,6 +251,8 @@ const ScenarioModal: React.FC<{
       .map(s => ({ ...s, phase: s.phase || '', packageId: (s as any).packageId || '' }))
   );
   const [packages, setPackages] = useState<Array<{ id: string; title: string; price: string; imageUrl: string; albumUrl?: string; description: string }>>([]);
+  const [phaseScriptsMap, setPhaseScriptsMap] = useState<Record<string, Array<{ id: string; title: string; content: string }>>>({});
+  const [loadingPhase, setLoadingPhase] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from('price_packages').select('id, title, price, image_url, album_url, description')
@@ -261,6 +263,25 @@ const ScenarioModal: React.FC<{
         description: p.description || '',
       }))));
   }, []);
+
+  const fetchPhaseScripts = async (phaseKey: string) => {
+    if (!phaseKey || phaseScriptsMap[phaseKey] !== undefined) return;
+    setLoadingPhase(phaseKey);
+    const { data } = await supabase.from('sale_scripts')
+      .select('id, title, content').eq('phase', phaseKey).eq('enabled', true)
+      .order('order_num').limit(30);
+    setPhaseScriptsMap(prev => ({ ...prev, [phaseKey]: data || [] }));
+    setLoadingPhase(null);
+  };
+
+  const handlePhaseChange = (idx: number, phaseKey: string) => {
+    updateStep(idx, 'phase', phaseKey);
+    if (phaseKey) fetchPhaseScripts(phaseKey);
+  };
+
+  const pickScript = (idx: number, content: string) => {
+    setSteps(prev => prev.map((s, i) => i === idx ? { ...s, content, phase: '' } : s));
+  };
 
   const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false, packageId: '' }]);
   const removeStep = (idx: number) => setSteps(prev => prev.filter((_, i) => i !== idx));
@@ -375,18 +396,44 @@ const ScenarioModal: React.FC<{
                         )}
                       </div>
                     </div>
-                    {/* Phase selector — TF-IDF mode */}
+                    {/* Phase selector — script browser + TF-IDF */}
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Giai đoạn (TF-IDF)</label>
-                      <select value={step.phase || ''} onChange={e => updateStep(idx, 'phase', e.target.value)}
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">📂 Chọn kịch bản từ giai đoạn</label>
+                      <select value={step.phase || ''} onChange={e => handlePhaseChange(idx, e.target.value)}
                         className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
-                        <option value="">— Dùng nội dung cố định bên dưới —</option>
+                        <option value="">— Chọn giai đoạn để xem kịch bản —</option>
                         {PHASES.map(p => <option key={p.key} value={p.key}>{p.emoji} {p.label}</option>)}
                       </select>
+                      {/* Script list */}
                       {step.phase && (
-                        <p className="text-[10px] text-purple-600 mt-0.5 font-medium">
-                          ✓ Bot sẽ dùng TF-IDF chọn kịch bản phù hợp nhất trong giai đoạn "{PHASES.find(p => p.key === step.phase)?.label}"
-                        </p>
+                        <div className="mt-1.5 border border-purple-100 rounded-lg overflow-hidden">
+                          <div className="px-2 py-1 bg-purple-50 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-purple-600">
+                              Kịch bản trong giai đoạn — click để chọn nội dung
+                            </span>
+                            <button type="button" onClick={() => updateStep(idx, 'phase', '')}
+                              className="text-[10px] text-gray-400 hover:text-gray-600">✕ Đóng</button>
+                          </div>
+                          {loadingPhase === step.phase ? (
+                            <div className="p-3 text-center text-[11px] text-gray-400">Đang tải...</div>
+                          ) : (phaseScriptsMap[step.phase] || []).length === 0 ? (
+                            <div className="p-3 text-center text-[11px] text-gray-400">Chưa có kịch bản nào trong giai đoạn này</div>
+                          ) : (
+                            <div className="max-h-52 overflow-y-auto divide-y divide-purple-50">
+                              {(phaseScriptsMap[step.phase] || []).map(script => (
+                                <button key={script.id} type="button"
+                                  onClick={() => pickScript(idx, script.content)}
+                                  className="w-full text-left px-3 py-2 hover:bg-purple-50 transition-colors group">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="text-[11px] font-bold text-purple-700 leading-tight">{script.title}</p>
+                                    <span className="text-[10px] text-purple-500 opacity-0 group-hover:opacity-100 shrink-0 font-medium">Chọn →</span>
+                                  </div>
+                                  <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 leading-relaxed">{script.content}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                     {/* Package picker — gắn gói báo giá */}
@@ -419,9 +466,9 @@ const ScenarioModal: React.FC<{
                     <textarea
                       value={step.content}
                       onChange={e => updateStep(idx, 'content', e.target.value)}
-                      rows={(step as any).packageId ? 1 : step.phase ? 2 : 3}
-                      placeholder={(step as any).packageId ? `Thêm lời dẫn (VD: "Đây là gói phù hợp nhất cho em:") — không bắt buộc` : step.phase ? `Nội dung dự phòng (dùng khi không tìm được kịch bản phù hợp)` : `Nội dung tin nhắn bước ${idx + 1}...`}
-                      className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono ${step.phase || (step as any).packageId ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
+                      rows={(step as any).packageId ? 1 : 3}
+                      placeholder={(step as any).packageId ? `Thêm lời dẫn (VD: "Đây là gói phù hợp nhất cho em:") — không bắt buộc` : `Nội dung tin nhắn — hoặc chọn kịch bản từ giai đoạn bên trên`}
+                      className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono ${(step as any).packageId ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
                     />
                     <div className="flex items-center gap-4">
                       {/* Wait for reply toggle */}
