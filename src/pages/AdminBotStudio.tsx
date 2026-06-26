@@ -535,7 +535,16 @@ export default function AdminBotStudio() {
   };
 
   // ── Settings ──
-  const toggle = (key: string) => updateSettings({ [key]: !(settings as any)?.[key] });
+  const toggle = (key: string) => {
+    const defaultOn = key === 'liveChatEnabled';
+    const current = (settings as any)?.[key] ?? (defaultOn ? true : false);
+    updateSettings({ [key]: !current });
+  };
+  const isToggleOn = (key: string) => {
+    const defaultOn = key === 'liveChatEnabled';
+    const v = (settings as any)?.[key];
+    return v === undefined ? defaultOn : Boolean(v);
+  };
 
   // ── Info tab functions ──
   const saveCustomInfo = async () => {
@@ -736,7 +745,7 @@ export default function AdminBotStudio() {
   };
 
   // ── Derived ──
-  const botOn = settings?.chatBotEnabled || settings?.chatBotTier2Enabled;
+  const botOn = (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true) && settings?.liveChatEnabled !== false;
   const filteredFaqs = faqs.filter(f => {
     const matchCat = faqCatFilter === 'all' || f.category === faqCatFilter;
     const q = faqSearch.toLowerCase();
@@ -809,9 +818,10 @@ export default function AdminBotStudio() {
               <h1 className="text-2xl font-bold text-gray-900">H2O Bot AI Studio</h1>
               <p className="text-sm text-gray-500 mt-0.5">Quản lý AI tư vấn khách hàng tự động</p>
             </div>
-            {/* Bot status */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Bot status — 3 toggles, lưu ngay */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
+                { key: 'liveChatEnabled', label: 'Widget Chat', sub: 'Hiển thị nút Chat', icon: MessageSquare, color: 'bg-green-50 text-green-600', aColor: 'text-green-500', desc: 'Bật/tắt toàn bộ khung chat trên website' },
                 { key: 'chatBotEnabled', label: 'Bot Tầng 1', sub: 'TF-IDF Matching', icon: Brain, color: 'bg-blue-50 text-blue-600', aColor: 'text-blue-500', desc: `Kho: ${stats.faqs} FAQ + ${stats.scripts} kịch bản` },
                 { key: 'chatBotTier2Enabled', label: 'Bot Tầng 2', sub: 'AI (Gemini / Custom)', icon: Zap, color: 'bg-purple-50 text-purple-600', aColor: 'text-purple-500', desc: settings?.integrationChatApiEnabled ? `Model: ${settings?.integrationChatApiModelName || 'Custom'}` : 'Gemini 2.0 Flash' },
               ].map(({ key, label, sub, icon: Icon, color, aColor, desc }) => (
@@ -821,13 +831,13 @@ export default function AdminBotStudio() {
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}><Icon size={17} /></div>
                       <div><p className="text-sm font-semibold text-gray-800">{label}</p><p className="text-[10px] text-gray-400">{sub}</p></div>
                     </div>
-                    <button onClick={() => toggle(key)} className={`transition-colors ${(settings as any)?.[key] ? aColor : 'text-gray-300'}`}>
-                      {(settings as any)?.[key] ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                    <button onClick={() => toggle(key)} className={`transition-colors ${isToggleOn(key) ? aColor : 'text-gray-300'}`}>
+                      {isToggleOn(key) ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
                     </button>
                   </div>
                   <p className="text-xs text-gray-400">{desc}</p>
-                  <span className={`mt-1.5 inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${(settings as any)?.[key] ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                    {(settings as any)?.[key] ? '● Đang hoạt động' : '○ Đã tắt'}
+                  <span className={`mt-1.5 inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${isToggleOn(key) ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {isToggleOn(key) ? '● Đang hoạt động' : '○ Đã tắt'}
                   </span>
                 </div>
               ))}
@@ -1587,25 +1597,9 @@ export default function AdminBotStudio() {
         {/* ══ SETTINGS ══ */}
         {tab === 'settings' && (
           <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
-            <div><h2 className="text-xl font-bold text-gray-900">Cài đặt Chat</h2><p className="text-sm text-gray-500">Bật/tắt tính năng và cấu hình hành vi của chat</p></div>
-
-            {/* Toggles: Widget + Bot Tầng 1 + Bot Tầng 2 */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">🔌 Bật / Tắt tính năng</h3>
-              {[
-                { label: 'Widget CHAT website', desc: 'Hiện/ẩn nút Chat dưới website', checked: liveChatEnabled, onChange: setLiveChatEnabled, color: 'bg-green-500' },
-                { label: 'Bot Tầng 1 · Kịch bản', desc: 'Khớp từ khóa kho kịch bản · miễn phí', checked: chatBotEnabled, onChange: setChatBotEnabled, color: 'bg-primary' },
-                { label: 'Bot Tầng 2 · AI API', desc: 'Gemini/ChatGPT + kịch bản · cần API', checked: chatBotTier2Enabled, onChange: setChatBotTier2Enabled, color: 'bg-purple-500' },
-              ].map(item => (
-                <div key={item.label} className={`rounded-xl p-3 flex items-center justify-between gap-3 border transition-colors ${item.checked ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-100'}`}>
-                  <div><p className="text-sm font-semibold text-gray-800">{item.label}</p><p className="text-xs text-gray-400">{item.desc}</p></div>
-                  <label className="relative cursor-pointer shrink-0">
-                    <input type="checkbox" className="sr-only" checked={item.checked} onChange={e => item.onChange(e.target.checked)} />
-                    <div className={`block w-11 h-6 rounded-full transition-colors ${item.checked ? item.color : 'bg-gray-300'}`} />
-                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${item.checked ? 'translate-x-5' : ''}`} />
-                  </label>
-                </div>
-              ))}
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Cài đặt Chat</h2>
+              <p className="text-sm text-gray-500">Cấu hình hành vi của chat · Để bật/tắt Widget và Bot → xem <button onClick={() => setTab('home')} className="text-primary underline font-medium">Trang chủ</button></p>
             </div>
 
             {/* Kịch bản tin nhắn tự động */}
