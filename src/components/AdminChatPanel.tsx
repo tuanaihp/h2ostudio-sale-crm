@@ -1,5 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check, Camera, BookmarkPlus } from 'lucide-react';
+import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check, Camera, BookmarkPlus, HelpCircle, Lightbulb } from 'lucide-react';
+
+// ── Nhận diện giai đoạn từ câu hỏi khách ─────────────────────────────────────
+const PHASE_DETECT_RULES: Array<{ keywords: string[]; phase: string; label: string }> = [
+  { keywords: ['giá', 'phí', 'tiền', 'bao nhiêu', 'bảng giá', 'báo giá', 'mấy tiền', 'chi phí', 'gói bao nhiêu', 'giá gói', 'giá chụp', 'giá combo', 'combo giá'], phase: 'value_prop', label: '💎 Giá trị – USP' },
+  { keywords: ['bao gồm', 'có gì', 'trong gói', 'quyền lợi', 'gồm những gì', 'được gì', 'combo gồm', 'gói có'], phase: 'value_prop', label: '💎 Giá trị – USP' },
+  { keywords: ['đặt lịch', 'giữ lịch', 'book', 'còn lịch', 'ngày nào trống', 'muốn đặt', 'hẹn ngày', 'tháng mấy', 'còn slot', 'ngày trống'], phase: 'fomo', label: '⏳ Tạo FOMO' },
+  { keywords: ['đặt cọc', 'cọc', 'chuyển khoản', 'thanh toán', 'tiền cọc', 'số tài khoản', 'stk', 'trả trước'], phase: 'closing', label: '💳 Chốt cọc' },
+  { keywords: ['ok', 'được rồi', 'đồng ý', 'cho em đặt', 'chốt luôn', 'em lấy', 'lấy gói', 'đặt ngay'], phase: 'closing', label: '💳 Chốt cọc' },
+  { keywords: ['đắt quá', 'mắc quá', 'cân nhắc', 'suy nghĩ thêm', 'băn khoăn', 'chưa quyết', 'lo lắng', 'hỏi lại sau'], phase: 'faq', label: '❓ Q&A – Từ chối' },
+  { keywords: ['nhận ảnh', 'chọn ảnh', 'khi nào có ảnh', 'bao lâu xong', 'ra ảnh', 'giao ảnh', 'duyệt ảnh'], phase: 'followup', label: '🔔 Follow-up' },
+  { keywords: ['tư vấn', 'muốn biết', 'hỏi về', 'tham khảo', 'xem thử', 'cho em hỏi', 'muốn hỏi', 'tìm hiểu'], phase: 'discovery', label: '📌 Khởi gợi nhu cầu' },
+  { keywords: ['chào', 'hello', 'hi', 'xin chào', 'alo', 'cho hỏi', 'a ơi', 'chị ơi', 'em ơi'], phase: 'opening', label: '💌 Mở đầu' },
+];
+function detectPhaseFromQuestion(text: string): { phase: string; label: string; keyword: string } | null {
+  const t = text.toLowerCase();
+  for (const rule of PHASE_DETECT_RULES) {
+    for (const kw of rule.keywords) {
+      if (t.includes(kw)) return { phase: rule.phase, label: rule.label, keyword: kw };
+    }
+  }
+  return null;
+}
+const PHASE_GUIDE = [
+  { label: '💌 Mở đầu',            keywords: 'chào, hello, hi, alo, cho hỏi, a ơi' },
+  { label: '📌 Khởi gợi nhu cầu',  keywords: 'tư vấn, tham khảo, xem thử, muốn hỏi' },
+  { label: '💎 Giá trị – USP',      keywords: 'giá, phí, tiền, bao nhiêu, báo giá, combo giá, gói có gì' },
+  { label: '🔥 Ưu đãi đặc biệt',   keywords: 'ưu đãi, khuyến mãi, giảm giá, quà tặng' },
+  { label: '⏳ Tạo FOMO',           keywords: 'đặt lịch, còn lịch, tháng mấy, ngày trống, book' },
+  { label: '💳 Chốt cọc',           keywords: 'đặt cọc, cọc, chuyển khoản, đồng ý, em lấy' },
+  { label: '🌈 Trước ngày chụp',    keywords: 'chuẩn bị, mang gì, check in, lịch chụp' },
+  { label: '🔔 Follow-up',          keywords: 'nhận ảnh, khi nào có ảnh, bao lâu xong' },
+  { label: '❓ Q&A – Từ chối',      keywords: 'đắt quá, cân nhắc, suy nghĩ thêm, băn khoăn' },
+];
 import { supabase } from '../supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -151,6 +184,7 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
   const [saveFaqTarget, setSaveFaqTarget] = useState<{ question: string; answer: string } | null>(null);
   const [saveFaqForm, setSaveFaqForm]     = useState({ question: '', answer: '', category: 'khac', tags: '' });
   const [saveFaqSaving, setSaveFaqSaving] = useState(false);
+  const [showPhaseGuide, setShowPhaseGuide] = useState(false);
 
   const bottomRef    = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLTextAreaElement>(null);
@@ -835,9 +869,42 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
                   onChange={e => setSaveFaqForm(f => ({ ...f, answer: e.target.value }))}
                 />
               </div>
+              {/* Phase suggestion row */}
+              {(() => {
+                const detected = detectPhaseFromQuestion(saveFaqForm.question);
+                const isDifferent = detected && detected.phase !== saveFaqForm.category;
+                return detected ? (
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border ${isDifferent ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
+                    <Lightbulb size={13} className={isDifferent ? 'text-amber-500 shrink-0' : 'text-green-500 shrink-0'} />
+                    <span className={`font-semibold ${isDifferent ? 'text-amber-800' : 'text-green-800'}`}>
+                      Gợi ý giai đoạn: <span className="font-bold">{detected.label}</span>
+                    </span>
+                    <span className={`${isDifferent ? 'text-amber-500' : 'text-green-600'}`}>· từ khóa: "<b>{detected.keyword}</b>"</span>
+                    {isDifferent && (
+                      <button
+                        onClick={() => setSaveFaqForm(f => ({ ...f, category: detected.phase }))}
+                        className="ml-auto shrink-0 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg hover:bg-amber-600 transition-colors"
+                      >
+                        Áp dụng
+                      </button>
+                    )}
+                    {!isDifferent && <span className="ml-auto text-green-600 font-bold text-[10px]">✓ Đúng rồi</span>}
+                  </div>
+                ) : null;
+              })()}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">📂 Nhóm</label>
+                  <div className="flex items-center gap-1 mb-1">
+                    <label className="text-[11px] font-bold text-gray-600">📂 Nhóm giai đoạn</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPhaseGuide(v => !v)}
+                      className="text-gray-400 hover:text-amber-500 transition-colors"
+                      title="Xem bảng tra cứu giai đoạn"
+                    >
+                      <HelpCircle size={12} />
+                    </button>
+                  </div>
                   <select
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40"
                     value={saveFaqForm.category}
@@ -865,6 +932,21 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
                   />
                 </div>
               </div>
+              {/* Bảng tra cứu giai đoạn */}
+              {showPhaseGuide && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-1.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-bold text-gray-700">📖 Bảng tra cứu: Từ khóa → Giai đoạn</p>
+                    <button onClick={() => setShowPhaseGuide(false)} className="text-gray-400 hover:text-gray-600"><X size={12} /></button>
+                  </div>
+                  {PHASE_GUIDE.map(row => (
+                    <div key={row.label} className="flex gap-2 text-[10px]">
+                      <span className="font-semibold text-gray-700 w-36 shrink-0">{row.label}</span>
+                      <span className="text-gray-500">{row.keywords}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex gap-3 p-4 border-t">
               <button
