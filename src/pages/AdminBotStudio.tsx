@@ -6,7 +6,7 @@ import { expandQuery } from '../utils/synonyms';
 import { normalizeVietnamese, matchBotFaq } from '../lib/botEngine';
 import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_LABELS } from '../lib/botEngineV2';
 import { createInitialStateV2, type ConversationStateV2, type BotV2Debug } from '../types/botV2';
-import type { CustomerFaq, DbCustomerFaqRow, SaleScript, PricePackage } from '../types';
+import type { CustomerFaq, DbCustomerFaqRow, SaleScript, PricePackage, SaleScenario, ScenarioStep } from '../types';
 import { uploadImageToStorage, compressImage } from '../utils/image';
 import {
   Bot, Home, BookOpen, FileText, MessageSquare, Settings,
@@ -15,7 +15,7 @@ import {
   CheckCircle2, Plus, Search, Edit2, Trash2, X, Check, Copy, CopyPlus,
   Edit3, Tag, ChevronRight, ChevronDown, ChevronUp, CheckCircle,
   BookMarked, Download, Building2, Phone, Mail, MapPin, Clock,
-  Package, ShoppingBag, ChevronLeft,
+  Package, ShoppingBag, ChevronLeft, Layers, GripVertical, ArrowDown, ArrowUp,
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -225,9 +225,205 @@ const ScriptCard: React.FC<{
   );
 };
 
+// ─── ScenarioModal ────────────────────────────────────────────────────────────
+
+const SCENARIO_TYPE_LABELS: Record<string, string> = {
+  keyword: '🔑 Kích hoạt theo từ khóa',
+  objection: '🚫 Xử lý từ chối',
+  followup: '⏰ Nhắc lại tự động',
+};
+
+const ScenarioModal: React.FC<{
+  scenario: Partial<SaleScenario> | null;
+  saving: boolean;
+  onSave: (d: Partial<SaleScenario>) => void;
+  onClose: () => void;
+}> = ({ scenario, saving, onSave, onClose }) => {
+  const isNew = !scenario?.id;
+  const [name, setName] = useState(scenario?.name || '');
+  const [description, setDescription] = useState(scenario?.description || '');
+  const [scenarioType, setScenarioType] = useState<SaleScenario['scenarioType']>(scenario?.scenarioType || 'keyword');
+  const [triggerKeywords, setTriggerKeywords] = useState((scenario?.triggerKeywords || []).join(', '));
+  const [followupDelay, setFollowupDelay] = useState(scenario?.followupDelayMinutes ?? 120);
+  const [enabled, setEnabled] = useState(scenario?.enabled !== false);
+  const [steps, setSteps] = useState<Array<Omit<ScenarioStep, 'id'> & { id: string }>>(
+    (scenario?.steps || [{ id: crypto.randomUUID(), content: '', delaySeconds: 0, waitForReply: true }]).map(s => ({ ...s }))
+  );
+
+  const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false }]);
+  const removeStep = (idx: number) => setSteps(prev => prev.filter((_, i) => i !== idx));
+  const moveStep = (idx: number, dir: -1 | 1) => {
+    setSteps(prev => {
+      const arr = [...prev];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return arr;
+    });
+  };
+  const updateStep = (idx: number, key: keyof ScenarioStep, val: any) =>
+    setSteps(prev => prev.map((s, i) => i === idx ? { ...s, [key]: val } : s));
+
+  const canSave = name.trim().length > 0 && steps.some(s => s.content.trim().length > 0);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault(); if (!canSave) return;
+    const kws = scenarioType === 'keyword' || scenarioType === 'objection'
+      ? triggerKeywords.split(',').map(k => k.trim()).filter(Boolean)
+      : [];
+    onSave({
+      ...(scenario?.id ? { id: scenario.id } : {}),
+      name: name.trim(), description: description.trim(),
+      scenarioType, triggerKeywords: kws,
+      followupDelayMinutes: followupDelay, enabled,
+      steps: steps.filter(s => s.content.trim()).map(s => ({ ...s, content: s.content.trim() })),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95vh] rounded-t-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0 bg-gray-50">
+          <h3 className="font-bold text-gray-900">{isNew ? '✨ Tạo kịch bản Sale mới' : '✏️ Sửa kịch bản Sale'}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-200 rounded-full text-gray-400"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-5 space-y-4 overflow-y-auto flex-1">
+            {/* Name */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">Tên kịch bản <span className="text-red-500">*</span></label>
+              <input value={name} onChange={e => setName(e.target.value)} autoFocus
+                placeholder="VD: Sale combo chụp ảnh cưới"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 text-sm" />
+            </div>
+            {/* Type */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">Loại kịch bản</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['keyword', 'objection', 'followup'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setScenarioType(t)}
+                    className={`p-2.5 rounded-xl border text-xs font-medium transition-all text-center ${scenarioType === t ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600 hover:border-purple-300'}`}>
+                    {SCENARIO_TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Trigger keywords / followup delay */}
+            {(scenarioType === 'keyword' || scenarioType === 'objection') && (
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Từ khóa kích hoạt <span className="text-gray-400 font-normal">(phân cách bằng dấu phẩy)</span>
+                </label>
+                <input value={triggerKeywords} onChange={e => setTriggerKeywords(e.target.value)}
+                  placeholder="VD: combo, chụp ảnh, ảnh cưới, studio"
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 text-sm" />
+                <p className="text-[10px] text-gray-400 mt-1">Bot sẽ dùng kịch bản này khi khách hàng nhắn tin chứa bất kỳ từ khóa nào</p>
+              </div>
+            )}
+            {scenarioType === 'followup' && (
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Nhắc sau bao nhiêu phút im lặng</label>
+                <input type="number" min={1} value={followupDelay} onChange={e => setFollowupDelay(parseInt(e.target.value) || 120)}
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 text-sm" />
+              </div>
+            )}
+            {/* Description */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">Ghi chú nội bộ</label>
+              <input value={description} onChange={e => setDescription(e.target.value)}
+                placeholder="Mô tả mục đích kịch bản (không hiển thị cho khách)"
+                className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 text-sm" />
+            </div>
+
+            {/* Steps */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-gray-700">📋 Các bước trong kịch bản</label>
+                <span className="text-[10px] text-gray-400">{steps.length} bước</span>
+              </div>
+              <div className="space-y-3">
+                {steps.map((step, idx) => (
+                  <div key={step.id} className={`border rounded-xl p-3 space-y-2 ${step.waitForReply ? 'border-blue-200 bg-blue-50/30' : 'border-orange-200 bg-orange-50/30'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">Bước {idx + 1}</span>
+                        {step.waitForReply
+                          ? <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">⏸ Chờ khách trả lời</span>
+                          : <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded-full">▶ Tự gửi sau {step.delaySeconds}s</span>
+                        }
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <button type="button" onClick={() => moveStep(idx, -1)} disabled={idx === 0}
+                          className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 rounded"><ArrowUp size={12} /></button>
+                        <button type="button" onClick={() => moveStep(idx, 1)} disabled={idx === steps.length - 1}
+                          className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 rounded"><ArrowDown size={12} /></button>
+                        {steps.length > 1 && (
+                          <button type="button" onClick={() => removeStep(idx)}
+                            className="p-1 text-red-400 hover:text-red-600 rounded"><X size={12} /></button>
+                        )}
+                      </div>
+                    </div>
+                    <textarea
+                      value={step.content}
+                      onChange={e => updateStep(idx, 'content', e.target.value)}
+                      rows={3} placeholder={`Nội dung tin nhắn bước ${idx + 1}...`}
+                      className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono"
+                    />
+                    <div className="flex items-center gap-4">
+                      {/* Wait for reply toggle */}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <button type="button" onClick={() => updateStep(idx, 'waitForReply', !step.waitForReply)}
+                          className={`relative w-9 h-5 rounded-full transition-colors ${step.waitForReply ? 'bg-blue-500' : 'bg-orange-400'}`}>
+                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${step.waitForReply ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </button>
+                        <span className="text-[11px] text-gray-600">Chờ khách trả lời</span>
+                      </label>
+                      {/* Delay seconds */}
+                      {!step.waitForReply && (
+                        <label className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-gray-600">Delay:</span>
+                          <input type="number" min={0} max={300} value={step.delaySeconds}
+                            onChange={e => updateStep(idx, 'delaySeconds', parseInt(e.target.value) || 0)}
+                            className="w-14 border border-gray-200 rounded-lg px-2 py-0.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-purple-200" />
+                          <span className="text-[11px] text-gray-500">giây</span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addStep}
+                className="mt-3 w-full py-2 border-2 border-dashed border-purple-200 text-purple-600 text-xs font-bold rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all flex items-center justify-center gap-1.5">
+                <Plus size={13} /> Thêm bước tiếp theo
+              </button>
+            </div>
+
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between py-2 border-t border-gray-100">
+              <div><p className="text-sm font-medium text-gray-800">Bật kịch bản này</p><p className="text-[10px] text-gray-400">Tắt để tạm dừng kịch bản</p></div>
+              <button type="button" onClick={() => setEnabled(v => !v)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${enabled ? 'bg-purple-500' : 'bg-gray-200'}`}>
+                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-7' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          </div>
+          <div className="px-5 py-4 border-t flex gap-3 shrink-0 bg-gray-50">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 bg-white text-gray-700 font-bold rounded-xl hover:bg-gray-100 border border-gray-200 text-sm">Hủy bỏ</button>
+            <button type="submit" disabled={saving || !canSave}
+              className="flex-1 py-2.5 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={15} />}
+              {isNew ? 'Tạo kịch bản' : 'Lưu thay đổi'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings' | 'unanswered';
+type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings' | 'unanswered' | 'flows';
 type KnowledgeTab = 'faqs' | 'scripts';
 interface TestMsg {
   role: 'user' | 'bot'; text: string;
@@ -287,6 +483,12 @@ export default function AdminBotStudio() {
   const [isSearching, setIsSearching] = useState(false);
   const [scriptModal, setScriptModal] = useState<{ open: boolean; script: Partial<SaleScript> | null }>({ open: false, script: null });
   const [scriptSaving, setScriptSaving] = useState(false);
+
+  // ── Scenarios (Forced Flow) ──
+  const [scenarios, setScenarios] = useState<SaleScenario[]>([]);
+  const [scenarioLoading, setScenarioLoading] = useState(false);
+  const [scenarioModal, setScenarioModal] = useState<{ open: boolean; scenario: Partial<SaleScenario> | null }>({ open: false, scenario: null });
+  const [scenarioSaving, setScenarioSaving] = useState(false);
 
   // ── Instructions ──
   const DEFAULT_GREETING = 'Chào em nha! Em đang muốn tham khảo " 𝑻𝒓𝒐̣𝒏 𝒈𝒐́𝒊 𝒄𝒉𝒖̣𝒑 𝒂̉𝒏𝒉 𝒄𝒖̛𝒐̛́𝒊 " hay " 𝑽𝒂́𝒚 𝒄𝒖̛𝒐̛́𝒊 " ? Để chị tư vấn chi tiết cho em nhé!\n(Nếu trường hợp cần hỗ trợ gấp hãy gọi ngay Mrs.Thủy H2O 0783327323 or 0399558699)';
@@ -349,6 +551,7 @@ export default function AdminBotStudio() {
   useEffect(() => { if (tab === 'knowledge' && kTab === 'scripts' && scripts.length === 0) loadScripts(); }, [tab, kTab]);
   useEffect(() => { if (tab === 'unanswered') loadUnmatchedLogs(); }, [tab]);
   useEffect(() => { if (tab === 'info') loadPricePackages(); }, [tab]);
+  useEffect(() => { if (tab === 'flows' && scenarios.length === 0) loadScenarios(); }, [tab]);
   useEffect(() => { testBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [testMsgs]);
   useEffect(() => {
     if (settings) {
@@ -526,6 +729,54 @@ export default function AdminBotStudio() {
   const handleScriptToggle = async (id: string, enabled: boolean) => {
     await supabase.from('sale_scripts').update({ enabled, updated_at: new Date().toISOString() }).eq('id', id);
     setScripts(prev => prev.map(s => s.id === id ? { ...s, enabled } : s)); loadHomeStats();
+  };
+
+  // ── Scenarios CRUD ──
+  const loadScenarios = useCallback(async () => {
+    setScenarioLoading(true);
+    const { data } = await supabase.from('sale_scenarios').select('*').order('order_num').order('created_at');
+    if (data) setScenarios(data.map((row: any) => ({
+      id: row.id, name: row.name, description: row.description || '',
+      triggerKeywords: row.trigger_keywords || [],
+      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true })),
+      enabled: row.enabled !== false, scenarioType: row.scenario_type || 'keyword',
+      followupDelayMinutes: row.followup_delay_minutes || 120, orderNum: row.order_num || 0,
+    })));
+    setScenarioLoading(false);
+  }, []);
+
+  const handleScenarioSave = async (data: Partial<SaleScenario>) => {
+    setScenarioSaving(true);
+    try {
+      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply }));
+      if (data.id) {
+        await supabase.from('sale_scenarios').update({
+          name: data.name, description: data.description, trigger_keywords: data.triggerKeywords,
+          steps: dbSteps, enabled: data.enabled, scenario_type: data.scenarioType,
+          followup_delay_minutes: data.followupDelayMinutes, updated_at: new Date().toISOString(),
+        }).eq('id', data.id);
+      } else {
+        const maxOrder = scenarios.length;
+        await supabase.from('sale_scenarios').insert({
+          id: crypto.randomUUID(), name: data.name, description: data.description || '',
+          trigger_keywords: data.triggerKeywords || [], steps: dbSteps,
+          enabled: data.enabled !== false, scenario_type: data.scenarioType || 'keyword',
+          followup_delay_minutes: data.followupDelayMinutes || 120, order_num: maxOrder,
+        });
+      }
+      await loadScenarios();
+      setScenarioModal({ open: false, scenario: null });
+    } finally { setScenarioSaving(false); }
+  };
+
+  const handleScenarioDelete = async (id: string) => {
+    await supabase.from('sale_scenarios').delete().eq('id', id);
+    setScenarios(prev => prev.filter(s => s.id !== id));
+  };
+
+  const handleScenarioToggle = async (id: string, enabled: boolean) => {
+    await supabase.from('sale_scenarios').update({ enabled, updated_at: new Date().toISOString() }).eq('id', id);
+    setScenarios(prev => prev.map(s => s.id === id ? { ...s, enabled } : s));
   };
   const handleScriptSearch = (term: string) => { setScriptSearch(term); setIsSearching(term.length > 0); };
 
@@ -779,6 +1030,7 @@ export default function AdminBotStudio() {
 
   const NAV = [
     { id: 'home',         label: 'Trang chủ',      icon: Home },
+    { id: 'flows',        label: 'Kịch bản Sale',   icon: Layers },
     { id: 'knowledge',    label: 'Kiến thức AI',    icon: BookOpen },
     { id: 'info',         label: 'Thông tin',       icon: Building2 },
     { id: 'instructions', label: 'Hướng dẫn',       icon: FileText },
@@ -824,6 +1076,102 @@ export default function AdminBotStudio() {
 
       {/* ── Main ── */}
       <main className="flex-1 overflow-auto flex flex-col">
+
+        {/* ══ FLOWS (Kịch bản Sale) ══ */}
+        {tab === 'flows' && (
+          <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Kịch bản Sale</h1>
+                <p className="text-sm text-gray-500 mt-0.5">Bot sẽ tự động tư vấn theo đúng kịch bản khi phát hiện từ khóa</p>
+              </div>
+              <button onClick={() => setScenarioModal({ open: true, scenario: null })}
+                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-700 transition-colors shadow-sm">
+                <Plus size={15} /> Thêm kịch bản
+              </button>
+            </div>
+
+            {/* How it works */}
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-800 space-y-1">
+              <p className="font-bold text-blue-900">💡 Cách hoạt động</p>
+              <p>• Khách hàng nhắn tin chứa từ khóa → Bot bắt đầu kịch bản tương ứng</p>
+              <p>• Bước <span className="font-bold text-blue-700">⏸ Chờ trả lời</span>: Bot gửi tin rồi đợi khách phản hồi mới tiếp tục</p>
+              <p>• Bước <span className="font-bold text-orange-700">▶ Tự gửi</span>: Bot tự động gửi tin sau delay (giây) mà không cần chờ</p>
+              <p>• Toàn bộ kịch bản được ưu tiên hơn bot TF-IDF thông thường khi đang chạy</p>
+            </div>
+
+            {scenarioLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="w-6 h-6 border-2 border-purple-600/30 border-t-purple-600 rounded-full animate-spin" />
+              </div>
+            ) : scenarios.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <Layers size={40} className="mx-auto mb-3 opacity-30" />
+                <p className="font-medium text-gray-500">Chưa có kịch bản nào</p>
+                <p className="text-sm mt-1">Bấm "Thêm kịch bản" để tạo flow tư vấn tự động đầu tiên</p>
+                <button onClick={() => setScenarioModal({ open: true, scenario: null })}
+                  className="mt-4 inline-flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-purple-700">
+                  <Plus size={14} /> Tạo kịch bản Sale đầu tiên
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {scenarios.map(scenario => (
+                  <div key={scenario.id} className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow ${!scenario.enabled ? 'opacity-60' : ''}`}>
+                    <div className="p-4 flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-gray-900 text-sm">{scenario.name}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            scenario.scenarioType === 'keyword' ? 'bg-purple-100 text-purple-700' :
+                            scenario.scenarioType === 'objection' ? 'bg-red-100 text-red-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>{SCENARIO_TYPE_LABELS[scenario.scenarioType]}</span>
+                          <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{scenario.steps.length} bước</span>
+                          {!scenario.enabled && <span className="text-[10px] text-red-500 font-bold border border-red-200 px-1.5 py-0.5 rounded-full">Đang tắt</span>}
+                        </div>
+                        {scenario.description && <p className="text-xs text-gray-500 mt-1">{scenario.description}</p>}
+                        {scenario.triggerKeywords.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            <span className="text-[10px] text-gray-400 font-medium">Từ khóa:</span>
+                            {scenario.triggerKeywords.map(kw => (
+                              <span key={kw} className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded border border-purple-100">{kw}</span>
+                            ))}
+                          </div>
+                        )}
+                        {/* Step preview */}
+                        <div className="mt-2.5 space-y-1">
+                          {scenario.steps.slice(0, 3).map((step, idx) => (
+                            <div key={step.id} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                              <span className="shrink-0 text-gray-400 font-bold">{idx + 1}.</span>
+                              {step.waitForReply
+                                ? <span className="text-blue-500 shrink-0">⏸</span>
+                                : <span className="text-orange-500 shrink-0">▶{step.delaySeconds}s</span>}
+                              <span className="line-clamp-1">{step.content}</span>
+                            </div>
+                          ))}
+                          {scenario.steps.length > 3 && <p className="text-[10px] text-gray-400 pl-4">...+{scenario.steps.length - 3} bước nữa</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => handleScenarioToggle(scenario.id, !scenario.enabled)}
+                          className={`p-1.5 rounded-lg transition-all ${scenario.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}>
+                          {scenario.enabled ? '●' : '○'}
+                        </button>
+                        <button onClick={() => setScenarioModal({ open: true, scenario })}
+                          className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit3 size={14} /></button>
+                        {isSuperAdmin && (
+                          <button onClick={() => { if (window.confirm(`Xóa kịch bản "${scenario.name}"?`)) handleScenarioDelete(scenario.id); }}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ══ HOME ══ */}
         {tab === 'home' && (
@@ -2056,6 +2404,16 @@ export default function AdminBotStudio() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Scenario Modal ── */}
+      {scenarioModal.open && (
+        <ScenarioModal
+          scenario={scenarioModal.scenario}
+          saving={scenarioSaving}
+          onSave={handleScenarioSave}
+          onClose={() => setScenarioModal({ open: false, scenario: null })}
+        />
       )}
 
       {/* ── Purchase Info Modal ── */}

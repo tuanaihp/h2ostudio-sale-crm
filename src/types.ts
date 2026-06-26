@@ -376,6 +376,41 @@ export interface DbUserRoleRow {
   id: string; email: string; phone_number?: string; role: string; display_name?: string;
 }
 
+// ─── Sale Scenarios (Forced Flow) ────────────────────────────────────────────
+
+export interface ScenarioStep {
+  id: string;
+  content: string;
+  delaySeconds: number;
+  waitForReply: boolean;
+}
+
+export interface SaleScenario {
+  id: string;
+  name: string;
+  description: string;
+  triggerKeywords: string[];
+  steps: ScenarioStep[];
+  enabled: boolean;
+  scenarioType: 'keyword' | 'objection' | 'followup';
+  followupDelayMinutes: number;
+  orderNum: number;
+}
+
+export interface DbSaleScenarioRow {
+  id: string;
+  name: string;
+  description: string;
+  trigger_keywords: string[] | null;
+  steps: ScenarioStep[] | null;
+  enabled: boolean;
+  scenario_type: string;
+  followup_delay_minutes: number;
+  order_num: number;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface PricePackage {
   id: string;
   title: string;

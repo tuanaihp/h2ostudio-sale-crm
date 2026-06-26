@@ -823,6 +823,31 @@ expandQuery("bao nhiêu tiền")
 - `sentScriptIds`: tránh lặp script đã gửi
 - `flags`: hasSentPricing, hasSentFOMO, hasSentCombo, hasSentUSP
 - `leadScore`: cộng dồn theo phase transitions
+- `activeScenarioId`: ID của kịch bản Sale đang chạy (null nếu không có)
+- `activeScenarioStep`: chỉ số bước tiếp theo cần gửi trong kịch bản
+
+### Kịch bản Sale (Forced Flow System) — `sale_scenarios` table
+
+Bot phát hiện từ khóa → kích hoạt kịch bản → tuân theo flow bắt buộc thay vì TF-IDF thông thường.
+
+**4 loại kịch bản:**
+- `keyword` — kích hoạt khi khách nhắn từ khóa (VD: "combo", "chụp ảnh")
+- `objection` — kích hoạt khi khách dùng từ từ chối
+- `followup` — nhắc lại sau X phút im lặng
+- (Mặc định: keyword)
+
+**Cấu trúc `steps` (JSONB array):**
+```json
+[
+  { "id": "uuid", "content": "Hai em dự định cưới tháng mấy?", "delay_seconds": 0, "wait_for_reply": true },
+  { "id": "uuid", "content": "💎 Để c gửi combo...", "delay_seconds": 3, "wait_for_reply": false }
+]
+```
+- `wait_for_reply: true` → Bot gửi, đợi khách trả lời mới tiếp
+- `wait_for_reply: false` → Bot tự gửi sau `delay_seconds` giây (cộng dồn)
+
+**Admin UI:** AdminBotStudio → tab "Kịch bản Sale" → ScenarioModal
+**SQL:** `supabase_sale_scenarios.sql`
 
 **Admin Test Chat Debug Panel**: hiện intent, confidence%, phase (tiếng Việt), script title+score, candidate count, injected FAQ, business rules fired, slots filled — sau mỗi bot message.
 

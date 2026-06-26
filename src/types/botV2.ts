@@ -51,6 +51,9 @@ export interface ConversationStateV2 {
     hasSentUSP: boolean;
   };
   leadScore: number;
+  // Scenario (forced flow) state
+  activeScenarioId: string | null;
+  activeScenarioStep: number;
 }
 
 export interface BotV2Debug {
@@ -77,6 +80,8 @@ export interface BotV2Result {
   faqId: string | number | null;
   handoffTrigger: boolean;
   debug: BotV2Debug;
+  // Scenario auto-send steps (LiveChatBubble schedules these with setTimeout)
+  scenarioAutoSteps: Array<{ content: string; delaySeconds: number }>;
 }
 
 export function createInitialStateV2(sessionId: string): ConversationStateV2 {
@@ -104,5 +109,7 @@ export function createInitialStateV2(sessionId: string): ConversationStateV2 {
       hasSentUSP: false,
     },
     leadScore: 0,
+    activeScenarioId: null,
+    activeScenarioStep: 0,
   };
 }

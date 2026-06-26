@@ -10,6 +10,7 @@ import type {
   CustomerIntent, SalesPhase, CustomerSlots,
   ConversationStateV2, BotV2Result,
 } from '../types/botV2';
+import type { SaleScenario } from '../types';
 
 // ── 1. Intent keywords ────────────────────────────────────────────────────────
 const INTENT_KEYWORDS: Record<CustomerIntent, string[]> = {
@@ -508,6 +509,34 @@ function buildResponseV2(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SCENARIO HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Tính bước tiếp theo cần gửi trong một scenario.
+// fromIdx: chỉ số bước sẽ gửi ngay (main response).
+// Trả về: nội dung main, danh sách auto-step kèm delay, và chỉ số của bước
+// waitForReply tiếp theo (hoặc steps.length nếu hết scenario).
+function advanceScenario(
+  scenario: SaleScenario,
+  fromIdx: number,
+): { mainContent: string; autoSteps: Array<{content: string; delaySeconds: number}>; nextReplyIdx: number } | null {
+  const mainStep = scenario.steps[fromIdx];
+  if (!mainStep) return null;
+
+  const autoSteps: Array<{content: string; delaySeconds: number}> = [];
+  let idx = fromIdx + 1;
+
+  while (idx < scenario.steps.length) {
+    const s = scenario.steps[idx];
+    if (s.waitForReply) break; // bước này yêu cầu khách trả lời → dừng auto-collect
+    autoSteps.push({ content: s.content, delaySeconds: s.delaySeconds });
+    idx++;
+  }
+
+  return { mainContent: mainStep.content, autoSteps, nextReplyIdx: idx };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN — processMessageV2
 // ══════════════════════════════════════════════════════════════════════════════
 export function processMessageV2(params: {
@@ -515,8 +544,9 @@ export function processMessageV2(params: {
   scriptData: any[];
   faqData: AnyFaq[];
   state: ConversationStateV2;
+  scenarioData?: SaleScenario[];
 }): BotV2Result {
-  const { rawMessage, scriptData, faqData, state } = params;
+  const { rawMessage, scriptData, faqData, state, scenarioData = [] } = params;
 
   // ── Step 1: Normalize ──
   const normalized = normalizeVietnamese(rawMessage);
@@ -526,6 +556,106 @@ export function processMessageV2(params: {
     ...expandedWords,
     ...synonymMapped.split(/\s+/).filter(w => w.length >= 2),
   ]));
+
+  // ── Step 1b: Scenario (Forced Flow) ──
+  if (scenarioData.length > 0) {
+    // Đang trong một scenario đang hoạt động → tiếp tục bước tiếp theo
+    if (state.activeScenarioId) {
+      const activeScenario = scenarioData.find(s => s.id === state.activeScenarioId && s.enabled);
+      if (activeScenario && state.activeScenarioStep < activeScenario.steps.length) {
+        const result = advanceScenario(activeScenario, state.activeScenarioStep);
+        if (result) {
+          const isDone = result.nextReplyIdx >= activeScenario.steps.length;
+          const { slots: updatedSlots } = extractSlotsV2(synonymMapped, state.slots);
+          return {
+            text: result.mainContent,
+            newState: {
+              ...state,
+              turnCount: state.turnCount + 1,
+              slots: updatedSlots,
+              activeScenarioId: isDone ? null : state.activeScenarioId,
+              activeScenarioStep: result.nextReplyIdx,
+            },
+            quickReplies: [],
+            nextQuestion: null,
+            leadScoreAdd: 2,
+            faqId: null,
+            handoffTrigger: false,
+            debug: {
+              intent: 'consult',
+              intentConfidence: 1,
+              detectedService: state.slots.serviceType,
+              selectedPhase: state.currentPhase,
+              scriptId: null,
+              scriptTitle: `[Flow] ${activeScenario.name} bước ${state.activeScenarioStep + 1}`,
+              scriptScore: 99,
+              candidateScriptCount: 1,
+              injectedFaqId: null,
+              injectedFaqTitle: null,
+              businessRulesFired: [`flow_continue:${activeScenario.name}`],
+              slotsFilledThisTurn: [],
+            },
+            scenarioAutoSteps: result.autoSteps,
+          };
+        }
+      }
+      // Scenario đã xong hoặc không tìm thấy → reset, tiếp tục bot thường
+    }
+
+    // Chưa có scenario → kiểm tra từ khóa kích hoạt
+    if (!state.activeScenarioId) {
+      for (const scenario of scenarioData.filter(s => s.enabled && s.steps.length > 0)) {
+        let triggered = false;
+
+        if (scenario.scenarioType === 'keyword' || scenario.scenarioType === 'followup') {
+          triggered = scenario.triggerKeywords.some(kw =>
+            kw.trim() && normalized.includes(normalizeVietnamese(kw.trim()))
+          );
+        } else if (scenario.scenarioType === 'objection') {
+          // objection scenario kích hoạt qua intent — xử lý sau bước intent detection
+          // Đặt flag để check sau — skip ở đây, handle bên dưới
+        }
+
+        if (triggered && scenario.steps.length > 0) {
+          const result = advanceScenario(scenario, 0);
+          if (result) {
+            const isDone = result.nextReplyIdx >= scenario.steps.length;
+            const { slots: updatedSlots } = extractSlotsV2(synonymMapped, state.slots);
+            return {
+              text: result.mainContent,
+              newState: {
+                ...state,
+                turnCount: state.turnCount + 1,
+                slots: updatedSlots,
+                activeScenarioId: isDone ? null : scenario.id,
+                activeScenarioStep: result.nextReplyIdx,
+              },
+              quickReplies: [],
+              nextQuestion: null,
+              leadScoreAdd: 5,
+              faqId: null,
+              handoffTrigger: false,
+              debug: {
+                intent: 'consult',
+                intentConfidence: 1,
+                detectedService: updatedSlots.serviceType,
+                selectedPhase: state.currentPhase,
+                scriptId: null,
+                scriptTitle: `[Flow] ${scenario.name} bắt đầu`,
+                scriptScore: 99,
+                candidateScriptCount: 1,
+                injectedFaqId: null,
+                injectedFaqTitle: null,
+                businessRulesFired: [`flow_start:${scenario.name}`],
+                slotsFilledThisTurn: [],
+              },
+              scenarioAutoSteps: result.autoSteps,
+            };
+          }
+        }
+      }
+    }
+  }
 
   // ── Step 2: Intent ──
   const { intent, confidence } = detectIntentV2(synonymMapped);
@@ -605,6 +735,9 @@ export function processMessageV2(params: {
       hasSentPricing: state.flags.hasSentPricing || intent === 'pricing',
     },
     leadScore: state.leadScore + leadScoreAdd,
+    // Giữ nguyên scenario state khi không ở trong scenario
+    activeScenarioId: state.activeScenarioId,
+    activeScenarioStep: state.activeScenarioStep,
   };
 
   const quickReplies = PHASE_QUICK_REPLIES[newPhase] ?? getQuickReplies(service);
@@ -631,5 +764,6 @@ export function processMessageV2(params: {
       businessRulesFired: businessAction.rulesFired,
       slotsFilledThisTurn,
     },
+    scenarioAutoSteps: [],
   };
 }

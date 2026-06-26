@@ -91,11 +91,13 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRef    = useRef(false);
   // Cache FAQ + kịch bản sale — fetch 1 lần, dùng lại mọi tin nhắn, tự hết hạn sau 10 phút
-  const faqCacheRef       = useRef<any[] | null>(null);
-  const scriptCacheRef    = useRef<any[] | null>(null);
-  const cacheExpiresRef   = useRef<number>(0);
-  const pkgCacheRef       = useRef<any[] | null>(null);
-  const CACHE_TTL_MS      = 10 * 60 * 1000; // 10 phút
+  const faqCacheRef        = useRef<any[] | null>(null);
+  const scriptCacheRef     = useRef<any[] | null>(null);
+  const cacheExpiresRef    = useRef<number>(0);
+  const pkgCacheRef        = useRef<any[] | null>(null);
+  const scenarioCacheRef   = useRef<any[] | null>(null);
+  const flowTimersRef      = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const CACHE_TTL_MS       = 10 * 60 * 1000; // 10 phút
   useEffect(() => { openRef.current = open; }, [open]);
 
   // Auto-open — chỉ khi standalone + chatAutoOpenEnabled bật
@@ -115,6 +117,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
   useEffect(() => {
     if (!open) return;
+    // Cancel any pending flow auto-steps from previous session
+    flowTimersRef.current.forEach(t => clearTimeout(t));
+    flowTimersRef.current = [];
     initSession();
     return () => { channelRef.current?.unsubscribe(); };
   }, [open]);
@@ -204,18 +209,21 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       let promoData:  any[];
       let pkgData:    any[];
 
-      const cacheValid = faqCacheRef.current && scriptCacheRef.current && pkgCacheRef.current && Date.now() < cacheExpiresRef.current;
+      const cacheValid = faqCacheRef.current && scriptCacheRef.current && pkgCacheRef.current && scenarioCacheRef.current && Date.now() < cacheExpiresRef.current;
+
+      let scenarioData: any[];
 
       if (cacheValid) {
         // Cache hit — chỉ chờ promotions (~80ms thay vì ~400ms)
         const { data: promos } = await promoPromise;
-        faqData    = faqCacheRef.current!;
-        scriptData = scriptCacheRef.current!;
-        promoData  = promos || [];
-        pkgData    = pkgCacheRef.current!;
+        faqData      = faqCacheRef.current!;
+        scriptData   = scriptCacheRef.current!;
+        promoData    = promos || [];
+        pkgData      = pkgCacheRef.current!;
+        scenarioData = scenarioCacheRef.current!;
       } else {
         // Cache miss hoặc hết hạn — fetch song song
-        const [faqRes, scriptRes, promoRes, pkgRes] = await Promise.all([
+        const [faqRes, scriptRes, promoRes, pkgRes, scenarioRes] = await Promise.all([
           supabase.from('customer_faqs')
             .select('id, question, answer, tags, usage_count, keywords, next_question, lead_score, service_type, handoff_trigger, category')
             .eq('is_approved', true),
@@ -224,15 +232,18 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
             .eq('enabled', true).order('order_num', { ascending: true }),
           promoPromise,
           supabase.from('price_packages').select('*').eq('enabled', true).order('order_num'),
+          supabase.from('sale_scenarios').select('*').eq('enabled', true).order('order_num'),
         ]);
-        faqData    = faqRes.data    || [];
-        scriptData = scriptRes.data || [];
-        promoData  = promoRes.data  || [];
-        pkgData    = pkgRes.data    || [];
-        faqCacheRef.current    = faqData;
-        scriptCacheRef.current = scriptData;
-        pkgCacheRef.current    = pkgData;
-        cacheExpiresRef.current = Date.now() + CACHE_TTL_MS;
+        faqData      = faqRes.data      || [];
+        scriptData   = scriptRes.data   || [];
+        promoData    = promoRes.data    || [];
+        pkgData      = pkgRes.data      || [];
+        scenarioData = scenarioRes.data || [];
+        faqCacheRef.current      = faqData;
+        scriptCacheRef.current   = scriptData;
+        pkgCacheRef.current      = pkgData;
+        scenarioCacheRef.current = scenarioData;
+        cacheExpiresRef.current  = Date.now() + CACHE_TTL_MS;
       }
 
       const thinkingDelay1 = settings?.chatBotThinkingDelay ?? 1200;
@@ -312,11 +323,30 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         leadScore: botStateV2.leadScore,
       };
 
+      // Map DB rows → SaleScenario objects
+      const mappedScenarios = (scenarioData || []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description || '',
+        triggerKeywords: row.trigger_keywords || [],
+        steps: (row.steps || []).map((s: any) => ({
+          id: s.id || '',
+          content: s.content || '',
+          delaySeconds: s.delay_seconds ?? 0,
+          waitForReply: s.wait_for_reply ?? true,
+        })),
+        enabled: row.enabled !== false,
+        scenarioType: row.scenario_type || 'keyword',
+        followupDelayMinutes: row.followup_delay_minutes || 120,
+        orderNum: row.order_num || 0,
+      }));
+
       const v2Result = processMessageV2({
         rawMessage: customerMessage,
         scriptData: scriptData || [],
         faqData: allFaqs,
         state: botStateV2,
+        scenarioData: mappedScenarios,
       });
       setBotStateV2(v2Result.newState);
 
@@ -476,6 +506,22 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       if (botImageUrl) msgInsert.image_url = botImageUrl;
       await supabase.from('chat_messages').insert(msgInsert);
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+
+      // Scenario auto-steps: gửi các tin nhắn tiếp theo tự động với delay
+      if (v2Result.scenarioAutoSteps && v2Result.scenarioAutoSteps.length > 0) {
+        let cumulativeMs = 0;
+        for (const step of v2Result.scenarioAutoSteps) {
+          cumulativeMs += Math.max(step.delaySeconds, 1) * 1000;
+          const capturedContent = step.content;
+          const capturedSid = sid;
+          const t = setTimeout(async () => {
+            await postBotMsg(capturedContent);
+            await supabase.from('chat_sessions').update({ last_message: capturedContent, last_message_at: new Date().toISOString() }).eq('id', capturedSid);
+          }, cumulativeMs);
+          flowTimersRef.current.push(t);
+        }
+      }
+
       scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot Tầng 1 error:', e);
