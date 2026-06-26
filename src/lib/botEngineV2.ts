@@ -399,6 +399,7 @@ function injectFaqV2(
   const candidates = allFaqs.filter(f => {
     if (!f.answer || f.answer.length < 10) return false;
     if (String(f.id).startsWith('__virt')) return false; // bỏ qua virtual FAQs trong injection
+    if (String(f.id).startsWith('__pkg_')) return false; // bỏ qua price_packages — chỉ dùng khi là primary answer
     if (state.sentFaqIds.includes(String(f.id))) return false;
     const fSvc = (f as any).service_type as string | null;
     if (serviceType && fSvc && fSvc !== serviceType) return false;
@@ -552,7 +553,10 @@ export function processMessageV2(params: {
   const scriptContent = rawContent ? expandScriptContent(rawContent, slots) : '';
 
   // ── Step 9: FAQ Injection ──
-  const injectedFaq = injectFaqV2(faqData, intent, service, allWords, state);
+  // Bỏ qua injection khi: script match rất tốt (score > 12) HOẶC script là câu hỏi ngắn (< 120 ký tự, kết thúc '?')
+  const isQualifyingQuestion = scriptContent.trim().length < 120 && scriptContent.trim().endsWith('?');
+  const skipInjection = (bestScript && scriptScore > 12) || isQualifyingQuestion;
+  const injectedFaq = skipInjection ? null : injectFaqV2(faqData, intent, service, allWords, state);
 
   // ── Step 10: Business Rules ──
   const businessAction = applyBusinessRulesV2(intent, newPhase, state.flags);
