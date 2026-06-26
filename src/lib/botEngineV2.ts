@@ -522,15 +522,17 @@ function resolveStepContent(
   allWords: string[],
   state: ConversationStateV2,
 ): string {
+  const shortMsg = allWords.length < 3; // "dạ", "ok", "ừ" → skip TF-IDF
+
   // Priority 1: TF-IDF trên tập scripts đã tag
   if (step.scriptIds && step.scriptIds.length > 0 && scriptData.length > 0) {
     const tagged = scriptData.filter(s => step.scriptIds!.includes(s.id));
     if (tagged.length > 0) {
       const unsent = tagged.filter(s => !state.sentScriptIds.includes(s.id));
       const candidates = unsent.length > 0 ? unsent : tagged;
-      const { script: best } = rankScriptsV2(candidates, allWords);
-      if (best?.content) {
-        const expanded = expandScriptContent(best.content, state.slots);
+      const pick = shortMsg ? candidates[0] : rankScriptsV2(candidates, allWords).script;
+      if (pick?.content) {
+        const expanded = expandScriptContent(pick.content, state.slots);
         if (expanded.trim()) return expanded;
       }
     }
@@ -539,9 +541,9 @@ function resolveStepContent(
   if (step.phase && scriptData.length > 0) {
     const phaseCandidates = filterCandidateScripts(scriptData, step.phase as SalesPhase, state);
     if (phaseCandidates.length > 0) {
-      const { script: best } = rankScriptsV2(phaseCandidates, allWords);
-      if (best?.content) {
-        const expanded = expandScriptContent(best.content, state.slots);
+      const pick = shortMsg ? phaseCandidates[0] : rankScriptsV2(phaseCandidates, allWords).script;
+      if (pick?.content) {
+        const expanded = expandScriptContent(pick.content, state.slots);
         if (expanded.trim()) return expanded;
       }
     }
