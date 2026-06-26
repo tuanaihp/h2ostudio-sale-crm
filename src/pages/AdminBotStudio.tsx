@@ -246,11 +246,23 @@ const ScenarioModal: React.FC<{
   const [triggerKeywords, setTriggerKeywords] = useState((scenario?.triggerKeywords || []).join(', '));
   const [followupDelay, setFollowupDelay] = useState(scenario?.followupDelayMinutes ?? 120);
   const [enabled, setEnabled] = useState(scenario?.enabled !== false);
-  const [steps, setSteps] = useState<Array<Omit<ScenarioStep, 'id'> & { id: string }>>(
-    (scenario?.steps || [{ id: crypto.randomUUID(), content: '', delaySeconds: 0, waitForReply: true, phase: '' }]).map(s => ({ ...s, phase: s.phase || '' }))
+  const [steps, setSteps] = useState<Array<Omit<ScenarioStep, 'id'> & { id: string; packageId: string }>>(
+    (scenario?.steps || [{ id: crypto.randomUUID(), content: '', delaySeconds: 0, waitForReply: true, phase: '' }])
+      .map(s => ({ ...s, phase: s.phase || '', packageId: (s as any).packageId || '' }))
   );
+  const [packages, setPackages] = useState<Array<{ id: string; title: string; price: string; imageUrl: string; albumUrl?: string; description: string }>>([]);
 
-  const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false }]);
+  useEffect(() => {
+    supabase.from('price_packages').select('id, title, price, image_url, album_url, description')
+      .eq('enabled', true).order('order_num')
+      .then(({ data }) => setPackages((data || []).map((p: any) => ({
+        id: p.id, title: p.title, price: p.price || '',
+        imageUrl: p.image_url || '', albumUrl: p.album_url || '',
+        description: p.description || '',
+      }))));
+  }, []);
+
+  const addStep = () => setSteps(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 3, waitForReply: false, packageId: '' }]);
   const removeStep = (idx: number) => setSteps(prev => prev.filter((_, i) => i !== idx));
   const moveStep = (idx: number, dir: -1 | 1) => {
     setSteps(prev => {
@@ -264,7 +276,7 @@ const ScenarioModal: React.FC<{
   const updateStep = (idx: number, key: keyof ScenarioStep, val: any) =>
     setSteps(prev => prev.map((s, i) => i === idx ? { ...s, [key]: val } : s));
 
-  const canSave = name.trim().length > 0 && steps.some(s => s.content.trim().length > 0);
+  const canSave = name.trim().length > 0 && steps.some(s => s.content.trim().length > 0 || !!s.packageId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); if (!canSave) return;
@@ -276,7 +288,7 @@ const ScenarioModal: React.FC<{
       name: name.trim(), description: description.trim(),
       scenarioType, triggerKeywords: kws,
       followupDelayMinutes: followupDelay, enabled,
-      steps: steps.filter(s => s.content.trim()).map(s => ({ ...s, content: s.content.trim() })),
+      steps: steps.filter(s => s.content.trim() || s.packageId).map(s => ({ ...s, content: s.content.trim() })),
     });
   };
 
@@ -377,12 +389,39 @@ const ScenarioModal: React.FC<{
                         </p>
                       )}
                     </div>
+                    {/* Package picker — gắn gói báo giá */}
+                    {packages.length > 0 && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 mb-1">📦 Gói báo giá (tùy chọn)</label>
+                        <select value={(step as any).packageId || ''} onChange={e => updateStep(idx, 'packageId' as any, e.target.value)}
+                          className="w-full p-2 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-green-200">
+                          <option value="">— Không gắn gói báo giá —</option>
+                          {packages.map(p => <option key={p.id} value={p.id}>{p.title}{p.price ? ` — ${p.price}` : ''}</option>)}
+                        </select>
+                        {(step as any).packageId && (() => {
+                          const pkg = packages.find(p => p.id === (step as any).packageId);
+                          return pkg ? (
+                            <div className="mt-1.5 flex items-center gap-2 p-2 bg-green-50 rounded-lg border border-green-200">
+                              {pkg.imageUrl && <img src={pkg.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold text-green-700 truncate">{pkg.title}</p>
+                                {pkg.price && <p className="text-[10px] text-green-600">{pkg.price}</p>}
+                                {pkg.albumUrl && <p className="text-[10px] text-blue-500 truncate">🖼️ {pkg.albumUrl}</p>}
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                        {(step as any).packageId && (
+                          <p className="text-[10px] text-green-600 mt-0.5 font-medium">✓ Bot tự động gửi ảnh + nội dung gói này theo flow</p>
+                        )}
+                      </div>
+                    )}
                     <textarea
                       value={step.content}
                       onChange={e => updateStep(idx, 'content', e.target.value)}
-                      rows={step.phase ? 2 : 3}
-                      placeholder={step.phase ? `Nội dung dự phòng (dùng khi không tìm được kịch bản phù hợp)` : `Nội dung tin nhắn bước ${idx + 1}...`}
-                      className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono ${step.phase ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
+                      rows={(step as any).packageId ? 1 : step.phase ? 2 : 3}
+                      placeholder={(step as any).packageId ? `Thêm lời dẫn (VD: "Đây là gói phù hợp nhất cho em:") — không bắt buộc` : step.phase ? `Nội dung dự phòng (dùng khi không tìm được kịch bản phù hợp)` : `Nội dung tin nhắn bước ${idx + 1}...`}
+                      className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none font-mono ${step.phase || (step as any).packageId ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500' : 'border-gray-200'}`}
                     />
                     <div className="flex items-center gap-4">
                       {/* Wait for reply toggle */}
@@ -753,7 +792,7 @@ export default function AdminBotStudio() {
     if (data) setScenarios(data.map((row: any) => ({
       id: row.id, name: row.name, description: row.description || '',
       triggerKeywords: row.trigger_keywords || [],
-      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true, phase: s.phase || '' })),
+      steps: (row.steps || []).map((s: any) => ({ id: s.id || crypto.randomUUID(), content: s.content || '', delaySeconds: s.delay_seconds ?? 0, waitForReply: s.wait_for_reply ?? true, phase: s.phase || '', packageId: s.package_id || '' })),
       enabled: row.enabled !== false, scenarioType: row.scenario_type || 'keyword',
       followupDelayMinutes: row.followup_delay_minutes || 120, orderNum: row.order_num || 0,
     })));
@@ -763,7 +802,7 @@ export default function AdminBotStudio() {
   const handleScenarioSave = async (data: Partial<SaleScenario>) => {
     setScenarioSaving(true);
     try {
-      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply, phase: s.phase || null }));
+      const dbSteps = (data.steps || []).map(s => ({ id: s.id, content: s.content, delay_seconds: s.delaySeconds, wait_for_reply: s.waitForReply, phase: s.phase || null, package_id: (s as any).packageId || null }));
       if (data.id) {
         await supabase.from('sale_scenarios').update({
           name: data.name, description: data.description, trigger_keywords: data.triggerKeywords,

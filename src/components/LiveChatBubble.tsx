@@ -323,19 +323,35 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         leadScore: botStateV2.leadScore,
       };
 
-      // Map DB rows → SaleScenario objects
+      // Map DB rows → SaleScenario objects; resolve package_id → content + imageUrl
       const mappedScenarios = (scenarioData || []).map((row: any) => ({
         id: row.id,
         name: row.name,
         description: row.description || '',
         triggerKeywords: row.trigger_keywords || [],
-        steps: (row.steps || []).map((s: any) => ({
-          id: s.id || '',
-          content: s.content || '',
-          delaySeconds: s.delay_seconds ?? 0,
-          waitForReply: s.wait_for_reply ?? true,
-          phase: s.phase || undefined,
-        })),
+        steps: (row.steps || []).map((s: any) => {
+          let content = s.content || '';
+          let imageUrl: string | undefined = undefined;
+          if (s.package_id) {
+            const pkg = (pkgData || []).find((p: any) => p.id === s.package_id);
+            if (pkg) {
+              const lines: string[] = [`📦 ${pkg.title}`];
+              if (pkg.price) lines.push(`💰 Giá: ${pkg.price}`);
+              if (pkg.description) lines.push(`\n${pkg.description}`);
+              if (pkg.album_url) lines.push(`\n🖼️ Xem ảnh mẫu: ${pkg.album_url}`);
+              content = lines.join('\n');
+              if (pkg.image_url) imageUrl = pkg.image_url;
+            }
+          }
+          return {
+            id: s.id || '',
+            content,
+            delaySeconds: s.delay_seconds ?? 0,
+            waitForReply: s.wait_for_reply ?? true,
+            phase: s.phase || undefined,
+            imageUrl,
+          };
+        }),
         enabled: row.enabled !== false,
         scenarioType: row.scenario_type || 'keyword',
         followupDelayMinutes: row.followup_delay_minutes || 120,
@@ -500,6 +516,10 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         const imgUrl = pkgImageMap.get(String(imageCheckId)) || '';
         if (imgUrl) botImageUrl = imgUrl;
       }
+      // Ảnh từ scenario step có gắn gói báo giá
+      if (!botImageUrl && v2Result.scenarioMainImageUrl) {
+        botImageUrl = v2Result.scenarioMainImageUrl;
+      }
 
       const botId  = crypto.randomUUID();
       const botNow = new Date().toISOString();
@@ -514,9 +534,10 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         for (const step of v2Result.scenarioAutoSteps) {
           cumulativeMs += Math.max(step.delaySeconds, 1) * 1000;
           const capturedContent = step.content;
+          const capturedImgUrl = step.imageUrl || null;
           const capturedSid = sid;
           const t = setTimeout(async () => {
-            await postBotMsg(capturedContent);
+            await postBotMsg(capturedContent, capturedImgUrl);
             await supabase.from('chat_sessions').update({ last_message: capturedContent, last_message_at: new Date().toISOString() }).eq('id', capturedSid);
           }, cumulativeMs);
           flowTimersRef.current.push(t);
@@ -642,13 +663,15 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   };
 
   // ── Helper: post bot message trực tiếp (không qua bot engine) ──
-  const postBotMsg = async (text: string) => {
+  const postBotMsg = async (text: string, imageUrl?: string | null) => {
     if (!sessionId) return;
     const botId  = crypto.randomUUID();
     const botNow = new Date().toISOString();
-    const newMsg = { id: botId, sender: 'admin' as const, content: text, created_at: botNow };
+    const newMsg: Msg = { id: botId, sender: 'admin', content: text, created_at: botNow, ...(imageUrl ? { image_url: imageUrl } : {}) };
     setMessages(prev => [...prev, newMsg]);
-    supabase.from('chat_messages').insert({ id: botId, session_id: sessionId, sender: 'admin', content: text, created_at: botNow }).then(() => {});
+    const dbRow: any = { id: botId, session_id: sessionId, sender: 'admin', content: text, created_at: botNow };
+    if (imageUrl) dbRow.image_url = imageUrl;
+    supabase.from('chat_messages').insert(dbRow).then(() => {});
     supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sessionId).then(() => {});
   };
 

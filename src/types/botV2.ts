@@ -81,7 +81,8 @@ export interface BotV2Result {
   handoffTrigger: boolean;
   debug: BotV2Debug;
   // Scenario auto-send steps (LiveChatBubble schedules these with setTimeout)
-  scenarioAutoSteps: Array<{ content: string; delaySeconds: number }>;
+  scenarioAutoSteps: Array<{ content: string; delaySeconds: number; imageUrl?: string }>;
+  scenarioMainImageUrl?: string; // ảnh đính kèm bước chính (từ package)
 }
 
 export function createInitialStateV2(sessionId: string): ConversationStateV2 {
