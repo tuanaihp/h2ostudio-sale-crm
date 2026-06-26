@@ -322,6 +322,21 @@ export default function AdminBotStudio() {
   const [testStateV2, setTestStateV2] = useState<ConversationStateV2>(() => createInitialStateV2('test-session'));
   const testBottomRef = useRef<HTMLDivElement>(null);
 
+  // ── Chat settings ──
+  const [chatBotEnabled, setChatBotEnabled] = useState(settings?.chatBotEnabled === true);
+  const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings?.chatBotTier2Enabled === true);
+  const [liveChatEnabled, setLiveChatEnabled] = useState(settings?.liveChatEnabled !== false);
+  const [chatTypingSpeed, setChatTypingSpeed] = useState(settings?.chatTypingSpeed ?? 50);
+  const [chatBotThinkingDelay, setChatBotThinkingDelay] = useState(settings?.chatBotThinkingDelay ?? 1500);
+  const [chatAutoOpenEnabled, setChatAutoOpenEnabled] = useState(settings?.chatAutoOpenEnabled !== false);
+  const [chatAutoOpenDelay, setChatAutoOpenDelay] = useState(settings?.chatAutoOpenDelay ?? 20);
+  const [chatStaffName, setChatStaffName] = useState(settings?.chatStaffName ?? '');
+  const [chatStaffNames, setChatStaffNames] = useState<string[]>(settings?.chatStaffNames ?? ['Lan Nguyễn', 'Tuấn Nguyễn', 'Quang An', 'Chung Nguyễn']);
+  const [newStaffName, setNewStaffName] = useState('');
+  const [chatMessages, setChatMessages] = useState<any[]>(settings?.chatMessages && settings.chatMessages.length > 0 ? settings.chatMessages : [{ id: '1', content: '', delaySeconds: 10, textColor: '#1a1a1a', enabled: true }]);
+  const [chatSettingsSaving, setChatSettingsSaving] = useState(false);
+  const [chatSettingsSaveOk, setChatSettingsSaveOk] = useState(false);
+
   // ── Effects ──
   useEffect(() => { loadHomeStats(); }, []);
   useEffect(() => { if (tab === 'knowledge' && kTab === 'faqs' && faqs.length === 0) loadFaqs(); }, [tab, kTab]);
@@ -350,6 +365,16 @@ export default function AdminBotStudio() {
         purchaseInfo: settings.botPurchaseInfo || '', paymentMethods: settings.botPaymentMethods || '',
         returnPolicy: settings.botReturnPolicy || '', discountPolicy: settings.botDiscountPolicy || '',
       });
+      setChatBotEnabled(settings.chatBotEnabled === true);
+      setChatBotTier2Enabled(settings.chatBotTier2Enabled === true);
+      setLiveChatEnabled(settings.liveChatEnabled !== false);
+      setChatTypingSpeed(settings.chatTypingSpeed ?? 50);
+      setChatBotThinkingDelay(settings.chatBotThinkingDelay ?? 1500);
+      setChatAutoOpenEnabled(settings.chatAutoOpenEnabled !== false);
+      setChatAutoOpenDelay(settings.chatAutoOpenDelay ?? 20);
+      setChatStaffName(settings.chatStaffName ?? '');
+      setChatStaffNames(settings.chatStaffNames ?? ['Lan Nguyễn', 'Tuấn Nguyễn', 'Quang An', 'Chung Nguyễn']);
+      if (settings.chatMessages && settings.chatMessages.length > 0) setChatMessages(settings.chatMessages);
     }
   }, [settings?.chatBotGreeting, settings?.chatBotCustomInstructions, settings?.chatBotBlockedTopics, settings?.botStudioInfo, settings?.botPaymentInfo, settings?.botCustomInfoItems, settings?.botPriceList, settings?.botBusinessName, settings?.botPurchaseInfo]);
 
@@ -497,6 +522,16 @@ export default function AdminBotStudio() {
     setInstrSaving(true);
     await updateSettings({ chatBotGreeting: greeting, chatBotOfferContent: offerContent, chatBotCustomInstructions: customInstr, chatBotBlockedTopics: blockedTopics, botStudioInfo: studioInfo, botPaymentInfo: paymentInfo });
     setInstrSaving(false); setInstrSaveOk(true); setTimeout(() => setInstrSaveOk(false), 2500);
+  };
+
+  // ── Chat settings helpers ──
+  const addChatMessage = () => setChatMessages(prev => [...prev, { id: crypto.randomUUID(), content: '', delaySeconds: 30, textColor: '#1a1a1a', enabled: true }]);
+  const updateChatMessage = (id: string, field: string, value: any) => setChatMessages(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
+  const removeChatMessage = (id: string) => setChatMessages(prev => prev.filter(m => m.id !== id));
+  const saveChatSettings = async () => {
+    setChatSettingsSaving(true);
+    await updateSettings({ chatBotEnabled, chatBotTier2Enabled, liveChatEnabled, chatTypingSpeed, chatBotThinkingDelay, chatAutoOpenEnabled, chatAutoOpenDelay, chatStaffName, chatStaffNames, chatMessages });
+    setChatSettingsSaving(false); setChatSettingsSaveOk(true); setTimeout(() => setChatSettingsSaveOk(false), 2500);
   };
 
   // ── Settings ──
@@ -1552,104 +1587,135 @@ export default function AdminBotStudio() {
         {/* ══ SETTINGS ══ */}
         {tab === 'settings' && (
           <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
-            <div><h2 className="text-xl font-bold text-gray-900">Cài đặt Bot</h2><p className="text-sm text-gray-500">Bật/tắt và cấu hình chi tiết cách bot hoạt động</p></div>
-            <div className="space-y-3">
+            <div><h2 className="text-xl font-bold text-gray-900">Cài đặt Chat</h2><p className="text-sm text-gray-500">Bật/tắt tính năng và cấu hình hành vi của chat</p></div>
+
+            {/* Toggles: Widget + Bot Tầng 1 + Bot Tầng 2 */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-800 mb-1">🔌 Bật / Tắt tính năng</h3>
               {[
-                { key: 'chatBotEnabled', emoji: '🧠', label: 'Bot Tầng 1 (TF-IDF)', desc: 'Tìm kiếm FAQ + script tự động theo từ khóa' },
-                { key: 'chatBotTier2Enabled', emoji: '⚡', label: 'Bot Tầng 2 (AI)', desc: 'Dùng Gemini/GPT tạo câu trả lời thông minh hơn' },
-                { key: 'liveChatEnabled', emoji: '💬', label: 'Live Chat Widget', desc: 'Hiển thị khung chat trên website cho khách' },
-                { key: 'chatAutoOpenEnabled', emoji: '🚀', label: 'Tự động mở chat', desc: 'Tự bật khung chat sau vài giây khách vào web' },
-                { key: 'botCollectLeads', emoji: '📱', label: 'Tự động thu thập SĐT', desc: 'Bot nhận diện số điện thoại trong tin nhắn và tự tạo lead' },
-              ].map(({ key, emoji, label, desc }) => (
-                <div key={key} className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center justify-between">
-                  <div className="flex items-start gap-3"><span className="text-xl mt-0.5">{emoji}</span><div><p className="text-sm font-semibold text-gray-800">{label}</p><p className="text-xs text-gray-400">{desc}</p></div></div>
-                  <button onClick={() => toggle(key)} className={`transition-colors ${(settings as any)?.[key] ? 'text-purple-500' : 'text-gray-300'}`}>
-                    {(settings as any)?.[key] ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                  </button>
+                { label: 'Widget CHAT website', desc: 'Hiện/ẩn nút Chat dưới website', checked: liveChatEnabled, onChange: setLiveChatEnabled, color: 'bg-green-500' },
+                { label: 'Bot Tầng 1 · Kịch bản', desc: 'Khớp từ khóa kho kịch bản · miễn phí', checked: chatBotEnabled, onChange: setChatBotEnabled, color: 'bg-primary' },
+                { label: 'Bot Tầng 2 · AI API', desc: 'Gemini/ChatGPT + kịch bản · cần API', checked: chatBotTier2Enabled, onChange: setChatBotTier2Enabled, color: 'bg-purple-500' },
+              ].map(item => (
+                <div key={item.label} className={`rounded-xl p-3 flex items-center justify-between gap-3 border transition-colors ${item.checked ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-100'}`}>
+                  <div><p className="text-sm font-semibold text-gray-800">{item.label}</p><p className="text-xs text-gray-400">{item.desc}</p></div>
+                  <label className="relative cursor-pointer shrink-0">
+                    <input type="checkbox" className="sr-only" checked={item.checked} onChange={e => item.onChange(e.target.checked)} />
+                    <div className={`block w-11 h-6 rounded-full transition-colors ${item.checked ? item.color : 'bg-gray-300'}`} />
+                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${item.checked ? 'translate-x-5' : ''}`} />
+                  </label>
                 </div>
               ))}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                <div className="flex items-start gap-3 mb-3"><span className="text-xl">⏱️</span><div><p className="text-sm font-semibold text-gray-800">Độ trễ "đang gõ..."</p><p className="text-xs text-gray-400">Bot giả lập đang nhập để trông tự nhiên hơn</p></div></div>
-                <div className="flex items-center gap-3">
-                  <input type="range" min={300} max={3000} step={100} value={settings?.chatBotThinkingDelay ?? 1200} onChange={e => updateSettings({ chatBotThinkingDelay: Number(e.target.value) })} className="flex-1 accent-purple-600" />
-                  <span className="text-sm font-semibold text-gray-700 w-12 text-right">{((settings?.chatBotThinkingDelay ?? 1200) / 1000).toFixed(1)}s</span>
-                </div>
-              </div>
-              {settings?.chatAutoOpenEnabled && (
-                <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                  <div className="flex items-start gap-3 mb-3"><span className="text-xl">⏳</span><div><p className="text-sm font-semibold text-gray-800">Thời gian trước khi chat tự mở</p><p className="text-xs text-gray-400">Sau bao lâu thì chat widget tự bật</p></div></div>
-                  <div className="flex items-center gap-3">
-                    <input type="range" min={5} max={60} step={5} value={settings?.chatAutoOpenDelay ?? 20} onChange={e => updateSettings({ chatAutoOpenDelay: Number(e.target.value) })} className="flex-1 accent-purple-600" />
-                    <span className="text-sm font-semibold text-gray-700 w-12 text-right">{settings?.chatAutoOpenDelay ?? 20}s</span>
-                  </div>
-                </div>
-              )}
-              {/* Đối tượng */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                <div className="flex items-start gap-3 mb-3"><span className="text-xl">👥</span><div><p className="text-sm font-semibold text-gray-800">Đối tượng phản hồi</p><p className="text-xs text-gray-400">Chọn ai bot nên trả lời tự động</p></div></div>
-                <div className="space-y-2">
-                  {[
-                    { value: 'all', label: 'Mọi người', desc: 'Bot phản hồi tất cả khách nhắn tin' },
-                    { value: 'first_time', label: 'Chỉ khách nhắn lần đầu', desc: 'Bỏ qua khách đã từng nhắn (có SĐT)' },
-                    { value: 'team_only', label: 'Chỉ đội ngũ (tắt bot)', desc: 'Bot không tự phản hồi — chỉ nhân viên trả lời' },
-                  ].map(opt => (
-                    <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${(settings?.botAudience || 'all') === opt.value ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                      <input type="radio" name="botAudience" value={opt.value} checked={(settings?.botAudience || 'all') === opt.value} onChange={() => updateSettings({ botAudience: opt.value as any })} className="mt-0.5 accent-purple-600" />
-                      <div><p className="text-sm font-semibold text-gray-800">{opt.label}</p><p className="text-xs text-gray-400">{opt.desc}</p></div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Lên lịch */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-start gap-3"><span className="text-xl">🕐</span><div><p className="text-sm font-semibold text-gray-800">Lên lịch hoạt động</p><p className="text-xs text-gray-400">Giới hạn giờ bot tự động phản hồi</p></div></div>
-                  <button onClick={() => toggle('botScheduleEnabled')} className={`transition-colors ${settings?.botScheduleEnabled ? 'text-purple-500' : 'text-gray-300'}`}>
-                    {settings?.botScheduleEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                  </button>
-                </div>
-                {settings?.botScheduleEnabled && (
-                  <div className="mt-2 flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-14">Từ</span>
-                      <input type="time" value={settings?.botScheduleStart || '08:00'}
-                        onChange={e => updateSettings({ botScheduleStart: e.target.value })}
-                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-14">đến</span>
-                      <input type="time" value={settings?.botScheduleEnd || '22:00'}
-                        onChange={e => updateSettings({ botScheduleEnd: e.target.value })}
-                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
-                    </div>
-                    <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1">GMT+7 · Việt Nam</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Trao đổi thêm */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                <div className="flex items-start gap-3 mb-3"><span className="text-xl">💬</span><div><p className="text-sm font-semibold text-gray-800">Trao đổi thêm</p><p className="text-xs text-gray-400">Bot tự nhắn lại nếu khách không phản hồi sau một khoảng thời gian</p></div></div>
-                <select value={settings?.botFollowUpDelay ?? 0} onChange={e => updateSettings({ botFollowUpDelay: Number(e.target.value) })}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
-                  <option value={0}>Không trao đổi thêm</option>
-                  <option value={5}>Trao đổi thêm sau 5 phút</option>
-                  <option value={15}>Trao đổi thêm sau 15 phút</option>
-                  <option value={30}>Trao đổi thêm sau 30 phút</option>
-                  <option value={60}>Trao đổi thêm sau 1 giờ</option>
-                  <option value={120}>Trao đổi thêm sau 2 giờ</option>
-                  <option value={480}>Trao đổi thêm sau 8 giờ</option>
-                </select>
-                {(settings?.botFollowUpDelay ?? 0) > 0 && (
-                  <p className="text-xs text-purple-600 mt-2">Bot sẽ nhắn: "Anh/chị ơi, không biết em có thể hỗ trợ thêm gì không ạ? 😊"</p>
-                )}
-              </div>
-
-              <Link to="/admin/settings" className="flex items-center gap-1.5 text-sm text-purple-600 font-medium hover:underline px-1">
-                Cài đặt nâng cao (API key, Zalo, Telegram...) <ExternalLink size={13} />
-              </Link>
             </div>
+
+            {/* Kịch bản tin nhắn tự động */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div><h3 className="text-sm font-semibold text-gray-800">💬 Kịch bản tin nhắn tự động</h3><p className="text-xs text-gray-400">Gửi tự động khi khách vào web (theo thứ tự)</p></div>
+                <button onClick={addChatMessage} className="text-xs font-bold text-primary flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg hover:bg-primary/20"><Plus size={13} /> Thêm tin nhắn</button>
+              </div>
+              <div className="space-y-3">
+                {chatMessages.map((msg, index) => (
+                  <div key={msg.id} className={`p-4 rounded-xl border relative ${msg.enabled === false ? 'opacity-50 bg-gray-50' : 'bg-gray-50'} border-gray-100`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-2">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" className="sr-only peer" checked={msg.enabled !== false} onChange={e => updateChatMessage(msg.id, 'enabled', e.target.checked)} />
+                          <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                        <span className="text-sm font-semibold text-gray-700">Tin nhắn {index + 1}</span>
+                      </div>
+                      <button onClick={() => removeChatMessage(msg.id)} className="text-red-400 hover:text-red-600 p-1 rounded-lg"><Trash2 size={14} /></button>
+                    </div>
+                    <textarea value={msg.content} onChange={e => updateChatMessage(msg.id, 'content', e.target.value)} rows={3}
+                      placeholder="Nhập nội dung tin nhắn..." className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none text-sm mb-2" />
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Thời gian chờ (giây)</label>
+                        <input type="number" value={msg.delaySeconds} onChange={e => updateChatMessage(msg.id, 'delaySeconds', parseInt(e.target.value) || 0)} min="0" className="w-full p-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
+                        <p className="text-[10px] text-gray-400 mt-0.5">{index === 0 ? '* Tính từ lúc khách vào web' : '* Tính từ lúc tin nhắn trước đóng'}</p>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Màu chữ</label>
+                        <div className="flex items-center gap-2">
+                          <input type="color" value={msg.textColor} onChange={e => updateChatMessage(msg.id, 'textColor', e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0 p-0" />
+                          <span className="text-xs font-mono text-gray-500">{msg.textColor}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {chatMessages.length === 0 && <p className="text-sm text-gray-400 text-center py-8">Chưa có tin nhắn nào.</p>}
+              </div>
+            </div>
+
+            {/* Tên nhân viên */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-800">👤 Tên nhân viên tư vấn hiển thị trong chat</h3>
+              <div className="flex flex-wrap gap-2">
+                {chatStaffNames.map(name => (
+                  <button key={name} onClick={() => setChatStaffName(chatStaffName === name ? '' : name)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${chatStaffName === name ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-700 border-gray-200 hover:border-rose-300'}`}>
+                    <span className="w-5 h-5 rounded-full bg-gradient-to-br from-secondary to-primary text-white text-[9px] font-bold flex items-center justify-center">
+                      {name.split(' ').map((w: string) => w[0]).slice(-2).join('').toUpperCase()}
+                    </span>
+                    {name}
+                    {chatStaffName === name && <span className="ml-0.5">✓</span>}
+                    <span onClick={e => { e.stopPropagation(); setChatStaffNames(ns => ns.filter(n => n !== name)); if (chatStaffName === name) setChatStaffName(''); }} className="ml-1 opacity-50 hover:opacity-100 cursor-pointer">×</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
+                  placeholder="Thêm tên mới VD: Lan Nguyễn" value={newStaffName} onChange={e => setNewStaffName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && newStaffName.trim()) { setChatStaffNames(ns => [...ns, newStaffName.trim()]); setNewStaffName(''); }}} />
+                <button onClick={() => { if (newStaffName.trim()) { setChatStaffNames(ns => [...ns, newStaffName.trim()]); setNewStaffName(''); }}}
+                  className="px-3 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:opacity-90">+ Thêm</button>
+              </div>
+              {chatStaffName ? <p className="text-xs text-rose-600 font-medium">✅ Đang hiển thị tên <b>{chatStaffName}</b> trong khung chat</p>
+                : <p className="text-xs text-gray-400">Bấm vào tên để chọn. Chưa chọn sẽ hiện "Tư vấn viên H2O Studio".</p>}
+            </div>
+
+            {/* Tốc độ + Tự động mở */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-gray-800">⚡ Tốc độ & Hành vi</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Tốc độ gõ chữ: <span className="text-primary">{chatTypingSpeed}ms/ký tự</span></label>
+                  <input type="range" min={10} max={200} step={5} value={chatTypingSpeed} onChange={e => setChatTypingSpeed(Number(e.target.value))} className="w-full accent-primary" />
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>Nhanh (10ms)</span><span>Chậm (200ms)</span></div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Độ trễ bot suy nghĩ: <span className="text-primary">{(chatBotThinkingDelay/1000).toFixed(1)}s</span></label>
+                  <input type="range" min={300} max={5000} step={100} value={chatBotThinkingDelay} onChange={e => setChatBotThinkingDelay(Number(e.target.value))} className="w-full accent-primary" />
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>Nhanh (0.3s)</span><span>Chậm (5s)</span></div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">⏱️ Tự động mở chat</p>
+                  {chatAutoOpenEnabled && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-bold text-gray-600 mb-1">Mở sau: <span className="text-emerald-600">{chatAutoOpenDelay} giây</span></label>
+                      <input type="range" min={5} max={120} step={5} value={chatAutoOpenDelay} onChange={e => setChatAutoOpenDelay(Number(e.target.value))} className="w-full accent-emerald-500" />
+                      <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>Sớm (5s)</span><span>Muộn (120s)</span></div>
+                      <p className="text-[11px] text-gray-400 mt-1">Khung chat tự mở sau {chatAutoOpenDelay}s (chỉ 1 lần/phiên).</p>
+                    </div>
+                  )}
+                </div>
+                <label className="relative cursor-pointer shrink-0">
+                  <input type="checkbox" className="sr-only" checked={chatAutoOpenEnabled} onChange={e => setChatAutoOpenEnabled(e.target.checked)} />
+                  <div className={`block w-11 h-6 rounded-full transition-colors ${chatAutoOpenEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                  <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow ${chatAutoOpenEnabled ? 'translate-x-5' : ''}`} />
+                </label>
+              </div>
+            </div>
+
+            <button onClick={saveChatSettings} disabled={chatSettingsSaving}
+              className="flex items-center gap-2 bg-purple-600 text-white rounded-xl px-5 py-2.5 text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50">
+              {chatSettingsSaving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : chatSettingsSaveOk ? <CheckCircle2 size={16} /> : <Save size={16} />}
+              {chatSettingsSaving ? 'Đang lưu...' : chatSettingsSaveOk ? 'Đã lưu!' : 'Lưu cài đặt'}
+            </button>
           </div>
         )}
 
