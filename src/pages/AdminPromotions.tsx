@@ -30,6 +30,30 @@ interface AiPromoProposal {
   ctaText: string;
 }
 
+interface SaleDay {
+  id: string;
+  dayDate: string;
+  stage: string;
+  format: string;
+  subject: string;
+  quote: string;
+  caption: string;
+  imagePrompt: string;
+  bgImageUrl: string;
+  fontColor: string;
+  highlightColor: string;
+  quotePosition: number;
+  fontSize: number;
+  imageSize: string;
+  fontFamily: string;
+  logoUrl: string;
+  logoPosition: string;
+  logoSize: number;
+  taskStatus: string;
+  contentStatus: string;
+  assignedTo: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMOJIS = ['🎉', '🔥', '💕', '🎁', '🌹', '✨', '💎', '🎊', '🌸', '💫', '⭐', '🏆'];
@@ -85,6 +109,21 @@ const EXAMPLE_COMMANDS = [
   'tạo 5 chương trình KM thu hút khách cưới mùa hè 2026',
 ];
 
+// ─── Lịch 365 constants ───────────────────────────────────────────────────────
+
+const STAGES       = ['Educate', 'Awareness', 'Consideration', 'Conversion', 'Retention'];
+const FORMATS      = ['Offer', 'Story', 'Educate', 'Entertain', 'Inspire'];
+const CONTENT_STATUS_OPTS = [
+  { v: 'draft',     l: 'Draft',   cls: 'bg-gray-100 text-gray-600' },
+  { v: 'ready',     l: 'Ready',   cls: 'bg-green-100 text-green-700' },
+  { v: 'published', l: 'Đã đăng', cls: 'bg-blue-100 text-blue-700' },
+];
+const IMAGE_SIZES   = ['Vuông (1:1)', 'Ngang (16:9)', 'Dọc (9:16)', 'Story (4:5)'];
+const FONT_FAMILIES = ['Inter', 'Roboto', 'Playfair Display', 'Montserrat', 'Dancing Script'];
+const LOGO_POS_OPTS = ['Dưới - Phải', 'Dưới - Trái', 'Trên - Phải', 'Trên - Trái', 'Giữa'];
+const VI_MONTHS     = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6',
+                       'Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
 // ─── DB mapper ────────────────────────────────────────────────────────────────
 
 const dbToPromo = (row: DbPromotionRow): Promotion => ({
@@ -139,7 +178,7 @@ export default function AdminPromotions() {
   // ── Existing state ──────────────────────────────────────────────────────────
   const [promos, setPromos]               = useState<Promotion[]>([]);
   const [loading, setLoading]             = useState(true);
-  const [tab, setTab]                     = useState<'calendar' | 'list' | 'stats' | 'customers'>('calendar');
+  const [tab, setTab]                     = useState<'cal365' | 'calendar' | 'list' | 'stats' | 'customers'>('cal365');
   const [viewMonth, setViewMonth]         = useState(new Date());
   const [selectedDay, setSelectedDay]     = useState<Date | null>(null);
   const [showModal, setShowModal]         = useState(false);
@@ -169,6 +208,18 @@ export default function AdminPromotions() {
   const [imagePosX, setImagePosX] = useState(50);
   const [imagePosY, setImagePosY] = useState(50);
 
+  // ── Lịch 365 state ──────────────────────────────────────────────────────────
+  const [calView, setCalView]               = useState<'year' | 'month'>('year');
+  const [calYear, setCalYear]               = useState(new Date().getFullYear());
+  const [calMonth365, setCalMonth365]       = useState(new Date());
+  const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
+  const [saleDays, setSaleDays]             = useState<SaleDay[]>([]);
+  const [saleDayLoading, setSaleDayLoading] = useState(false);
+  const [saleForm, setSaleForm]             = useState<Partial<SaleDay>>({});
+  const [savingSaleDay, setSavingSaleDay]   = useState(false);
+  const [aiFieldLoading, setAiFieldLoading] = useState('');
+  const [sdImgLoading, setSdImgLoading]     = useState(false);
+
   // ── Customers tab state ─────────────────────────────────────────────────────
   const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
   const [assignSearch, setAssignSearch]       = useState('');
@@ -177,6 +228,7 @@ export default function AdminPromotions() {
   if (isAuthReady && !isAdmin) return <Navigate to="/admin/login" replace />;
 
   useEffect(() => { loadPromos(); }, []);
+  useEffect(() => { loadSaleDays(calYear); }, [calYear]);
 
   const loadPromos = async () => {
     setLoading(true);
@@ -484,6 +536,127 @@ export default function AdminPromotions() {
     await updateConsultationTags(consultationId, newTags);
   };
 
+  // ── Sale Days (Lịch 365) ──────────────────────────────────────────────────
+
+  const dbToSaleDay = (row: any): SaleDay => ({
+    id: row.id, dayDate: row.day_date,
+    stage: row.stage || '', format: row.format || '',
+    subject: row.subject || '', quote: row.quote || '',
+    caption: row.caption || '', imagePrompt: row.image_prompt || '',
+    bgImageUrl: row.bg_image_url || '', fontColor: row.font_color || '#FFFFFF',
+    highlightColor: row.highlight_color || '#00CB53',
+    quotePosition: row.quote_position ?? 50, fontSize: row.font_size ?? 24,
+    imageSize: row.image_size || 'Vuông (1:1)', fontFamily: row.font_family || 'Inter',
+    logoUrl: row.logo_url || '', logoPosition: row.logo_position || 'Dưới - Phải',
+    logoSize: row.logo_size ?? 40, taskStatus: row.task_status || 'todo',
+    contentStatus: row.content_status || 'draft', assignedTo: row.assigned_to || '',
+  });
+
+  const loadSaleDays = async (year: number) => {
+    setSaleDayLoading(true);
+    try {
+      const { data } = await supabase.from('sale_days').select('*').eq('year', year);
+      setSaleDays((data || []).map(dbToSaleDay));
+    } catch { /* table may not exist yet */ }
+    setSaleDayLoading(false);
+  };
+
+  const openSaleDay = (dateStr: string) => {
+    setSelectedCalDay(dateStr);
+    const existing = saleDays.find(d => d.dayDate === dateStr);
+    setSaleForm(existing ? { ...existing } : {
+      dayDate: dateStr, stage: '', format: '', subject: '', quote: '',
+      caption: '', imagePrompt: '', bgImageUrl: '', fontColor: '#FFFFFF',
+      highlightColor: '#00CB53', quotePosition: 50, fontSize: 24,
+      imageSize: 'Vuông (1:1)', fontFamily: 'Inter', logoUrl: '',
+      logoPosition: 'Dưới - Phải', logoSize: 40,
+      taskStatus: 'todo', contentStatus: 'draft', assignedTo: '',
+    });
+  };
+
+  const saveSaleDay = async () => {
+    if (!selectedCalDay) return;
+    setSavingSaleDay(true);
+    const existing = saleDays.find(d => d.dayDate === selectedCalDay);
+    const row = {
+      day_date: selectedCalDay,
+      year: parseInt(selectedCalDay.split('-')[0]),
+      month: parseInt(selectedCalDay.split('-')[1]),
+      stage: saleForm.stage || '', format: saleForm.format || '',
+      subject: saleForm.subject || '', quote: saleForm.quote || '',
+      caption: saleForm.caption || '', image_prompt: saleForm.imagePrompt || '',
+      bg_image_url: saleForm.bgImageUrl || '', font_color: saleForm.fontColor || '#FFFFFF',
+      highlight_color: saleForm.highlightColor || '#00CB53',
+      quote_position: saleForm.quotePosition ?? 50, font_size: saleForm.fontSize ?? 24,
+      image_size: saleForm.imageSize || 'Vuông (1:1)', font_family: saleForm.fontFamily || 'Inter',
+      logo_url: saleForm.logoUrl || '', logo_position: saleForm.logoPosition || 'Dưới - Phải',
+      logo_size: saleForm.logoSize ?? 40, task_status: saleForm.taskStatus || 'todo',
+      content_status: saleForm.contentStatus || 'draft', assigned_to: saleForm.assignedTo || '',
+      updated_at: new Date().toISOString(),
+    };
+    if (existing) {
+      await supabase.from('sale_days').update(row).eq('id', existing.id);
+    } else {
+      await supabase.from('sale_days').insert({ ...row, id: crypto.randomUUID(), created_at: new Date().toISOString() });
+    }
+    await loadSaleDays(calYear);
+    setSavingSaleDay(false);
+  };
+
+  const genAiSaleContent = async (field: 'subject' | 'quote' | 'caption') => {
+    setAiFieldLoading(field);
+    try {
+      const prompts: Record<string, string> = {
+        subject: `Tạo 1 chủ đề bài đăng mạng xã hội ngắn gọn (15-25 từ) cho studio ảnh cưới H2O Studio. Stage: ${saleForm.stage || 'Educate'}. Format: ${saleForm.format || 'Offer'}. Ngày: ${selectedCalDay}. Chỉ trả về chủ đề, không giải thích thêm.`,
+        quote: `Tạo 1 câu trích dẫn hay về tình yêu hoặc hôn nhân (20-35 từ tiếng Việt) phù hợp cho studio ảnh cưới. Chỉ trả về câu trích dẫn, không thêm gì khác.`,
+        caption: `Viết caption mạng xã hội (50-80 từ) cho studio ảnh cưới H2O Studio. Chủ đề: "${saleForm.subject || 'ảnh cưới đẹp'}". Stage: ${saleForm.stage || 'Educate'}. Thêm 2-3 emoji phù hợp, kết thúc bằng CTA. Chỉ trả về caption.`,
+      };
+      const res = await fetch('/api/ai-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'field', prompt: prompts[field],
+          apiKey: settings?.integrationChatApiKey,
+          apiUrl: settings?.integrationChatApiUrl,
+          modelName: settings?.integrationChatApiModelName,
+        }),
+      });
+      const data = await res.json();
+      const text = data.result || data.text || '';
+      if (text) setSaleForm(f => ({ ...f, [field]: typeof text === 'string' ? text : '' }));
+    } catch { /* ignore */ }
+    setAiFieldLoading('');
+  };
+
+  const callSaleDayImage = async () => {
+    if (settings?.aiImageEnabled === false) return;
+    const apiKey = settings?.aiImageApiKey || settings?.integrationChatApiKey;
+    if (!apiKey) return;
+    setSdImgLoading(true);
+    try {
+      const res = await fetch('/api/ai-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          promoTitle: saleForm.subject || 'ảnh cưới đẹp',
+          shortDesc: saleForm.imagePrompt || 'phong cách sang trọng, nữ tính',
+          emoji: '📸', color: '#E53E3E',
+          apiKey, model: 'dall-e-3', quality: 'standard',
+        }),
+      });
+      const data = await res.json();
+      if (data.b64) {
+        const dataUrl = `data:image/png;base64,${data.b64}`;
+        const uploaded = await uploadImageToStorage(
+          await (await fetch(dataUrl)).blob() as File,
+          'sale-days'
+        );
+        setSaleForm(f => ({ ...f, bgImageUrl: uploaded }));
+      }
+    } catch { /* ignore */ }
+    setSdImgLoading(false);
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
 
   const selectedPromoForCustomers = selectedPromoId ? promos.find(p => p.id === selectedPromoId) : null;
@@ -506,10 +679,11 @@ export default function AdminPromotions() {
         </div>
         <nav className="flex-1 p-3 space-y-0.5">
           {([
-            ['calendar', Calendar, 'Lịch'],
-            ['list', List, 'Danh sách'],
-            ['stats', TrendingUp, 'Thống kê'],
-            ['customers', Users, 'Khách hàng'],
+            ['cal365',    Calendar,    'Lịch 365'],
+            ['list',      List,        'Danh sách KM'],
+            ['stats',     TrendingUp,  'Thống kê'],
+            ['customers', Users,       'Khách hàng'],
+            ['calendar',  Calendar,    'Lịch KM cũ'],
           ] as const).map(([key, Icon, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -534,9 +708,10 @@ export default function AdminPromotions() {
         {/* Action bar */}
         <div className="sticky top-0 z-20 bg-white border-b px-6 py-3 flex items-center justify-between shrink-0">
           <h2 className="font-bold text-gray-800 text-sm">
-            {tab === 'calendar' && '📅 Lịch Khuyến Mãi'}
-            {tab === 'list' && '📋 Danh Sách'}
-            {tab === 'stats' && '📈 Thống Kê'}
+            {tab === 'cal365'    && '📅 Lịch Content 365 Ngày'}
+            {tab === 'calendar'  && '📅 Lịch Khuyến Mãi'}
+            {tab === 'list'      && '📋 Danh Sách KM'}
+            {tab === 'stats'     && '📈 Thống Kê'}
             {tab === 'customers' && '👥 Khách Hàng'}
           </h2>
           <div className="flex items-center gap-2">
@@ -558,6 +733,422 @@ export default function AdminPromotions() {
         </div>
 
         <div className="max-w-5xl mx-auto px-6 py-6 w-full">
+
+        {/* ════════════════ LỊCH 365 TAB ════════════════ */}
+        {tab === 'cal365' && (
+          <div className="space-y-4">
+
+            {/* ── YEAR VIEW ── */}
+            {calView === 'year' && (
+              <>
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <h2 className="font-bold text-gray-800">Promotion Engine 365</h2>
+                    <div className="flex items-center gap-0.5 bg-white border rounded-lg px-1 py-0.5">
+                      <button onClick={() => setCalYear(y => y - 1)} className="p-1.5 hover:bg-gray-50 rounded transition-colors"><ChevronLeft size={14} /></button>
+                      <span className="text-sm font-bold text-gray-700 px-2">Năm {calYear}</span>
+                      <button onClick={() => setCalYear(y => y + 1)} className="p-1.5 hover:bg-gray-50 rounded transition-colors"><ChevronRight size={14} /></button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setAiModal(true); setAiProposals([]); setAiError(''); }}
+                      className="flex items-center gap-1.5 bg-violet-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-violet-700 transition-colors"
+                    >
+                      <Sparkles size={13} /> AI Lên Lịch Sale
+                    </button>
+                  </div>
+                </div>
+
+                {saleDayLoading && <div className="text-center py-8 text-gray-400 text-sm">Đang tải...</div>}
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const monthKey = `${calYear}-${String(i + 1).padStart(2, '0')}`;
+                    const monthDate = new Date(calYear, i, 1);
+                    const daysInMonth = saleDays.filter(d => d.dayDate.startsWith(monthKey));
+                    const readyCount = daysInMonth.filter(d => d.contentStatus === 'ready').length;
+                    const publishedCount = daysInMonth.filter(d => d.contentStatus === 'published').length;
+                    const isEmpty = daysInMonth.length === 0;
+                    const firstSubject = daysInMonth.find(d => d.subject)?.subject || '';
+                    return (
+                      <div key={i} className="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                        <div className="px-4 py-3 border-b bg-gray-50/70 flex items-center justify-between">
+                          <span className="font-bold text-gray-800 text-sm">{VI_MONTHS[i]}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isEmpty ? 'bg-gray-100 text-gray-400' : 'bg-rose-100 text-rose-600'}`}>
+                            {isEmpty ? 'EMPTY' : `${daysInMonth.length} ngày`}
+                          </span>
+                        </div>
+                        <div className="px-4 py-3 space-y-1.5">
+                          <div className="flex items-start justify-between text-xs gap-2">
+                            <span className="text-gray-400 shrink-0">Chủ đề:</span>
+                            <span className="text-gray-600 text-right text-[11px] line-clamp-1">
+                              {firstSubject ? firstSubject.slice(0, 28) + (firstSubject.length > 28 ? '...' : '') : 'Chưa có chủ đề'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-400">Chiến dịch:</span>
+                            <span className="text-gray-600 font-semibold">{daysInMonth.length} ngày đã lên</span>
+                          </div>
+                          {(readyCount + publishedCount) > 0 && (
+                            <div className="flex gap-1 flex-wrap mt-1">
+                              {readyCount > 0 && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">{readyCount} ready</span>}
+                              {publishedCount > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{publishedCount} đăng</span>}
+                            </div>
+                          )}
+                        </div>
+                        <div className="px-4 pb-3 flex items-center justify-between border-t border-gray-50 pt-2">
+                          <button
+                            onClick={() => { setCalMonth365(monthDate); setCalView('month'); setSelectedCalDay(null); }}
+                            className="text-xs text-primary font-semibold hover:underline flex items-center gap-0.5"
+                          >
+                            Chi tiết →
+                          </button>
+                          <button
+                            onClick={() => { setCalMonth365(monthDate); setCalView('month'); setSelectedCalDay(null); }}
+                            className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-colors"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* ── MONTH VIEW ── */}
+            {calView === 'month' && (
+              <>
+                {/* Month nav header */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setCalView('year'); setSelectedCalDay(null); }}
+                      className="p-2 rounded-xl bg-white border hover:bg-gray-50 transition-colors"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button onClick={() => setCalMonth365(m => subMonths(m, 1))} className="p-1.5 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-all"><ChevronLeft size={14} /></button>
+                    <h2 className="font-bold text-gray-800 capitalize">
+                      {format(calMonth365, 'MMMM yyyy', { locale: vi })} — Lịch Content Sale
+                    </h2>
+                    <button onClick={() => setCalMonth365(m => addMonths(m, 1))} className="p-1.5 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-all"><ChevronRight size={14} /></button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setAiModal(true); setAiProposals([]); setAiError(''); }}
+                      className="flex items-center gap-1.5 bg-violet-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors"
+                    >
+                      <Sparkles size={12} /> AI Gợi ý Sale
+                    </button>
+                  </div>
+                </div>
+
+                {/* Calendar + Day panel */}
+                <div className="flex gap-4 items-start">
+
+                  {/* Calendar grid */}
+                  <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${selectedCalDay ? 'flex-1 min-w-0' : 'w-full'}`}>
+                    <div className="grid grid-cols-7 border-b bg-gray-50">
+                      {WEEK_DAYS.map(d => (
+                        <div key={d} className="py-2.5 text-center text-xs font-bold text-gray-500">{d}</div>
+                      ))}
+                    </div>
+                    {(() => {
+                      const monthDays = eachDayOfInterval({ start: startOfMonth(calMonth365), end: endOfMonth(calMonth365) });
+                      const dow = getDay(startOfMonth(calMonth365));
+                      const offset = dow === 0 ? 6 : dow - 1;
+                      const cells: (Date | null)[] = [...Array(offset).fill(null), ...monthDays];
+                      while (cells.length % 7 !== 0) cells.push(null);
+                      const rows: (Date | null)[][] = [];
+                      for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+                      return rows.map((row, ri) => (
+                        <div key={ri} className="grid grid-cols-7 border-b last:border-b-0">
+                          {row.map((day, ci) => {
+                            if (!day) return <div key={ci} className="border-r last:border-r-0 bg-gray-50/40" style={{ minHeight: '88px' }} />;
+                            const dateStr = format(day, 'yyyy-MM-dd');
+                            const dayData = saleDays.find(d => d.dayDate === dateStr);
+                            const isSelected = selectedCalDay === dateStr;
+                            const statusCfg = CONTENT_STATUS_OPTS.find(s => s.v === dayData?.contentStatus);
+                            return (
+                              <div
+                                key={ci}
+                                onClick={() => openSaleDay(dateStr)}
+                                className={`border-r last:border-r-0 p-1.5 cursor-pointer transition-colors group ${
+                                  isSelected ? 'bg-rose-50 ring-2 ring-rose-400 ring-inset' :
+                                  isToday(day) ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'
+                                }`}
+                                style={{ minHeight: '88px' }}
+                              >
+                                <div className="flex items-start justify-between mb-1">
+                                  <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
+                                    isToday(day) ? 'bg-amber-400 text-white' :
+                                    isSelected ? 'bg-rose-500 text-white' : 'text-gray-700 group-hover:bg-gray-100'
+                                  }`}>
+                                    {format(day, 'd')}
+                                  </span>
+                                  {statusCfg && (
+                                    <span className={`text-[9px] px-1 py-0.5 rounded-full font-bold ${statusCfg.cls}`}>{statusCfg.l}</span>
+                                  )}
+                                </div>
+                                {dayData?.subject && (
+                                  <p className="text-[10px] text-gray-600 leading-tight line-clamp-2">{dayData.subject}</p>
+                                )}
+                                {dayData?.stage && !dayData?.subject && (
+                                  <span className="text-[9px] bg-violet-100 text-violet-700 px-1 py-0.5 rounded-full">{dayData.stage}</span>
+                                )}
+                                {!dayData && (
+                                  <Plus size={10} className="text-gray-200 group-hover:text-gray-400 mt-1 transition-colors" />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+
+                  {/* Day detail panel */}
+                  {selectedCalDay && (
+                    <div className="w-80 shrink-0 space-y-3" style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
+
+                      {/* Panel header */}
+                      <div className="bg-white rounded-2xl border shadow-sm p-4">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-800">
+                              Ngày {parseInt(selectedCalDay.split('-')[2])}/{parseInt(selectedCalDay.split('-')[1])}
+                            </span>
+                            {(() => {
+                              const s = CONTENT_STATUS_OPTS.find(x => x.v === (saleForm.contentStatus || 'draft'));
+                              return <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${s?.cls || 'bg-gray-100 text-gray-600'}`}>{s?.l}</span>;
+                            })()}
+                          </div>
+                          <button onClick={() => setSelectedCalDay(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-400">Chỉnh tiêu đề, caption, prompt ảnh và trạng thái đăng bài.</p>
+                      </div>
+
+                      {/* Stage + Format + Subject + Quote + Caption */}
+                      <div className="bg-white rounded-2xl border shadow-sm p-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">Stage</label>
+                            <select value={saleForm.stage || ''} onChange={e => setSaleForm(f => ({ ...f, stage: e.target.value }))}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300">
+                              <option value="">-- Chọn --</option>
+                              {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">Format</label>
+                            <select value={saleForm.format || ''} onChange={e => setSaleForm(f => ({ ...f, format: e.target.value }))}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300">
+                              <option value="">-- Chọn --</option>
+                              {FORMATS.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Subject */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Chủ đề</label>
+                            <button onClick={() => genAiSaleContent('subject')} disabled={aiFieldLoading === 'subject'}
+                              className="text-[10px] text-violet-600 font-bold flex items-center gap-1 hover:underline disabled:opacity-50">
+                              {aiFieldLoading === 'subject' ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                              AI Tạo chủ đề
+                            </button>
+                          </div>
+                          <textarea value={saleForm.subject || ''} onChange={e => setSaleForm(f => ({ ...f, subject: e.target.value }))}
+                            placeholder="Nhập chủ đề bài đăng..." rows={2}
+                            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-rose-300" />
+                        </div>
+
+                        {/* Quote */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Trích dẫn hay</label>
+                            <button onClick={() => genAiSaleContent('quote')} disabled={aiFieldLoading === 'quote'}
+                              className="text-[10px] text-violet-600 font-bold flex items-center gap-1 hover:underline disabled:opacity-50">
+                              {aiFieldLoading === 'quote' ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                              AI Tạo trích dẫn
+                            </button>
+                          </div>
+                          <textarea value={saleForm.quote || ''} onChange={e => setSaleForm(f => ({ ...f, quote: e.target.value }))}
+                            placeholder="Nhập yêu cầu thêm cho AI..." rows={2}
+                            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-rose-300" />
+                          {saleForm.quote && (
+                            <p className="text-xs text-gray-700 mt-1.5 p-2 bg-gray-50 rounded-lg italic border border-gray-100">"{saleForm.quote}"</p>
+                          )}
+                        </div>
+
+                        {/* Caption */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Caption</label>
+                            <button onClick={() => genAiSaleContent('caption')} disabled={aiFieldLoading === 'caption'}
+                              className="text-[10px] text-violet-600 font-bold flex items-center gap-1 hover:underline disabled:opacity-50">
+                              {aiFieldLoading === 'caption' ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                              AI Tạo Caption
+                            </button>
+                          </div>
+                          <textarea value={saleForm.caption || ''} onChange={e => setSaleForm(f => ({ ...f, caption: e.target.value }))}
+                            placeholder="Nhập yêu cầu thêm cho AI (kể chuyện cảm động, thêm nhiều emoji...)." rows={3}
+                            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-rose-300" />
+                        </div>
+                      </div>
+
+                      {/* Image Designer */}
+                      <div className="bg-white rounded-2xl border shadow-sm p-4 space-y-3">
+                        <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                          <Palette size={13} className="text-rose-400" /> Thiết kế hình ảnh
+                        </p>
+
+                        {/* Preview */}
+                        <div
+                          className="rounded-xl overflow-hidden relative flex items-center justify-center text-center"
+                          style={{
+                            background: saleForm.bgImageUrl
+                              ? `url(${saleForm.bgImageUrl}) center/cover no-repeat`
+                              : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                            aspectRatio: saleForm.imageSize?.includes('16:9') ? '16/9' : saleForm.imageSize?.includes('9:16') ? '9/16' : '1/1',
+                            minHeight: '120px', maxHeight: '200px',
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-black/30" />
+                          <div className="relative z-10 p-4 max-w-full">
+                            {saleForm.quote ? (
+                              <p className="font-bold leading-snug"
+                                style={{ fontSize: `${Math.min((saleForm.fontSize || 24) * 0.65, 18)}px`, color: saleForm.fontColor || '#FFFFFF', fontFamily: saleForm.fontFamily || 'Inter' }}>
+                                {saleForm.quote}
+                              </p>
+                            ) : (
+                              <p className="text-white/40 text-xs">Trích dẫn sẽ hiển thị ở đây</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-gray-400 font-bold mb-1 block">Kích thước ảnh</label>
+                            <select value={saleForm.imageSize || 'Vuông (1:1)'} onChange={e => setSaleForm(f => ({ ...f, imageSize: e.target.value }))}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
+                              {IMAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-gray-400 font-bold mb-1 block">Font chữ</label>
+                            <select value={saleForm.fontFamily || 'Inter'} onChange={e => setSaleForm(f => ({ ...f, fontFamily: e.target.value }))}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
+                              {FONT_FAMILIES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] text-gray-400 font-bold mb-1 block">Màu chữ</label>
+                            <div className="flex items-center gap-2">
+                              <input type="color" value={saleForm.fontColor || '#FFFFFF'} onChange={e => setSaleForm(f => ({ ...f, fontColor: e.target.value }))}
+                                className="w-8 h-8 rounded cursor-pointer border border-gray-200" />
+                              <span className="text-[11px] text-gray-500 font-mono">{saleForm.fontColor || '#FFFFFF'}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-gray-400 font-bold mb-1 block">Màu highlight</label>
+                            <div className="flex items-center gap-2">
+                              <input type="color" value={saleForm.highlightColor || '#00CB53'} onChange={e => setSaleForm(f => ({ ...f, highlightColor: e.target.value }))}
+                                className="w-8 h-8 rounded cursor-pointer border border-gray-200" />
+                              <span className="text-[11px] text-gray-500 font-mono">{saleForm.highlightColor || '#00CB53'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-bold mb-1 block">
+                            Cỡ chữ: {saleForm.fontSize || 24}px
+                          </label>
+                          <input type="range" min={12} max={60} value={saleForm.fontSize || 24}
+                            onChange={e => setSaleForm(f => ({ ...f, fontSize: parseInt(e.target.value) }))}
+                            className="w-full accent-rose-500" />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-bold mb-1 block">Vị trí logo</label>
+                          <select value={saleForm.logoPosition || 'Dưới - Phải'} onChange={e => setSaleForm(f => ({ ...f, logoPosition: e.target.value }))}
+                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
+                            {LOGO_POS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-bold mb-1 block">Gợi ý Prompt ảnh (AI)</label>
+                          <textarea value={saleForm.imagePrompt || ''} onChange={e => setSaleForm(f => ({ ...f, imagePrompt: e.target.value }))}
+                            placeholder="Ảnh social media cho ảnh cưới, phong cách sang nhẹ, nữ tính, tông hồng pastel..." rows={2}
+                            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={callSaleDayImage} disabled={sdImgLoading}
+                            className="flex items-center justify-center gap-1.5 bg-violet-100 text-violet-700 text-xs font-bold px-3 py-2 rounded-lg hover:bg-violet-200 disabled:opacity-50 transition-colors">
+                            {sdImgLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                            AI tạo ảnh nền
+                          </button>
+                          <label className="flex items-center justify-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-lg hover:bg-gray-200 cursor-pointer transition-colors">
+                            <ImageIcon size={11} /> Tải ảnh nền
+                            <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const url = await uploadImageToStorage(file, 'sale-days');
+                              setSaleForm(f => ({ ...f, bgImageUrl: url }));
+                            }} />
+                          </label>
+                        </div>
+
+                        {saleForm.bgImageUrl && (
+                          <button onClick={() => setSaleForm(f => ({ ...f, bgImageUrl: '' }))}
+                            className="text-[11px] text-red-400 hover:text-red-600 hover:underline flex items-center gap-1">
+                            <X size={10} /> Xóa ảnh nền
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Publishing + Status */}
+                      <div className="bg-white rounded-2xl border shadow-sm p-4 space-y-3">
+                        <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                          🚀 Hệ thống Đăng bài
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button className="text-[11px] font-bold px-2 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">FB Creator Studio</button>
+                          <button className="text-[11px] font-bold px-2 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors">TikTok Creator</button>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">Trạng thái</label>
+                          <select value={saleForm.contentStatus || 'draft'} onChange={e => setSaleForm(f => ({ ...f, contentStatus: e.target.value }))}
+                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300">
+                            {CONTENT_STATUS_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Save */}
+                      <button onClick={saveSaleDay} disabled={savingSaleDay}
+                        className="w-full bg-gradient-to-r from-rose-500 to-orange-500 text-white text-sm font-bold py-3 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                        {savingSaleDay ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                        {savingSaleDay ? 'Đang lưu...' : 'Lưu thiết kế'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ════════════════ CALENDAR TAB ════════════════ */}
         {tab === 'calendar' && (
