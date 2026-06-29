@@ -118,7 +118,7 @@ export const LiveChatWidget: React.FC = () => {
 
   // Ẩn widget chỉ khi admin đã TẮT RÕ RÀNG liveChatEnabled = false
   // (undefined = chưa set = vẫn hiện)
-  if (settings?.liveChatEnabled === false && settings?.chatBotEnabled !== true && settings?.chatBotTier2Enabled !== true) {
+  if (settings?.liveChatEnabled === false && settings?.chatBotEnabled !== true && settings?.chatBotTier2Enabled !== true && settings?.chatBotV2Enabled !== true) {
     return null;
   }
   if (settings?.liveChatEnabled === false) {
@@ -126,6 +126,7 @@ export const LiveChatWidget: React.FC = () => {
       <LiveChatBubble
         chatBotEnabled={settings?.chatBotEnabled === true}
         chatBotTier2Enabled={settings?.chatBotTier2Enabled === true}
+        chatBotV2Enabled={settings?.chatBotV2Enabled === true}
         integrationConfig={{
           chatApiEnabled: settings?.integrationChatApiEnabled,
           chatApiUrl: settings?.integrationChatApiUrl,
@@ -238,6 +239,7 @@ export const LiveChatWidget: React.FC = () => {
         onClose={() => setLiveChatOpen(false)}
         chatBotEnabled={settings?.chatBotEnabled === true}
         chatBotTier2Enabled={settings?.chatBotTier2Enabled === true}
+        chatBotV2Enabled={settings?.chatBotV2Enabled === true}
         integrationConfig={{
           chatApiEnabled: settings?.integrationChatApiEnabled,
           chatApiUrl: settings?.integrationChatApiUrl,

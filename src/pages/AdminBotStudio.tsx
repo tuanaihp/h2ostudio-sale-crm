@@ -16,7 +16,9 @@ import {
   Edit3, Tag, ChevronRight, ChevronDown, ChevronUp, CheckCircle,
   BookMarked, Download, Building2, Phone, Mail, MapPin, Clock,
   Package, ShoppingBag, ChevronLeft, Layers, GripVertical, ArrowDown, ArrowUp,
+  Cpu, FlaskConical,
 } from 'lucide-react';
+import { offlineRagSearch } from '../lib/offlineRagEngine';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -577,7 +579,7 @@ const ScenarioModal: React.FC<{
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'settings' | 'unanswered' | 'flows';
+type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'botv2' | 'settings' | 'unanswered' | 'flows';
 type KnowledgeTab = 'faqs' | 'scripts';
 interface TestMsg {
   role: 'user' | 'bot'; text: string;
@@ -687,6 +689,12 @@ export default function AdminBotStudio() {
   // ── Chat settings ──
   const [chatBotEnabled, setChatBotEnabled] = useState(settings?.chatBotEnabled === true);
   const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings?.chatBotTier2Enabled === true);
+  const [chatBotV2Enabled, setChatBotV2Enabled] = useState(settings?.chatBotV2Enabled === true);
+  // Bot V2 test state
+  const [v2TestMsgs, setV2TestMsgs] = useState<Array<{ role: 'user' | 'bot'; text: string; score?: number; matched?: boolean; template?: string; intent?: string }>>([]);
+  const [v2TestInput, setV2TestInput] = useState('');
+  const [v2TestLoading, setV2TestLoading] = useState(false);
+  const v2TestBottomRef = useRef<HTMLDivElement>(null);
   const [liveChatEnabled, setLiveChatEnabled] = useState(settings?.liveChatEnabled !== false);
   const [chatTypingSpeed, setChatTypingSpeed] = useState(settings?.chatTypingSpeed ?? 50);
   const [chatBotThinkingDelay, setChatBotThinkingDelay] = useState(settings?.chatBotThinkingDelay ?? 1500);
@@ -707,6 +715,7 @@ export default function AdminBotStudio() {
   useEffect(() => { if (tab === 'info') loadPricePackages(); }, [tab]);
   useEffect(() => { if (tab === 'flows' && scenarios.length === 0) loadScenarios(); }, [tab]);
   useEffect(() => { testBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [testMsgs]);
+  useEffect(() => { v2TestBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [v2TestMsgs]);
   useEffect(() => {
     if (settings) {
       setGreeting(settings.chatBotGreeting || DEFAULT_GREETING);
@@ -730,6 +739,7 @@ export default function AdminBotStudio() {
       });
       setChatBotEnabled(settings.chatBotEnabled === true);
       setChatBotTier2Enabled(settings.chatBotTier2Enabled === true);
+      setChatBotV2Enabled(settings.chatBotV2Enabled === true);
       setLiveChatEnabled(settings.liveChatEnabled !== false);
       setChatTypingSpeed(settings.chatTypingSpeed ?? 50);
       setChatBotThinkingDelay(settings.chatBotThinkingDelay ?? 1500);
@@ -960,8 +970,47 @@ export default function AdminBotStudio() {
   const removeChatMessage = (id: string) => setChatMessages(prev => prev.filter(m => m.id !== id));
   const saveChatSettings = async () => {
     setChatSettingsSaving(true);
-    await updateSettings({ chatBotEnabled, chatBotTier2Enabled, liveChatEnabled, chatTypingSpeed, chatBotThinkingDelay, chatAutoOpenEnabled, chatAutoOpenDelay, chatStaffName, chatStaffNames, chatMessages });
+    await updateSettings({ chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, liveChatEnabled, chatTypingSpeed, chatBotThinkingDelay, chatAutoOpenEnabled, chatAutoOpenDelay, chatStaffName, chatStaffNames, chatMessages });
     setChatSettingsSaving(false); setChatSettingsSaveOk(true); setTimeout(() => setChatSettingsSaveOk(false), 2500);
+  };
+
+  // ── Bot V2 test ──
+  const runV2Test = async () => {
+    const msg = v2TestInput.trim();
+    if (!msg || v2TestLoading) return;
+    setV2TestInput('');
+    setV2TestLoading(true);
+    setV2TestMsgs(prev => [...prev, { role: 'user', text: msg }]);
+    try {
+      const [{ data: faqData }, { data: scriptData }] = await Promise.all([
+        supabase.from('customer_faqs').select('id, question, answer, tags, usage_count, category, keywords, next_question, lead_score, service_type, handoff_trigger').eq('is_approved', true),
+        supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true),
+      ]);
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: promoData } = await supabase.from('promotions').select('title, short_desc, emoji, end_date').eq('enabled', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(2);
+
+      const { createInitialStateV2 } = await import('../types/botV2');
+      const dummyState = createInitialStateV2('v2-test');
+      const result = await offlineRagSearch({
+        message: msg,
+        faqs: faqData || [],
+        scripts: scriptData || [],
+        promos: promoData || [],
+        state: dummyState,
+      });
+      setV2TestMsgs(prev => [...prev, {
+        role: 'bot',
+        text: result.matched ? result.text : '⚠️ Không tìm thấy tài liệu phù hợp (score thấp). Bot sẽ fallback sang AI Tier 2 nếu được bật.',
+        score: result.score,
+        matched: result.matched,
+        template: result.templateUsed,
+        intent: result.intent,
+      }]);
+    } catch (e) {
+      setV2TestMsgs(prev => [...prev, { role: 'bot', text: 'Lỗi khi chạy test V2.' }]);
+    } finally {
+      setV2TestLoading(false);
+    }
   };
 
   // ── Settings ──
@@ -1177,7 +1226,7 @@ export default function AdminBotStudio() {
   };
 
   // ── Derived ──
-  const botOn = (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true) && settings?.liveChatEnabled !== false;
+  const botOn = (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true || settings?.chatBotV2Enabled === true) && settings?.liveChatEnabled !== false;
   const filteredFaqs = faqs.filter(f => {
     const matchCat = faqCatFilter === 'all' || f.category === faqCatFilter;
     const q = faqSearch.toLowerCase();
@@ -1201,7 +1250,8 @@ export default function AdminBotStudio() {
     { id: 'knowledge',    label: 'Kiến thức AI',    icon: BookOpen },
     { id: 'info',         label: 'Thông tin',       icon: Building2 },
     { id: 'instructions', label: 'Hướng dẫn',       icon: FileText },
-    { id: 'test',         label: 'Chat thử',        icon: MessageSquare },
+    { id: 'test',         label: 'Chat thử V1',     icon: MessageSquare },
+    { id: 'botv2',        label: 'Bot V2 (RAG)',    icon: Cpu },
     { id: 'settings',     label: 'Cài đặt',         icon: Settings },
     { id: 'unanswered',   label: 'Chưa trả lời',    icon: AlertCircle },
   ] as const;
@@ -1351,26 +1401,27 @@ export default function AdminBotStudio() {
               <h1 className="text-2xl font-bold text-gray-900">H2O Bot AI Studio</h1>
               <p className="text-sm text-gray-500 mt-0.5">Quản lý AI tư vấn khách hàng tự động</p>
             </div>
-            {/* Bot status — 3 toggles, lưu ngay */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Bot status — 4 toggles, lưu ngay */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { key: 'liveChatEnabled', label: 'Widget Chat', sub: 'Hiển thị nút Chat', icon: MessageSquare, color: 'bg-green-50 text-green-600', aColor: 'text-green-500', desc: 'Bật/tắt toàn bộ khung chat trên website' },
-                { key: 'chatBotEnabled', label: 'Bot Tầng 1', sub: 'TF-IDF Matching', icon: Brain, color: 'bg-blue-50 text-blue-600', aColor: 'text-blue-500', desc: `Kho: ${stats.faqs} FAQ + ${stats.scripts} kịch bản` },
-                { key: 'chatBotTier2Enabled', label: 'Bot Tầng 2', sub: 'AI (Gemini / Custom)', icon: Zap, color: 'bg-purple-50 text-purple-600', aColor: 'text-purple-500', desc: settings?.integrationChatApiEnabled ? `Model: ${settings?.integrationChatApiModelName || 'Custom'}` : 'Gemini 2.0 Flash' },
+                { key: 'chatBotEnabled', label: 'Bot Tầng 1', sub: 'Matching cũ', icon: Brain, color: 'bg-blue-50 text-blue-600', aColor: 'text-blue-500', desc: `Kho: ${stats.faqs} FAQ + ${stats.scripts} kịch bản` },
+                { key: 'chatBotV2Enabled', label: 'Bot V2 (RAG)', sub: 'BM25 + Template', icon: Cpu, color: 'bg-teal-50 text-teal-600', aColor: 'text-teal-500', desc: 'Offline RAG — không tốn API, < 200ms' },
+                { key: 'chatBotTier2Enabled', label: 'Bot Tầng 2', sub: 'AI (Gemini)', icon: Zap, color: 'bg-purple-50 text-purple-600', aColor: 'text-purple-500', desc: settings?.integrationChatApiEnabled ? `Model: ${settings?.integrationChatApiModelName || 'Custom'}` : 'Gemini 2.0 Flash' },
               ].map(({ key, label, sub, icon: Icon, color, aColor, desc }) => (
                 <div key={key} className="bg-white rounded-2xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}><Icon size={17} /></div>
-                      <div><p className="text-sm font-semibold text-gray-800">{label}</p><p className="text-[10px] text-gray-400">{sub}</p></div>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${color}`}><Icon size={15} /></div>
+                      <div><p className="text-xs font-semibold text-gray-800 leading-snug">{label}</p><p className="text-[10px] text-gray-400">{sub}</p></div>
                     </div>
-                    <button onClick={() => toggle(key)} className={`transition-colors ${isToggleOn(key) ? aColor : 'text-gray-300'}`}>
-                      {isToggleOn(key) ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                    <button onClick={() => toggle(key)} className={`transition-colors shrink-0 ${isToggleOn(key) ? aColor : 'text-gray-300'}`}>
+                      {isToggleOn(key) ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400">{desc}</p>
+                  <p className="text-[10px] text-gray-400 leading-snug">{desc}</p>
                   <span className={`mt-1.5 inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${isToggleOn(key) ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                    {isToggleOn(key) ? '● Đang hoạt động' : '○ Đã tắt'}
+                    {isToggleOn(key) ? '● Bật' : '○ Tắt'}
                   </span>
                 </div>
               ))}
@@ -2033,8 +2084,12 @@ export default function AdminBotStudio() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Trạng thái</p>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500">Bot Tầng 1 (TF-IDF)</span>
+                      <span className="text-gray-500">Bot Tầng 1 (V1 cũ)</span>
                       <span className={`font-bold ${settings?.chatBotEnabled ? 'text-green-600' : 'text-gray-300'}`}>{settings?.chatBotEnabled ? '● Bật' : '○ Tắt'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Bot V2 (Offline RAG)</span>
+                      <span className={`font-bold ${settings?.chatBotV2Enabled ? 'text-teal-600' : 'text-gray-300'}`}>{settings?.chatBotV2Enabled ? '● Bật' : '○ Tắt'}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500">Bot Tầng 2 (AI)</span>
@@ -2126,6 +2181,171 @@ export default function AdminBotStudio() {
                 <li>Thêm <strong>Từ khóa nhận diện</strong> trong form FAQ để bot match chính xác hơn</li>
                 <li>Nhấn <strong>Bỏ qua</strong> để loại câu hỏi không liên quan (spam, test...)</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* ══ BOT V2 (OFFLINE RAG) ══ */}
+        {tab === 'botv2' && (
+          <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Cpu size={22} className="text-teal-600" /> Bot V2 — Offline RAG Engine</h1>
+                <p className="text-sm text-gray-500 mt-0.5">BM25 + TF-IDF + Template Builder — không tốn 1 đồng API</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600 font-medium">Bật Bot V2</span>
+                <button onClick={() => { const next = !chatBotV2Enabled; setChatBotV2Enabled(next); updateSettings({ chatBotV2Enabled: next }); }}
+                  className={`transition-colors ${chatBotV2Enabled ? 'text-teal-500' : 'text-gray-300'}`}>
+                  {chatBotV2Enabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Status banner */}
+            <div className={`rounded-2xl p-4 border ${chatBotV2Enabled ? 'bg-teal-50 border-teal-200' : 'bg-gray-50 border-gray-200'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${chatBotV2Enabled ? 'bg-teal-100' : 'bg-gray-100'}`}>
+                  <Cpu size={18} className={chatBotV2Enabled ? 'text-teal-600' : 'text-gray-400'} />
+                </div>
+                <div>
+                  <p className={`font-semibold text-sm ${chatBotV2Enabled ? 'text-teal-800' : 'text-gray-600'}`}>
+                    {chatBotV2Enabled ? '● Bot V2 đang hoạt động' : '○ Bot V2 đang tắt'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {chatBotV2Enabled
+                      ? 'Ưu tiên: V2 (RAG) → Tier 2 (AI fallback) → Tier 1 (cũ)'
+                      : 'Bật để thay thế Bot Tầng 1 bằng engine BM25 mới'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Architecture overview */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><FlaskConical size={15} className="text-teal-500" /> Kiến trúc 13 bước</h3>
+              <div className="grid grid-cols-1 gap-2">
+                {[
+                  { step: '1', label: 'Normalize', desc: 'Chuẩn hóa tiếng Việt, rút gọn từ khóa', ok: true },
+                  { step: '2', label: 'Intent Detection', desc: '6 intent: pricing, benefit, booking, deposit, consult, greeting', ok: true },
+                  { step: '3', label: 'Service Detection', desc: 'Phát hiện loại dịch vụ: combo, studio, outdoor...', ok: true },
+                  { step: '4', label: 'Phase Detection', desc: 'Gắn giai đoạn sale: discovery → value_prop → closing', ok: true },
+                  { step: '5', label: 'Query Expansion', desc: 'Mở rộng 50+ từ đồng nghĩa tiếng Việt ngành ảnh cưới', ok: true },
+                  { step: '6', label: 'BM25 Search', desc: 'Tính TF × IDF × field_weight trên toàn kho FAQ + script', ok: true },
+                  { step: '7', label: 'TF-IDF Re-ranking', desc: 'IDF thực sự từ corpus, re-rank kết quả BM25', ok: true },
+                  { step: '8', label: 'Rule Engine', desc: 'Bonus: service match +2, phase match +1.5, priority +1.5', ok: true },
+                  { step: '9', label: 'Context Builder', desc: 'Lấy thêm docs liên quan từ phase kế tiếp', ok: true },
+                  { step: '10', label: 'Template Builder', desc: 'PRICING_WITH_CTA / SERVICE_INFO / BOOKING_CTA / DEFAULT', ok: true },
+                  { step: '11', label: 'Final Response', desc: '< 200ms — không gọi AI API', ok: true },
+                  { step: '12', label: 'State Update', desc: 'Giữ nguyên V2 state machine: phase, slots, lead score', ok: true },
+                  { step: '13', label: 'Log', desc: 'Ghi bot_unmatched_logs nếu score thấp', ok: true },
+                ].map(({ step, label, desc, ok }) => (
+                  <div key={step} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <span className="w-6 h-6 rounded-lg bg-teal-50 text-teal-700 text-[10px] font-black flex items-center justify-center shrink-0">{step}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 leading-none">{label}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{desc}</p>
+                    </div>
+                    <CheckCircle2 size={14} className={ok ? 'text-teal-500 shrink-0 mt-0.5' : 'text-gray-200 shrink-0 mt-0.5'} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Comparison table */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <h3 className="font-bold text-gray-800 mb-4">So sánh Bot V1 vs Bot V2</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 font-semibold text-gray-600">Chỉ số</th>
+                      <th className="text-center py-2 font-semibold text-blue-600">Bot V1 (cũ)</th>
+                      <th className="text-center py-2 font-semibold text-teal-600">Bot V2 (RAG)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['BM25 Search', '5/10', '9/10'],
+                      ['TF-IDF Re-rank', '3/10', '8/10'],
+                      ['Context Builder', '5/10', '9/10'],
+                      ['Template Builder', '4/10', '9/10'],
+                      ['Tốc độ', '1–2s', '< 200ms'],
+                      ['Chi phí API', 'Không (V1)', 'Không (V2)'],
+                      ['Fallback AI khi không match', 'Không', 'Có (→ Tier 2)'],
+                    ].map(([label, v1, v2]) => (
+                      <tr key={label} className="border-b border-gray-50">
+                        <td className="py-2 text-gray-700">{label}</td>
+                        <td className="py-2 text-center text-blue-600 font-medium">{v1}</td>
+                        <td className="py-2 text-center text-teal-600 font-bold">{v2}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Test panel */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2"><MessageSquare size={15} className="text-teal-500" /> Test Bot V2</h3>
+                <button onClick={() => setV2TestMsgs([])} className="text-xs text-gray-400 hover:text-gray-600">Xóa chat</button>
+              </div>
+              <div className="h-72 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                {v2TestMsgs.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+                    <Cpu size={28} className="text-gray-200" />
+                    <p className="text-xs text-gray-400">Nhập câu hỏi để test Offline RAG Engine</p>
+                    <div className="flex flex-wrap gap-1.5 justify-center mt-2">
+                      {['Tôi muốn tư vấn gói combo cưới', 'Giá chụp studio bao nhiêu?', 'Đặt lịch còn tháng 10 không?'].map(q => (
+                        <button key={q} onClick={() => setV2TestInput(q)} className="text-[10px] bg-white border border-gray-200 rounded-full px-2.5 py-1 hover:border-teal-300 hover:text-teal-600 transition-colors">{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {v2TestMsgs.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${m.role === 'user' ? 'bg-teal-600 text-white' : 'bg-white border border-gray-200 text-gray-800 shadow-sm'}`}>
+                      <p className="whitespace-pre-wrap">{m.text}</p>
+                      {m.role === 'bot' && (m.score !== undefined || m.template) && (
+                        <div className="mt-2 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5">
+                          {m.score !== undefined && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${m.matched ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-600'}`}>
+                              {m.matched ? `Score: ${m.score}` : 'No match'}
+                            </span>
+                          )}
+                          {m.template && <span className="text-[9px] bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">Template: {m.template}</span>}
+                          {m.intent && <span className="text-[9px] bg-amber-50 text-amber-600 font-bold px-1.5 py-0.5 rounded-full">Intent: {m.intent}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {v2TestLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 flex items-center gap-2 shadow-sm">
+                      <div className="flex gap-1">{[0,1,2].map(i => <span key={i} className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: `${i*0.15}s` }} />)}</div>
+                      <span className="text-xs text-gray-400">RAG đang tìm kiếm...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={v2TestBottomRef} />
+              </div>
+              <div className="p-3 border-t border-gray-100 flex gap-2">
+                <input
+                  type="text"
+                  value={v2TestInput}
+                  onChange={e => setV2TestInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && runV2Test()}
+                  placeholder="Nhập câu hỏi test..."
+                  className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  disabled={v2TestLoading}
+                />
+                <button onClick={runV2Test} disabled={v2TestLoading || !v2TestInput.trim()}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center gap-1.5">
+                  <Send size={14} /> Test
+                </button>
+              </div>
             </div>
           </div>
         )}

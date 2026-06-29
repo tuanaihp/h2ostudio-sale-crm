@@ -145,6 +145,7 @@ export interface AppSettings {
   liveChatEnabled?: boolean;
   chatBotEnabled?: boolean;
   chatBotTier2Enabled?: boolean;
+  chatBotV2Enabled?: boolean;
   // Integrations settings ("Cổng kết nối")
   integrationChatApiEnabled?: boolean;
   integrationChatApiUrl?: string;

@@ -11,6 +11,7 @@ import Fuse from 'fuse.js';
 import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents } from '../lib/botEngine';
 import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_QUICK_REPLIES } from '../lib/botEngineV2';
 import { createInitialStateV2, type ConversationStateV2 } from '../types/botV2';
+import { offlineRagSearch } from '../lib/offlineRagEngine';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -47,6 +48,7 @@ interface Props {
   onClose?: () => void;
   chatBotEnabled?: boolean;
   chatBotTier2Enabled?: boolean;
+  chatBotV2Enabled?: boolean;
   integrationConfig?: {
     chatApiEnabled?: boolean; chatApiUrl?: string;
     chatApiKey?: string; chatApiModelName?: string;
@@ -65,7 +67,7 @@ function renderMsgContent(content: string, sender: 'customer' | 'admin') {
   );
 }
 
-export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, integrationConfig }: Props = {}) {
+export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, integrationConfig }: Props = {}) {
   const { settings } = useApp();
   const isControlled = controlledOpen !== undefined;
 
@@ -565,6 +567,179 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     }
   };
 
+  // Bot V2: Offline RAG Engine — BM25 + TF-IDF + Template Builder
+  const callBotV2 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
+    try {
+      setIsThinking(true);
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const promoPromise = supabase.from('promotions')
+        .select('title, short_desc, emoji, end_date')
+        .eq('enabled', true).eq('show_on_website', true)
+        .lte('start_date', todayStr).gte('end_date', todayStr).limit(2);
+
+      let faqData: any[];
+      let scriptData: any[];
+      let promoData: any[];
+      let pkgData: any[];
+
+      const cacheValid = faqCacheRef.current && scriptCacheRef.current && pkgCacheRef.current && Date.now() < cacheExpiresRef.current;
+
+      if (cacheValid) {
+        const { data: promos } = await promoPromise;
+        faqData    = faqCacheRef.current!;
+        scriptData = scriptCacheRef.current!;
+        promoData  = promos || [];
+        pkgData    = pkgCacheRef.current!;
+      } else {
+        const [faqRes, scriptRes, promoRes, pkgRes] = await Promise.all([
+          supabase.from('customer_faqs').select('id, question, answer, tags, usage_count, keywords, next_question, lead_score, service_type, handoff_trigger, category').eq('is_approved', true),
+          supabase.from('sale_scripts').select('id, phase, title, content, tags').eq('enabled', true).order('order_num', { ascending: true }),
+          promoPromise,
+          supabase.from('price_packages').select('*').eq('enabled', true).order('order_num'),
+        ]);
+        faqData    = faqRes.data    || [];
+        scriptData = scriptRes.data || [];
+        promoData  = promoRes.data  || [];
+        pkgData    = pkgRes.data    || [];
+        faqCacheRef.current    = faqData;
+        scriptCacheRef.current = scriptData;
+        pkgCacheRef.current    = pkgData;
+        cacheExpiresRef.current = Date.now() + CACHE_TTL_MS;
+      }
+
+      // Virtual FAQs từ settings (giống Tier 1)
+      const sv = settings;
+      const virtualFaqs: any[] = [];
+      if (sv?.botBusinessAddress || sv?.botBusinessHours) {
+        let ans = sv?.botBusinessName ? `📍 ${sv.botBusinessName}\n` : '';
+        if (sv?.botBusinessAddress) ans += `Địa chỉ: ${sv.botBusinessAddress}\n`;
+        if (sv?.botBusinessHours)   ans += `Giờ mở cửa: ${sv.botBusinessHours}`;
+        virtualFaqs.push({ id: '__virt_addr__', question: 'studio ở đâu địa chỉ', answer: ans.trim(), tags: ['địa chỉ', 'ở đâu'], keywords: ['địa chỉ', 'ở đâu', 'vị trí'], usage_count: 0, category: 'khac' });
+      }
+      if (sv?.botBusinessPhone || sv?.botBusinessEmail) {
+        let ans = '';
+        if (sv?.botBusinessPhone) ans += `📞 SĐT: ${sv.botBusinessPhone}\n`;
+        if (sv?.botBusinessEmail) ans += `✉️ Email: ${sv.botBusinessEmail}`;
+        virtualFaqs.push({ id: '__virt_contact__', question: 'số điện thoại liên hệ hotline', answer: ans.trim(), tags: ['hotline', 'liên hệ'], keywords: ['số điện thoại', 'hotline', 'liên hệ'], usage_count: 0, category: 'khac' });
+      }
+      if (sv?.botPriceList) {
+        virtualFaqs.push({ id: '__virt_price__', question: 'giá bảng giá chi phí gói chụp tiền phí bao nhiêu', answer: sv.botPriceList, tags: ['giá', 'bảng giá'], keywords: ['giá', 'bảng giá', 'bao nhiêu'], usage_count: 0, category: 'closing' });
+      }
+      if (sv?.botPurchaseInfo || sv?.botPaymentMethods) {
+        let ans = sv?.botPurchaseInfo ? sv.botPurchaseInfo + '\n\n' : '';
+        if (sv?.botPaymentMethods) ans += `Phương thức thanh toán: ${sv.botPaymentMethods}`;
+        virtualFaqs.push({ id: '__virt_payment__', question: 'đặt cọc thanh toán chuyển khoản', answer: ans.trim(), tags: ['đặt cọc', 'thanh toán'], keywords: ['đặt cọc', 'thanh toán', 'chuyển khoản'], usage_count: 0, category: 'closing' });
+      }
+      // Packages as FAQs
+      const pkgImageMap = new Map<string, string>();
+      (pkgData || []).forEach((pkg: any) => {
+        const pkgFaqId = `__pkg_${pkg.id}__`;
+        pkgImageMap.set(pkgFaqId, pkg.image_url || '');
+        const allKws = [...new Set(['báo giá', 'gói chụp', ...(pkg.keywords || []), ...pkg.title.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2)])];
+        let answer = `📦 ${pkg.title}`;
+        if (pkg.price) answer += `\n💰 Giá: ${pkg.price}`;
+        if (pkg.description) answer += `\n\n${pkg.description}`;
+        if (pkg.album_url) answer += `\n\n🖼️ Xem ảnh mẫu: ${pkg.album_url}`;
+        virtualFaqs.push({ id: pkgFaqId, question: `${pkg.title} giá bao nhiêu báo giá chi tiết`, answer, tags: ['giá', 'báo giá', 'gói', pkg.service_type].filter(Boolean), keywords: allKws, usage_count: 5, category: 'closing', service_type: pkg.service_type || null });
+      });
+
+      const allFaqs = [...(faqData || []), ...virtualFaqs];
+
+      const thinkingDelay = settings?.chatBotThinkingDelay ?? 1200;
+      await new Promise(r => setTimeout(r, Math.min(thinkingDelay * 0.5, 600) + Math.random() * 300));
+
+      // Run V2 state machine for phase/slot tracking
+      const v2Result = processMessageV2({
+        rawMessage: customerMessage,
+        scriptData: scriptData || [],
+        faqData: allFaqs,
+        state: botStateV2,
+        scenarioData: [],
+      });
+      setBotStateV2(v2Result.newState);
+
+      // Offline RAG Search
+      const ragResult = await offlineRagSearch({
+        message: customerMessage,
+        faqs: allFaqs,
+        scripts: scriptData || [],
+        promos: promoData || [],
+        state: botStateV2,
+      });
+
+      // If RAG didn't match well + Tier 2 enabled → fall through to Tier 2
+      if (ragResult.fallbackToAI && chatBotTier2Enabled) {
+        setIsThinking(false);
+        return callBotTier2(customerMessage, currentMessages, sid);
+      }
+
+      let text: string;
+      if (ragResult.matched && ragResult.text) {
+        text = ragResult.text;
+        setQuickReplies(ragResult.quickReplies || []);
+
+        // Update FAQ usage count
+        if (ragResult.matchedDocId && !ragResult.matchedDocId.startsWith('__')) {
+          const faqItem = allFaqs.find(f => f.id === ragResult.matchedDocId);
+          if (faqItem) {
+            supabase.from('customer_faqs').update({ usage_count: ((faqItem as any).usage_count || 0) + 1 }).eq('id', ragResult.matchedDocId).then(() => {});
+          }
+        }
+      } else {
+        // Complete fallback — chuyển nhân viên
+        const zaloUrl = APP_CONFIG.zaloUrl;
+        const hotline = APP_CONFIG.hotline;
+        let cta = '';
+        if (zaloUrl) cta += `\n💬 Chat Zalo ngay: ${zaloUrl}`;
+        if (hotline) cta += `\n📞 Hotline: ${hotline}`;
+        text = `Dạ em cảm ơn anh/chị đã liên hệ H2O Studio! Để được tư vấn chi tiết và nhanh nhất, anh/chị vui lòng để lại số điện thoại ạ 💕${cta}`;
+
+        const q = customerMessage.trim();
+        if (q.length >= 6) {
+          supabase.from('bot_unmatched_logs').insert({
+            session_id: sid, message: q,
+            normalized_message: q.toLowerCase(),
+            detected_service: v2Result.debug.detectedService,
+            detected_phase: v2Result.debug.selectedPhase,
+            created_at: new Date().toISOString(),
+          }).then(() => {});
+          supabase.from('customer_faqs').insert({
+            id: crypto.randomUUID(), question: q, answer: '', category: 'khac', tags: [],
+            source: 'from_chat_auto', is_approved: false, usage_count: 0,
+            created_at: new Date().toISOString(),
+          }).then(() => {});
+        }
+        setQuickReplies(v2Result.quickReplies || []);
+      }
+
+      // Handoff check
+      if (ragResult.handoffNeeded || v2Result.handoffTrigger) {
+        supabase.from('chat_sessions').update({ status: 'waiting', unread_admin: 99 }).eq('id', sid).then(() => {});
+      }
+
+      // Image from matched package
+      let botImageUrl: string | null = null;
+      if (ragResult.matchedDocId && pkgImageMap.has(ragResult.matchedDocId)) {
+        botImageUrl = pkgImageMap.get(ragResult.matchedDocId) || null;
+      }
+      if (!botImageUrl && ragResult.imageUrl) botImageUrl = ragResult.imageUrl;
+
+      const botId  = crypto.randomUUID();
+      const botNow = new Date().toISOString();
+      const msgInsert: any = { id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow };
+      if (botImageUrl) msgInsert.image_url = botImageUrl;
+      await supabase.from('chat_messages').insert(msgInsert);
+      await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+
+      scheduleFollowUp(sid);
+    } catch (e) {
+      console.error('Bot V2 RAG error:', e);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
   // Tầng 2: Gemini/ChatGPT + kịch bản làm context
   const callBotTier2 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
     try {
@@ -585,6 +760,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: customerMessage,
+          sessionId: sessionId || '',
           stage: (sess as any)?.stage || 'new',
           scripts: scriptData || [],
           faqs: faqData || [],
@@ -785,8 +961,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     setSending(false);
 
     // Kiểm tra đối tượng + lịch trước khi gọi bot
+    // Thứ tự ưu tiên: V2 (Offline RAG) → Tier2 (AI) → Tier1 (V1 engine)
     if (shouldBotRespond()) {
-      if (chatBotTier2Enabled && sessionId) {
+      if (chatBotV2Enabled && sessionId) {
+        callBotV2(content, nextMsgs, sessionId);
+      } else if (chatBotTier2Enabled && sessionId) {
         callBotTier2(content, nextMsgs, sessionId);
       } else if (chatBotEnabled && sessionId) {
         callBotTier1(content, sessionId);
