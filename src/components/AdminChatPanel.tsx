@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, MessageCircle, Search, ChevronDown, ChevronUp, Copy, Check, Camera, BookmarkPlus, HelpCircle, Lightbulb } from 'lucide-react';
+import { autoSaveFaqPair } from '../utils/autoFaqSave';
 
 // ── Nhận diện giai đoạn từ câu hỏi khách ─────────────────────────────────────
 const PHASE_DETECT_RULES: Array<{ keywords: string[]; phase: string; label: string }> = [
@@ -313,6 +314,11 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
     setInput('');
     await supabase.from('chat_messages').insert({ id, session_id: activeId, sender: 'admin', content, created_at: now });
     await supabase.from('chat_sessions').update({ last_message: content, last_message_at: now, status: 'open' }).eq('id', activeId);
+    // Auto-save Q&A pair vào kho FAQ (is_approved: false) để admin duyệt
+    const lastCustomerMsg = [...messages].reverse().find(m => m.sender === 'customer');
+    if (lastCustomerMsg) {
+      autoSaveFaqPair({ question: lastCustomerMsg.content, answer: content, sessionId: activeId });
+    }
     setSending(false);
   };
 

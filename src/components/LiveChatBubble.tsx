@@ -12,6 +12,7 @@ import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents } from 
 import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_QUICK_REPLIES } from '../lib/botEngineV2';
 import { createInitialStateV2, type ConversationStateV2 } from '../types/botV2';
 import { offlineRagSearch } from '../lib/offlineRagEngine';
+import { autoSaveFaqPair } from '../utils/autoFaqSave';
 
 const SESSION_KEY   = 'h2o_live_session_id';
 const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
@@ -543,6 +544,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       await supabase.from('chat_messages').insert(msgInsert);
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
 
+      // Auto-lưu Q&A vào kho FAQ (Bot Tầng 1)
+      autoSaveFaqPair({ question: customerMessage, answer: text, sessionId: sid });
+
       // Scenario auto-steps: gửi các tin nhắn tiếp theo tự động với delay
       if (v2Result.scenarioAutoSteps && v2Result.scenarioAutoSteps.length > 0) {
         let cumulativeMs = 0;
@@ -736,6 +740,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       await supabase.from('chat_messages').insert(msgInsert);
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
 
+      // Auto-lưu Q&A vào kho FAQ (Bot V2)
+      autoSaveFaqPair({ question: customerMessage, answer: text, sessionId: sid });
+
       scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot V2 RAG error:', e);
@@ -809,6 +816,10 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       const botNow = new Date().toISOString();
       await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: text, created_at: botNow });
       await supabase.from('chat_sessions').update({ last_message: text, last_message_at: botNow }).eq('id', sid);
+
+      // Auto-lưu Q&A vào kho FAQ (Bot Tầng 2 AI)
+      autoSaveFaqPair({ question: customerMessage, answer: text, sessionId: sid });
+
       scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot Tầng 2 error:', e);
