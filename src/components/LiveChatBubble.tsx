@@ -659,13 +659,17 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       });
       setBotStateV2(v2Result.newState);
 
-      // Offline RAG Search
+      // Offline RAG Search — đọc template config từ settings
+      let parsedTemplateConfig: Record<string, any> | undefined;
+      try { parsedTemplateConfig = JSON.parse(settings?.botV2TemplateConfig || '{}'); } catch {}
+
       const ragResult = await offlineRagSearch({
         message: customerMessage,
         faqs: allFaqs,
         scripts: scriptData || [],
         promos: promoData || [],
         state: botStateV2,
+        templateConfig: parsedTemplateConfig,
       });
 
       // If RAG didn't match well + Tier 2 enabled → fall through to Tier 2

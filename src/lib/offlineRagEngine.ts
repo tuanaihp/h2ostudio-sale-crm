@@ -7,6 +7,35 @@ import { normalizeVietnamese, expandSynonyms, detectServiceType } from './botEng
 import { expandQuery } from '../utils/synonyms';
 import type { ConversationStateV2 } from '../types/botV2';
 
+// ── Template config (user-editable via Admin) ────────────────────────────────
+export interface BotV2TemplateConfig {
+  ctaDay:   string;   // CTA 8:00–20:59
+  ctaNight: string;   // CTA 21:00–7:59
+  autoPromo: boolean; // gắn ưu đãi vào response pricing/benefit
+  introPrefix: string; // prefix trước mọi câu trả lời (rỗng = không thêm)
+  fallbackText: string; // text khi không match (thay thế default fallback)
+  quickRepliesPricing:  string[];
+  quickRepliesBenefit:  string[];
+  quickRepliesBooking:  string[];
+  quickRepliesDeposit:  string[];
+  quickRepliesConsult:  string[];
+  quickRepliesGreeting: string[];
+}
+
+export const DEFAULT_TEMPLATE_CONFIG: BotV2TemplateConfig = {
+  ctaDay:   'Anh/chị muốn đặt lịch tư vấn hoặc xem thêm thông tin không ạ? Em hỗ trợ ngay!',
+  ctaNight: 'Anh/chị để lại số điện thoại, sáng mai em sẽ liên hệ tư vấn chi tiết ạ!',
+  autoPromo: true,
+  introPrefix: '',
+  fallbackText: '',
+  quickRepliesPricing:  ['Xem bảng giá chi tiết', 'Đặt lịch tư vấn', 'Gói bao gồm gì?'],
+  quickRepliesBenefit:  ['Xem bảng giá chi tiết', 'Đặt lịch tư vấn', 'Gói bao gồm gì?'],
+  quickRepliesBooking:  ['Xem lịch trống', 'Gọi tư vấn ngay', 'Xem bảng giá'],
+  quickRepliesDeposit:  ['Đặt cọc bao nhiêu?', 'Các hình thức thanh toán', 'Hủy lịch thì sao?'],
+  quickRepliesConsult:  ['Xem bảng giá', 'Đặt lịch tư vấn', 'Liên hệ ngay'],
+  quickRepliesGreeting: ['Xem bảng giá', 'Tư vấn gói chụp', 'Liên hệ ngay'],
+};
+
 // ── BM25 constants ────────────────────────────────────────────────────────────
 const K1 = 1.5;
 const B  = 0.75;
@@ -179,63 +208,72 @@ function buildFromTemplate(
   promos: any[],
   intent: string,
   serviceType: string,
+  cfg: BotV2TemplateConfig,
 ): { text: string; quickReplies: string[]; templateKey: TemplateKey } {
-  const now = new Date();
-  const hour = now.getHours();
-  const isBusinessHours = hour >= 8 && hour < 21;
+  const hour = new Date().getHours();
+  const cta = (hour >= 8 && hour < 21) ? cfg.ctaDay : cfg.ctaNight;
 
-  // CTA based on time
-  const cta = isBusinessHours
-    ? 'Anh/chị muốn đặt lịch tư vấn hoặc xem thêm thông tin không ạ? Em hỗ trợ ngay!'
-    : 'Anh/chị để lại số điện thoại, sáng mai em sẽ liên hệ tư vấn chi tiết ạ!';
-
-  // Active promo
-  const promoText = promos.length > 0
+  const promoText = cfg.autoPromo && promos.length > 0
     ? '\n\n🎁 Ưu đãi đang chạy:\n' + promos.map((p: any) => {
         const end = new Date(p.end_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
         return `${p.emoji || '🎉'} ${p.title} — ${p.short_desc} (hết ${end})`;
       }).join('\n')
     : '';
 
-  if (intent === 'pricing' || intent === 'benefit' || intent === 'consult') {
-    // Find a related pricing doc
+  const prefix = cfg.introPrefix ? `${cfg.introPrefix}\n\n` : '';
+
+  if (intent === 'pricing' || intent === 'benefit') {
     const pricingDoc = relatedDocs.find(d => d.phase === 'closing' || d.phase === 'value_prop') || relatedDocs[0];
-    let text = topDoc.content;
-    if (pricingDoc && pricingDoc.id !== topDoc.id) {
-      text += `\n\n${pricingDoc.content}`;
-    }
-    text += promoText;
-    text += `\n\n📅 ${cta}`;
+    let body = topDoc.content;
+    if (pricingDoc && pricingDoc.id !== topDoc.id) body += `\n\n${pricingDoc.content}`;
+    body += promoText;
+    body += `\n\n📅 ${cta}`;
     return {
-      text,
-      quickReplies: ['Xem bảng giá chi tiết', 'Đặt lịch tư vấn', 'Gói bao gồm gì?'],
+      text: prefix + body,
+      quickReplies: intent === 'pricing' ? cfg.quickRepliesPricing : cfg.quickRepliesBenefit,
+      templateKey: 'pricing_with_cta',
+    };
+  }
+
+  if (intent === 'consult') {
+    let body = topDoc.content;
+    body += promoText;
+    body += `\n\n📅 ${cta}`;
+    return {
+      text: prefix + body,
+      quickReplies: cfg.quickRepliesConsult,
       templateKey: 'pricing_with_cta',
     };
   }
 
   if (intent === 'booking' || intent === 'schedule') {
-    const text = topDoc.content + `\n\n📅 ${cta}`;
     return {
-      text,
-      quickReplies: ['Xem lịch trống', 'Gọi tư vấn ngay', 'Xem bảng giá'],
+      text: prefix + topDoc.content + `\n\n📅 ${cta}`,
+      quickReplies: cfg.quickRepliesBooking,
       templateKey: 'booking_cta',
     };
   }
 
   if (intent === 'deposit') {
-    const text = topDoc.content + `\n\n💳 Anh/chị cần hỗ trợ thêm về thanh toán, em giải đáp ngay ạ!`;
     return {
-      text,
-      quickReplies: ['Đặt cọc bao nhiêu?', 'Các hình thức thanh toán', 'Hủy lịch thì sao?'],
+      text: prefix + topDoc.content + `\n\n💳 ${cta}`,
+      quickReplies: cfg.quickRepliesDeposit,
       templateKey: 'deposit_info',
     };
   }
 
-  // Default: just return the top doc content
-  const text = topDoc.content + (promoText ? promoText : '');
+  if (intent === 'greeting') {
+    return {
+      text: prefix + topDoc.content,
+      quickReplies: cfg.quickRepliesGreeting,
+      templateKey: 'default',
+    };
+  }
+
+  // Default
   return {
-    text,
-    quickReplies: topDoc.nextQuestion ? [topDoc.nextQuestion] : ['Xem thêm thông tin', 'Tư vấn ngay'],
+    text: prefix + topDoc.content + (promoText || ''),
+    quickReplies: topDoc.nextQuestion ? [topDoc.nextQuestion] : cfg.quickRepliesConsult,
     templateKey: 'default',
   };
 }
@@ -247,8 +285,10 @@ export async function offlineRagSearch(params: {
   scripts: any[];
   promos: any[];
   state: ConversationStateV2;
+  templateConfig?: Partial<BotV2TemplateConfig>;
 }): Promise<RagResult> {
-  const { message, faqs, scripts, promos, state } = params;
+  const { message, faqs, scripts, promos, state, templateConfig } = params;
+  const cfg: BotV2TemplateConfig = { ...DEFAULT_TEMPLATE_CONFIG, ...templateConfig };
 
   // Step 1: Normalize
   const normalized = normalizeVietnamese(message);
@@ -326,6 +366,10 @@ export async function offlineRagSearch(params: {
   const top = scored.filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
 
   if (top.length === 0 || top[0].score < RAG_THRESHOLD) {
+    // Nếu admin đặt fallbackText thì trả về thay vì fallback AI
+    if (cfg.fallbackText) {
+      return { text: cfg.fallbackText, quickReplies: cfg.quickRepliesConsult, matched: false, score: top[0]?.score || 0, fallbackToAI: false };
+    }
     return { text: '', quickReplies: [], matched: false, score: top[0]?.score || 0, fallbackToAI: true };
   }
 
@@ -350,7 +394,7 @@ export async function offlineRagSearch(params: {
 
   // Step 10: Template Builder
   const { text, quickReplies, templateKey } = buildFromTemplate(
-    topDoc, allRelated, promos, intent, detectedService,
+    topDoc, allRelated, promos, intent, detectedService, cfg,
   );
 
   if (!text.trim()) {

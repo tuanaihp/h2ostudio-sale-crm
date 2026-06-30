@@ -18,7 +18,7 @@ import {
   Package, ShoppingBag, ChevronLeft, Layers, GripVertical, ArrowDown, ArrowUp,
   Cpu, FlaskConical,
 } from 'lucide-react';
-import { offlineRagSearch } from '../lib/offlineRagEngine';
+import { offlineRagSearch, DEFAULT_TEMPLATE_CONFIG, type BotV2TemplateConfig } from '../lib/offlineRagEngine';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -690,6 +690,13 @@ export default function AdminBotStudio() {
   const [chatBotEnabled, setChatBotEnabled] = useState(settings?.chatBotEnabled === true);
   const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings?.chatBotTier2Enabled === true);
   const [chatBotV2Enabled, setChatBotV2Enabled] = useState(settings?.chatBotV2Enabled === true);
+  // Bot V2 template config
+  const [tmplCfg, setTmplCfg] = useState<BotV2TemplateConfig>(() => {
+    try { return { ...DEFAULT_TEMPLATE_CONFIG, ...JSON.parse(settings?.botV2TemplateConfig || '{}') }; } catch { return { ...DEFAULT_TEMPLATE_CONFIG }; }
+  });
+  const [tmplSaving, setTmplSaving] = useState(false);
+  const [tmplSaveOk, setTmplSaveOk] = useState(false);
+  const [newQR, setNewQR] = useState<Record<string, string>>({});
   // Bot V2 test state
   const [v2TestMsgs, setV2TestMsgs] = useState<Array<{ role: 'user' | 'bot'; text: string; score?: number; matched?: boolean; template?: string; intent?: string }>>([]);
   const [v2TestInput, setV2TestInput] = useState('');
@@ -740,6 +747,7 @@ export default function AdminBotStudio() {
       setChatBotEnabled(settings.chatBotEnabled === true);
       setChatBotTier2Enabled(settings.chatBotTier2Enabled === true);
       setChatBotV2Enabled(settings.chatBotV2Enabled === true);
+      try { setTmplCfg({ ...DEFAULT_TEMPLATE_CONFIG, ...JSON.parse(settings.botV2TemplateConfig || '{}') }); } catch {}
       setLiveChatEnabled(settings.liveChatEnabled !== false);
       setChatTypingSpeed(settings.chatTypingSpeed ?? 50);
       setChatBotThinkingDelay(settings.chatBotThinkingDelay ?? 1500);
@@ -1011,6 +1019,22 @@ export default function AdminBotStudio() {
     } finally {
       setV2TestLoading(false);
     }
+  };
+
+  // ── Template config save ──
+  const saveTmplCfg = async () => {
+    setTmplSaving(true);
+    await updateSettings({ botV2TemplateConfig: JSON.stringify(tmplCfg) });
+    setTmplSaving(false); setTmplSaveOk(true); setTimeout(() => setTmplSaveOk(false), 2500);
+  };
+  const addQR = (field: keyof BotV2TemplateConfig) => {
+    const val = (newQR[field as string] || '').trim();
+    if (!val) return;
+    setTmplCfg(prev => ({ ...prev, [field]: [...(prev[field] as string[]), val] }));
+    setNewQR(prev => ({ ...prev, [field as string]: '' }));
+  };
+  const removeQR = (field: keyof BotV2TemplateConfig, idx: number) => {
+    setTmplCfg(prev => ({ ...prev, [field]: (prev[field] as string[]).filter((_, i) => i !== idx) }));
   };
 
   // ── Settings ──
@@ -2344,6 +2368,115 @@ export default function AdminBotStudio() {
                 <button onClick={runV2Test} disabled={v2TestLoading || !v2TestInput.trim()}
                   className="px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center gap-1.5">
                   <Send size={14} /> Test
+                </button>
+              </div>
+            </div>
+
+            {/* ── Template Builder ── */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <FlaskConical size={15} className="text-teal-500" /> Template Builder
+                </h3>
+                <button onClick={saveTmplCfg} disabled={tmplSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-bold rounded-lg hover:bg-teal-700 disabled:opacity-50">
+                  {tmplSaving ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : tmplSaveOk ? <Check size={12} /> : <Save size={12} />}
+                  {tmplSaveOk ? 'Đã lưu!' : 'Lưu template'}
+                </button>
+              </div>
+
+              {/* CTA text */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">CTA ban ngày (8:00–20:59)</label>
+                  <textarea rows={2} value={tmplCfg.ctaDay}
+                    onChange={e => setTmplCfg(p => ({ ...p, ctaDay: e.target.value }))}
+                    className="w-full p-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">CTA ban đêm (21:00–7:59)</label>
+                  <textarea rows={2} value={tmplCfg.ctaNight}
+                    onChange={e => setTmplCfg(p => ({ ...p, ctaNight: e.target.value }))}
+                    className="w-full p-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none" />
+                </div>
+              </div>
+
+              {/* Intro prefix + fallback */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">Intro prefix <span className="font-normal text-gray-400">(thêm vào đầu mọi câu trả lời, để trống = không thêm)</span></label>
+                  <input type="text" value={tmplCfg.introPrefix}
+                    onChange={e => setTmplCfg(p => ({ ...p, introPrefix: e.target.value }))}
+                    placeholder="VD: Dạ em chào anh/chị! 💕"
+                    className="w-full p-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-200" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">Fallback text <span className="font-normal text-gray-400">(khi không match, để trống = fallback sang AI)</span></label>
+                  <input type="text" value={tmplCfg.fallbackText}
+                    onChange={e => setTmplCfg(p => ({ ...p, fallbackText: e.target.value }))}
+                    placeholder="VD: Em chưa có câu trả lời, anh/chị để lại SĐT nhé!"
+                    className="w-full p-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-200" />
+                </div>
+              </div>
+
+              {/* Auto-promo toggle */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Tự động gắn ưu đãi vào câu trả lời giá</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Bot sẽ thêm ưu đãi đang chạy vào cuối response intent pricing/benefit</p>
+                </div>
+                <button onClick={() => setTmplCfg(p => ({ ...p, autoPromo: !p.autoPromo }))}
+                  className={`transition-colors ${tmplCfg.autoPromo ? 'text-teal-500' : 'text-gray-300'}`}>
+                  {tmplCfg.autoPromo ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                </button>
+              </div>
+
+              {/* Quick replies per intent */}
+              <div>
+                <p className="text-xs font-bold text-gray-700 mb-3">Quick Replies theo Intent</p>
+                <div className="space-y-3">
+                  {([
+                    { field: 'quickRepliesPricing',  label: '💰 Hỏi giá (pricing)' },
+                    { field: 'quickRepliesBenefit',  label: '📦 Hỏi gói gồm gì (benefit)' },
+                    { field: 'quickRepliesConsult',  label: '💬 Tư vấn chung (consult)' },
+                    { field: 'quickRepliesBooking',  label: '📅 Đặt lịch (booking)' },
+                    { field: 'quickRepliesDeposit',  label: '💳 Đặt cọc (deposit)' },
+                    { field: 'quickRepliesGreeting', label: '👋 Chào hỏi (greeting)' },
+                  ] as { field: keyof BotV2TemplateConfig; label: string }[]).map(({ field, label }) => (
+                    <div key={field} className="border border-gray-100 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-gray-600 mb-2">{label}</p>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {(tmplCfg[field] as string[]).map((qr, idx) => (
+                          <span key={idx} className="flex items-center gap-1 bg-teal-50 text-teal-700 text-xs px-2.5 py-1 rounded-full border border-teal-100">
+                            {qr}
+                            <button onClick={() => removeQR(field, idx)} className="text-teal-400 hover:text-teal-700 ml-0.5">
+                              <X size={10} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input type="text"
+                          value={newQR[field as string] || ''}
+                          onChange={e => setNewQR(p => ({ ...p, [field as string]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && addQR(field)}
+                          placeholder="Thêm nút..."
+                          className="flex-1 text-xs p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-200" />
+                        <button onClick={() => addQR(field)}
+                          className="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 text-xs font-bold border border-teal-100">
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100 flex justify-end">
+                <button onClick={saveTmplCfg} disabled={tmplSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50">
+                  {tmplSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : tmplSaveOk ? <Check size={14} /> : <Save size={14} />}
+                  {tmplSaveOk ? 'Đã lưu!' : 'Lưu tất cả cài đặt template'}
                 </button>
               </div>
             </div>
