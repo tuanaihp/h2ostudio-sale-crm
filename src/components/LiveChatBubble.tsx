@@ -12,6 +12,7 @@ import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents } from 
 import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_QUICK_REPLIES } from '../lib/botEngineV2';
 import { createInitialStateV2, type ConversationStateV2 } from '../types/botV2';
 import { offlineRagSearch } from '../lib/offlineRagEngine';
+import { vectorRagSearch } from '../lib/vectorRagEngine';
 import { autoSaveFaqPair } from '../utils/autoFaqSave';
 
 const SESSION_KEY   = 'h2o_live_session_id';
@@ -50,6 +51,7 @@ interface Props {
   chatBotEnabled?: boolean;
   chatBotTier2Enabled?: boolean;
   chatBotV2Enabled?: boolean;
+  chatBotV3Enabled?: boolean;
   integrationConfig?: {
     chatApiEnabled?: boolean; chatApiUrl?: string;
     chatApiKey?: string; chatApiModelName?: string;
@@ -68,7 +70,7 @@ function renderMsgContent(content: string, sender: 'customer' | 'admin') {
   );
 }
 
-export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, integrationConfig }: Props = {}) {
+export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, chatBotV3Enabled, integrationConfig }: Props = {}) {
   const { settings } = useApp();
   const isControlled = controlledOpen !== undefined;
 
@@ -751,6 +753,47 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     }
   };
 
+  // Bot V3: Vector Embedding RAG + Gemini synthesis
+  const callBotV3 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
+    try {
+      setIsThinking(true);
+      const thinkingDelay = settings?.chatBotThinkingDelay ?? 1200;
+      await new Promise(r => setTimeout(r, Math.min(thinkingDelay * 0.4, 500) + Math.random() * 200));
+
+      const s = settings;
+      const knowledgeContext = [
+        s?.botPriceList       ? `BẢNG GIÁ:\n${s.botPriceList}` : '',
+        s?.botPurchaseInfo    ? `ĐẶT LỊCH/CỌC:\n${s.botPurchaseInfo}` : '',
+        s?.botPaymentMethods  ? `THANH TOÁN:\n${s.botPaymentMethods}` : '',
+        s?.botReturnPolicy    ? `CHÍNH SÁCH:\n${s.botReturnPolicy}` : '',
+      ].filter(Boolean).join('\n\n');
+
+      const v3Result = await vectorRagSearch({
+        message: customerMessage,
+        studioInfo: s?.botStudioInfo,
+        knowledgeContext: knowledgeContext || undefined,
+      });
+
+      if (!v3Result.matched || !v3Result.text) {
+        // Không match → chuyển xuống V2 RAG
+        setIsThinking(false);
+        return callBotV2(customerMessage, currentMessages, sid);
+      }
+
+      const botId  = crypto.randomUUID();
+      const botNow = new Date().toISOString();
+      await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: v3Result.text, created_at: botNow });
+      await supabase.from('chat_sessions').update({ last_message: v3Result.text, last_message_at: botNow }).eq('id', sid);
+      autoSaveFaqPair({ question: customerMessage, answer: v3Result.text, sessionId: sid });
+      scheduleFollowUp(sid);
+    } catch (e) {
+      console.error('Bot V3 error:', e);
+      try { callBotV2(customerMessage, currentMessages, sid); } catch {}
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
   // Tầng 2: Gemini/ChatGPT + kịch bản làm context
   const callBotTier2 = async (customerMessage: string, currentMessages: Msg[], sid: string) => {
     try {
@@ -976,9 +1019,11 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     setSending(false);
 
     // Kiểm tra đối tượng + lịch trước khi gọi bot
-    // Thứ tự ưu tiên: V2 (Offline RAG) → Tier2 (AI) → Tier1 (V1 engine)
+    // Thứ tự ưu tiên: V3 (Vector RAG) → V2 (BM25 RAG) → Tier2 (AI) → Tier1 (V1 engine)
     if (shouldBotRespond()) {
-      if (chatBotV2Enabled && sessionId) {
+      if (chatBotV3Enabled && sessionId) {
+        callBotV3(content, nextMsgs, sessionId);
+      } else if (chatBotV2Enabled && sessionId) {
         callBotV2(content, nextMsgs, sessionId);
       } else if (chatBotTier2Enabled && sessionId) {
         callBotTier2(content, nextMsgs, sessionId);

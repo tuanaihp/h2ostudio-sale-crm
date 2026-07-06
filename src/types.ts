@@ -147,6 +147,7 @@ export interface AppSettings {
   chatBotTier2Enabled?: boolean;
   chatBotV2Enabled?: boolean;
   botV2TemplateConfig?: string; // JSON — BotV2TemplateConfig
+  chatBotV3Enabled?: boolean;
   // Integrations settings ("Cổng kết nối")
   integrationChatApiEnabled?: boolean;
   integrationChatApiUrl?: string;

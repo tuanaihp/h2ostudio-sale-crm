@@ -579,7 +579,7 @@ const ScenarioModal: React.FC<{
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'botv2' | 'settings' | 'unanswered' | 'flows';
+type Tab = 'home' | 'knowledge' | 'instructions' | 'info' | 'test' | 'botv2' | 'botv3' | 'settings' | 'unanswered' | 'flows';
 type KnowledgeTab = 'faqs' | 'scripts';
 interface TestMsg {
   role: 'user' | 'bot'; text: string;
@@ -690,6 +690,9 @@ export default function AdminBotStudio() {
   const [chatBotEnabled, setChatBotEnabled] = useState(settings?.chatBotEnabled === true);
   const [chatBotTier2Enabled, setChatBotTier2Enabled] = useState(settings?.chatBotTier2Enabled === true);
   const [chatBotV2Enabled, setChatBotV2Enabled] = useState(settings?.chatBotV2Enabled === true);
+  const [chatBotV3Enabled, setChatBotV3Enabled] = useState(settings?.chatBotV3Enabled === true);
+  // Bot V3 rebuild embeddings state
+  const [v3Rebuild, setV3Rebuild] = useState<{ running: boolean; done: number; total: number; error: string }>({ running: false, done: 0, total: 0, error: '' });
   // Bot V2 template config
   const [tmplCfg, setTmplCfg] = useState<BotV2TemplateConfig>(() => {
     try { return { ...DEFAULT_TEMPLATE_CONFIG, ...JSON.parse(settings?.botV2TemplateConfig || '{}') }; } catch { return { ...DEFAULT_TEMPLATE_CONFIG }; }
@@ -747,6 +750,7 @@ export default function AdminBotStudio() {
       setChatBotEnabled(settings.chatBotEnabled === true);
       setChatBotTier2Enabled(settings.chatBotTier2Enabled === true);
       setChatBotV2Enabled(settings.chatBotV2Enabled === true);
+      setChatBotV3Enabled(settings.chatBotV3Enabled === true);
       try { setTmplCfg({ ...DEFAULT_TEMPLATE_CONFIG, ...JSON.parse(settings.botV2TemplateConfig || '{}') }); } catch {}
       setLiveChatEnabled(settings.liveChatEnabled !== false);
       setChatTypingSpeed(settings.chatTypingSpeed ?? 50);
@@ -978,8 +982,40 @@ export default function AdminBotStudio() {
   const removeChatMessage = (id: string) => setChatMessages(prev => prev.filter(m => m.id !== id));
   const saveChatSettings = async () => {
     setChatSettingsSaving(true);
-    await updateSettings({ chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, liveChatEnabled, chatTypingSpeed, chatBotThinkingDelay, chatAutoOpenEnabled, chatAutoOpenDelay, chatStaffName, chatStaffNames, chatMessages });
+    await updateSettings({ chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, chatBotV3Enabled, liveChatEnabled, chatTypingSpeed, chatBotThinkingDelay, chatAutoOpenEnabled, chatAutoOpenDelay, chatStaffName, chatStaffNames, chatMessages });
     setChatSettingsSaving(false); setChatSettingsSaveOk(true); setTimeout(() => setChatSettingsSaveOk(false), 2500);
+  };
+
+  // ── Bot V3 rebuild embeddings ──
+  const rebuildEmbeddings = async () => {
+    setV3Rebuild({ running: true, done: 0, total: 0, error: '' });
+    try {
+      const { data: faqsToEmbed } = await supabase
+        .from('customer_faqs').select('id, question, answer')
+        .eq('is_approved', true).not('answer', 'is', null).limit(300);
+      if (!faqsToEmbed?.length) {
+        setV3Rebuild({ running: false, done: 0, total: 0, error: 'Không có FAQ nào đã duyệt để embed.' });
+        return;
+      }
+      setV3Rebuild({ running: true, done: 0, total: faqsToEmbed.length, error: '' });
+      for (let i = 0; i < faqsToEmbed.length; i++) {
+        const faq = faqsToEmbed[i];
+        try {
+          const res = await fetch('/api/embed', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: `${faq.question} ${faq.answer}`.substring(0, 1500) }),
+          });
+          const { embedding } = await res.json();
+          if (embedding?.length) {
+            await supabase.from('customer_faqs').update({ embedding } as any).eq('id', faq.id);
+          }
+        } catch {}
+        setV3Rebuild(prev => ({ ...prev, done: i + 1 }));
+      }
+      setV3Rebuild(prev => ({ ...prev, running: false }));
+    } catch (e: any) {
+      setV3Rebuild({ running: false, done: 0, total: 0, error: e?.message || 'Lỗi khi rebuild' });
+    }
   };
 
   // ── Bot V2 test ──
@@ -1250,7 +1286,7 @@ export default function AdminBotStudio() {
   };
 
   // ── Derived ──
-  const botOn = (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true || settings?.chatBotV2Enabled === true) && settings?.liveChatEnabled !== false;
+  const botOn = (settings?.chatBotEnabled === true || settings?.chatBotTier2Enabled === true || settings?.chatBotV2Enabled === true || settings?.chatBotV3Enabled === true) && settings?.liveChatEnabled !== false;
   const filteredFaqs = faqs.filter(f => {
     const matchCat = faqCatFilter === 'all' || f.category === faqCatFilter;
     const q = faqSearch.toLowerCase();
@@ -1276,6 +1312,7 @@ export default function AdminBotStudio() {
     { id: 'instructions', label: 'Hướng dẫn',       icon: FileText },
     { id: 'test',         label: 'Chat thử V1',     icon: MessageSquare },
     { id: 'botv2',        label: 'Bot V2 (RAG)',    icon: Cpu },
+    { id: 'botv3',        label: 'Bot V3 (Vector)', icon: FlaskConical },
     { id: 'settings',     label: 'Cài đặt',         icon: Settings },
     { id: 'unanswered',   label: 'Chưa trả lời',    icon: AlertCircle },
   ] as const;
@@ -1426,11 +1463,12 @@ export default function AdminBotStudio() {
               <p className="text-sm text-gray-500 mt-0.5">Quản lý AI tư vấn khách hàng tự động</p>
             </div>
             {/* Bot status — 4 toggles, lưu ngay */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
               {[
                 { key: 'liveChatEnabled', label: 'Widget Chat', sub: 'Hiển thị nút Chat', icon: MessageSquare, color: 'bg-green-50 text-green-600', aColor: 'text-green-500', desc: 'Bật/tắt toàn bộ khung chat trên website' },
                 { key: 'chatBotEnabled', label: 'Bot Tầng 1', sub: 'Matching cũ', icon: Brain, color: 'bg-blue-50 text-blue-600', aColor: 'text-blue-500', desc: `Kho: ${stats.faqs} FAQ + ${stats.scripts} kịch bản` },
                 { key: 'chatBotV2Enabled', label: 'Bot V2 (RAG)', sub: 'BM25 + Template', icon: Cpu, color: 'bg-teal-50 text-teal-600', aColor: 'text-teal-500', desc: 'Offline RAG — không tốn API, < 200ms' },
+                { key: 'chatBotV3Enabled', label: 'Bot V3 (Vector)', sub: 'Embedding + LLM', icon: FlaskConical, color: 'bg-indigo-50 text-indigo-600', aColor: 'text-indigo-500', desc: 'Hiểu ngữ nghĩa — Gemini tổng hợp trả lời' },
                 { key: 'chatBotTier2Enabled', label: 'Bot Tầng 2', sub: 'AI (Gemini)', icon: Zap, color: 'bg-purple-50 text-purple-600', aColor: 'text-purple-500', desc: settings?.integrationChatApiEnabled ? `Model: ${settings?.integrationChatApiModelName || 'Custom'}` : 'Gemini 2.0 Flash' },
               ].map(({ key, label, sub, icon: Icon, color, aColor, desc }) => (
                 <div key={key} className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -2478,6 +2516,162 @@ export default function AdminBotStudio() {
                   {tmplSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : tmplSaveOk ? <Check size={14} /> : <Save size={14} />}
                   {tmplSaveOk ? 'Đã lưu!' : 'Lưu tất cả cài đặt template'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ BOT V3 (VECTOR RAG) ══ */}
+        {tab === 'botv3' && (
+          <div className="max-w-3xl mx-auto p-6 space-y-6 w-full">
+            {/* Header + toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Bot V3 — Vector Embedding</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Hiểu ngữ nghĩa câu hỏi · Gemini tổng hợp trả lời · Dùng cùng Gemini API key</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600 font-medium">Bật Bot V3</span>
+                <button
+                  onClick={() => { const next = !chatBotV3Enabled; setChatBotV3Enabled(next); updateSettings({ chatBotV3Enabled: next }); }}
+                  className={`transition-colors ${chatBotV3Enabled ? 'text-indigo-500' : 'text-gray-300'}`}
+                >
+                  {chatBotV3Enabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Status banner */}
+            <div className={`rounded-2xl p-4 border ${chatBotV3Enabled ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${chatBotV3Enabled ? 'bg-indigo-100' : 'bg-gray-100'}`}>
+                  <FlaskConical size={18} className={chatBotV3Enabled ? 'text-indigo-600' : 'text-gray-400'} />
+                </div>
+                <div>
+                  <p className={`font-semibold text-sm ${chatBotV3Enabled ? 'text-indigo-800' : 'text-gray-600'}`}>
+                    {chatBotV3Enabled ? '● Bot V3 đang hoạt động' : '○ Bot V3 đang tắt'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {chatBotV3Enabled
+                      ? 'Ưu tiên: V3 (Vector) → V2 (BM25 fallback) → Tier 2 → Tier 1'
+                      : 'Bật để dùng Vector Search thay cho BM25 — hiểu ngữ nghĩa tốt hơn'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Setup checklist */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+              <p className="font-semibold text-sm text-gray-800">Checklist setup (lần đầu)</p>
+              {[
+                { step: '1', label: 'Chạy file supabase_vector_setup.sql trong Supabase Dashboard', sub: 'SQL Editor → paste nội dung file → Run' },
+                { step: '2', label: 'Đảm bảo GEMINI_API_KEY đã có trong biến môi trường', sub: 'Đã dùng cho Tier 2 → không cần thêm key mới' },
+                { step: '3', label: 'Nhấn "Xây lại Embedding" bên dưới để embed toàn bộ FAQ', sub: 'Mỗi lần thêm FAQ mới cần nhấn lại một lần' },
+                { step: '4', label: 'Bật Bot V3 ở toggle trên', sub: 'V3 ưu tiên cao nhất, fallback về V2 nếu không match' },
+              ].map(({ step, label, sub }) => (
+                <div key={step} className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step}</div>
+                  <div>
+                    <p className="text-sm text-gray-800 font-medium">{label}</p>
+                    <p className="text-xs text-gray-500">{sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Rebuild embeddings */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-sm text-gray-800">Xây lại Embedding</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Embed toàn bộ FAQ đã duyệt bằng Gemini text-embedding-004.
+                    Chạy lần đầu và sau mỗi lần thêm FAQ mới.
+                  </p>
+                  {v3Rebuild.error && (
+                    <p className="text-xs text-red-500 mt-2">{v3Rebuild.error}</p>
+                  )}
+                  {!v3Rebuild.running && v3Rebuild.total > 0 && !v3Rebuild.error && (
+                    <p className="text-xs text-green-600 mt-2 font-medium">✓ Đã embed {v3Rebuild.done}/{v3Rebuild.total} FAQ thành công</p>
+                  )}
+                </div>
+                <button
+                  onClick={rebuildEmbeddings}
+                  disabled={v3Rebuild.running}
+                  className="flex items-center gap-2 bg-indigo-600 text-white rounded-xl px-4 py-2 text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 shrink-0"
+                >
+                  {v3Rebuild.running
+                    ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <RefreshCw size={15} />}
+                  {v3Rebuild.running ? `${v3Rebuild.done}/${v3Rebuild.total}` : 'Xây lại Embedding'}
+                </button>
+              </div>
+              {v3Rebuild.running && v3Rebuild.total > 0 && (
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Đang embed...</span>
+                    <span>{Math.round((v3Rebuild.done / v3Rebuild.total) * 100)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(v3Rebuild.done / v3Rebuild.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* How it works */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+              <p className="font-semibold text-sm text-gray-800">Cơ chế hoạt động</p>
+              <div className="space-y-2 text-xs text-gray-600">
+                {[
+                  ['Khách hỏi', 'Bot nhận câu hỏi từ live chat'],
+                  ['Embed câu hỏi', 'Gemini text-embedding-004 biến câu hỏi thành vector 768 chiều'],
+                  ['Tìm FAQ gần nhất', 'pgvector so sánh cosine similarity → lấy top 5 FAQ tương đồng nhất'],
+                  ['Gemini tổng hợp', 'Gemini 2.0 Flash đọc 5 FAQ đó → viết câu trả lời tự nhiên, đúng ngữ cảnh'],
+                  ['Fallback V2', 'Nếu không FAQ nào đạt ngưỡng similarity → chuyển về Bot V2 (BM25)'],
+                ].map(([title, desc], i) => (
+                  <div key={i} className="flex gap-3 items-start">
+                    <div className="w-5 h-5 rounded bg-indigo-50 text-indigo-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</div>
+                    <div><span className="font-medium text-gray-700">{title}: </span>{desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* So sánh V2 vs V3 */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100">
+                <p className="font-semibold text-sm text-gray-800">So sánh Bot V2 vs V3</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500">
+                      <th className="text-left px-4 py-2.5 font-medium">Tiêu chí</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-teal-700">Bot V2 (BM25)</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-indigo-700">Bot V3 (Vector)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {[
+                      ['Hiểu ngữ nghĩa', '✗ Chỉ từ khoá', '✓ Hiểu ý nghĩa'],
+                      ['"chi phí chụp hình"', '⚠ Có thể miss', '✓ Tìm được'],
+                      ['Chi phí API', '$0 (offline)', '~$0 free tier'],
+                      ['Tốc độ', '< 200ms', '~1–2 giây'],
+                      ['Câu trả lời', 'Lấy 1 FAQ sẵn', 'Tổng hợp từ nhiều FAQ'],
+                      ['Cần setup', 'Không', 'Chạy SQL + Rebuild'],
+                    ].map(([label, v2, v3], i) => (
+                      <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                        <td className="px-4 py-2.5 text-gray-600 font-medium">{label}</td>
+                        <td className="px-4 py-2.5 text-center text-gray-500">{v2}</td>
+                        <td className="px-4 py-2.5 text-center text-indigo-600 font-medium">{v3}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

@@ -125,7 +125,7 @@ async function startServer() {
   // ── Bot tư vấn AI cho Live Chat ──────────────────────────────────────────
   app.post("/api/live-chat-bot", async (req, res) => {
     try {
-      const { message, stage, scripts, history, integrationConfig } = req.body;
+      const { message, stage, scripts, history, integrationConfig, sessionId } = req.body;
 
       // Build system prompt từ kịch bản kho
       const scriptsText = (scripts || []).slice(0, 12).map((s: any) =>
@@ -157,6 +157,7 @@ QUY TẮC QUAN TRỌNG:
       if (integrationConfig?.chatApiEnabled && integrationConfig?.chatApiUrl) {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (integrationConfig.chatApiKey) headers['Authorization'] = `Bearer ${integrationConfig.chatApiKey}`;
+        if (sessionId) headers['X-Session-Id'] = sessionId;
         const openAiMessages = [
           { role: 'system', content: systemInstruction },
           ...convMessages.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text }))
@@ -183,6 +184,72 @@ QUY TẮC QUAN TRỌNG:
     } catch (err: any) {
       console.error('Bot error:', err);
       res.status(500).json({ error: err?.message || 'Bot lỗi' });
+    }
+  });
+
+  // ── Bot V3: Gemini text-embedding-004 ────────────────────────────────────
+  app.post("/api/embed", async (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text || typeof text !== 'string') return res.status(400).json({ error: 'Missing text' });
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: 'Thiếu GEMINI_API_KEY' });
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'models/text-embedding-004',
+            content: { parts: [{ text: text.substring(0, 2000) }] },
+          }),
+        }
+      );
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(500).json({ error: `Gemini Embed error: ${errText}` });
+      }
+      const data: any = await response.json();
+      return res.json({ embedding: data.embedding?.values || [] });
+    } catch (err: any) {
+      console.error('Embed error:', err);
+      return res.status(500).json({ error: err?.message || 'Lỗi embed' });
+    }
+  });
+
+  // ── Bot V3: Gemini tổng hợp câu trả lời từ top FAQs ──────────────────────
+  app.post("/api/vector-synthesis", async (req, res) => {
+    try {
+      const { question, faqs, studioInfo, knowledgeContext } = req.body;
+      if (!question || !Array.isArray(faqs) || !faqs.length) {
+        return res.status(400).json({ error: 'Missing question or faqs' });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: 'Thiếu GEMINI_API_KEY' });
+
+      const context = faqs.slice(0, 5).map((f: any, i: number) =>
+        `[${i + 1}] Câu hỏi: ${f.question}\n    Trả lời: ${f.answer}`
+      ).join('\n\n');
+
+      const systemInstruction = `Bạn là tư vấn viên của H2O Studio — studio chụp ảnh cưới chuyên nghiệp.
+Xưng "em", gọi khách là "anh/chị". Trả lời tự nhiên, thân thiện, ngắn gọn (2–4 câu).
+Chỉ dùng thông tin từ tài liệu đã cho, không bịa đặt giá hoặc thông tin chưa có.
+Nếu câu hỏi hoàn toàn ngoài phạm vi: "Anh/chị để lại SĐT để tư vấn viên gọi lại chi tiết nhé ạ".
+Không nhắc bạn là AI hay bot.${studioInfo ? `\n\nThông tin studio:\n${studioInfo}` : ''}${knowledgeContext ? `\n\n${knowledgeContext}` : ''}`;
+
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{ role: 'user', parts: [{ text: `Tài liệu tham khảo:\n${context}\n\nCâu hỏi của khách: ${question}` }] }],
+        config: { systemInstruction, temperature: 0.3, maxOutputTokens: 400 },
+      });
+      return res.json({ text: response.text || '' });
+    } catch (err: any) {
+      console.error('Vector synthesis error:', err);
+      return res.status(500).json({ error: err?.message || 'Lỗi synthesis' });
     }
   });
 
