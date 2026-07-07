@@ -604,7 +604,7 @@ interface Props {
 - Export `playNotifSound()` (Web Audio API, không cần file âm thanh)
 - **Tầng 2 ưu tiên hơn Tầng 1**: nếu cả hai bật → chạy Tầng 2
 
-### Bot AI — 2 tầng
+### Bot AI — 4 cấp độ (routing priority: V3 → V2 → Tier2 → Tier1)
 
 **Tầng 1 — `callBotTier1()` (client-side, miễn phí):**
 - Fetch `sale_scripts` từ Supabase, score theo từ khóa trong `title` (+3), `tags` (+2), `content` (+1)
@@ -618,13 +618,35 @@ interface Props {
 - Delay 1.2–2s
 - Cần `GEMINI_API_KEY` hoặc cấu hình API tại tab "Cổng kết nối"
 
+**Bot V2 — `callBotV2()` (BM25/TF-IDF RAG, offline, miễn phí):**
+- `src/lib/vectorRagEngine.ts` → BM25 match trên `customer_faqs` (is_approved=true)
+- Admin tạo FAQ trong tab Kiến thức AI → bot tự học không cần retrain
+- Template Builder: admin tạo template rules để customize matching
+- Setting key: `chatBotV2Enabled`; có offline tab trong AdminBotStudio
+
+**Bot V3 — `callBotV3()` (Vector Embedding + Gemini Synthesis):**
+- `src/lib/vectorRagEngine.ts` → `vectorRagSearch()` function
+- Embed câu hỏi bằng Gemini `text-embedding-004` (768 dims, free 1500 req/day) → `/api/embed`
+- pgvector `match_faqs` RPC: cosine similarity search, threshold 0.6, top-5 FAQ
+- Tổng hợp câu trả lời bằng Gemini 2.0 Flash → `/api/vector-synthesis`
+- Fallback về V2 nếu similarity < threshold
+- Setup: chạy `supabase_vector_setup.sql` + Rebuild Embeddings trong tab Bot V3
+- Setting key: `chatBotV3Enabled`
+
+**Feedback System (Cấp 5 — Self-learning):**
+- Nút 👍/👎 hiện dưới mỗi tin nhắn bot (idx > 0)
+- `submitFeedback()` ghi vào bảng `bot_message_feedback` (session_id, message_id, customer_question, bot_answer, source_faq_ids)
+- 👍 → `increment_faq_usage(faq_id)` RPC tăng `usage_count` của FAQ nguồn
+- Auto-embed khi admin approve pending FAQ (nếu V3 đang bật)
+- Analytics tab trong Bot V3: tổng 👍/👎, tỷ lệ hài lòng, top FAQ, câu hỏi cần cải thiện
+- SQL setup: `supabase_feedback_setup.sql`
+
 ```typescript
-// Trong send(): Tầng 2 ưu tiên
-if (chatBotTier2Enabled && sessionId) {
-  callBotTier2(content, nextMsgs, sessionId);
-} else if (chatBotEnabled && sessionId) {
-  callBotTier1(content, sessionId);
-}
+// Trong send(): routing priority V3 → V2 → Tier2 → Tier1
+if (chatBotV3Enabled) await callBotV3(content);
+else if (chatBotV2Enabled) await callBotV2(content);
+else if (chatBotTier2Enabled) callBotTier2(content, ...);
+else if (chatBotEnabled) callBotTier1(content, sessionId);
 ```
 
 ### AdminChatPanel.tsx — tính năng
@@ -690,6 +712,8 @@ Page hub tập trung cho toàn bộ bot — sidebar 6 tab:
 | Widget CHAT website | `liveChatEnabled` | `true` |
 | Bot Tầng 1 · TF-IDF | `chatBotEnabled` | `false` |
 | Bot Tầng 2 · AI API | `chatBotTier2Enabled` | `false` |
+| Bot V2 · BM25 RAG | `chatBotV2Enabled` | `false` |
+| Bot V3 · Vector+LLM | `chatBotV3Enabled` | `false` |
 | Tự động thu thập SĐT | `botCollectLeads` | `false` |
 | Đối tượng phản hồi | `botAudience` | `'all'` |
 | Lên lịch hoạt động | `botScheduleEnabled` | `false` |
