@@ -107,6 +107,10 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRef    = useRef(false);
+  // Level 5: feedback 👍/👎
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, 'up' | 'down'>>({});
+  const v3SourcesRef = useRef<Record<string, string[]>>({}); // msgId → source FAQ ids từ V3
+
   // Cache FAQ + kịch bản sale — fetch 1 lần, dùng lại mọi tin nhắn, tự hết hạn sau 10 phút
   const faqCacheRef        = useRef<any[] | null>(null);
   const scriptCacheRef     = useRef<any[] | null>(null);
@@ -782,6 +786,8 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       const botId  = crypto.randomUUID();
       const botNow = new Date().toISOString();
+      // Lưu source FAQ ids để dùng cho 👍 feedback
+      if (v3Result.sources.length > 0) v3SourcesRef.current[botId] = v3Result.sources;
       await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: v3Result.text, created_at: botNow });
       await supabase.from('chat_sessions').update({ last_message: v3Result.text, last_message_at: botNow }).eq('id', sid);
       autoSaveFaqPair({ question: customerMessage, answer: v3Result.text, sessionId: sid });
@@ -1033,6 +1039,37 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     }
   };
 
+  // Level 5: submit feedback 👍/👎
+  const submitFeedback = async (msg: Msg, type: 'up' | 'down') => {
+    if (feedbackMap[msg.id]) return;
+    setFeedbackMap(prev => ({ ...prev, [msg.id]: type }));
+
+    const msgIndex = messages.findIndex(m => m.id === msg.id);
+    const lastQ = msgIndex > 0
+      ? [...messages].slice(0, msgIndex).reverse().find(m => m.sender === 'customer')
+      : null;
+    const sourceFaqIds = v3SourcesRef.current[msg.id] || [];
+
+    try {
+      await supabase.from('bot_message_feedback').insert({
+        id: crypto.randomUUID(),
+        session_id: sessionId || '',
+        message_id: msg.id,
+        customer_question: lastQ?.content || '',
+        bot_answer: msg.content,
+        feedback: type,
+        source_faq_ids: sourceFaqIds,
+        created_at: new Date().toISOString(),
+      });
+      // 👍 → tăng usage_count của FAQ nguồn (atomic RPC)
+      if (type === 'up' && sourceFaqIds.length > 0) {
+        for (const faqId of sourceFaqIds) {
+          await (supabase as any).rpc('increment_faq_usage', { faq_id: faqId });
+        }
+      }
+    } catch {}
+  };
+
   const submitInfo = async () => {
     const phone = formPhone.trim();
     const name  = formName.trim();
@@ -1106,28 +1143,58 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       {/* Messages */}
       <div className="flex-1 overflow-y-auto bg-gray-50 p-3 space-y-2">
 
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
-            {msg.sender === 'admin' && (
-              <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">{staffInitials}</div>
-            )}
-            <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-              msg.sender === 'customer'
-                ? 'bg-gradient-to-br from-secondary via-primary to-primary text-white rounded-br-sm'
-                : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
-            }`}>
-              <p className="whitespace-pre-wrap">{renderMsgContent(msg.content, msg.sender)}</p>
-              {msg.image_url && (
-                <img
-                  src={msg.image_url} alt="Ảnh báo giá"
-                  className="mt-2 rounded-lg w-full object-cover max-h-52 cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => window.open(msg.image_url, '_blank')}
-                />
+        {messages.map((msg, idx) => (
+          <div key={msg.id}>
+            <div className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+              {msg.sender === 'admin' && (
+                <div className="w-7 h-7 bg-gradient-to-br from-secondary to-primary rounded-full flex items-center justify-center text-white text-[11px] font-bold mr-1.5 shrink-0 self-end">{staffInitials}</div>
               )}
-              <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-white/70' : 'text-gray-400'}`}>
-                {format(new Date(msg.created_at), 'HH:mm')}
-              </p>
+              <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                msg.sender === 'customer'
+                  ? 'bg-gradient-to-br from-secondary via-primary to-primary text-white rounded-br-sm'
+                  : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
+              }`}>
+                <p className="whitespace-pre-wrap">{renderMsgContent(msg.content, msg.sender)}</p>
+                {msg.image_url && (
+                  <img
+                    src={msg.image_url} alt="Ảnh báo giá"
+                    className="mt-2 rounded-lg w-full object-cover max-h-52 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => window.open(msg.image_url, '_blank')}
+                  />
+                )}
+                <p className={`text-[10px] mt-0.5 ${msg.sender === 'customer' ? 'text-white/70' : 'text-gray-400'}`}>
+                  {format(new Date(msg.created_at), 'HH:mm')}
+                </p>
+              </div>
             </div>
+            {/* 👍/👎 feedback — chỉ hiện dưới tin nhắn của bot (admin), bỏ qua tin nhắn chào đầu */}
+            {msg.sender === 'admin' && idx > 0 && (
+              <div className="flex items-center gap-1.5 pl-9 mt-1">
+                <button
+                  onClick={() => submitFeedback(msg, 'up')}
+                  disabled={!!feedbackMap[msg.id]}
+                  className={`text-[11px] px-2 py-0.5 rounded-full border transition-all ${
+                    feedbackMap[msg.id] === 'up'
+                      ? 'bg-green-100 border-green-300 text-green-700'
+                      : 'border-gray-200 text-gray-400 hover:border-green-300 hover:text-green-600 disabled:opacity-40'
+                  }`}
+                >👍</button>
+                <button
+                  onClick={() => submitFeedback(msg, 'down')}
+                  disabled={!!feedbackMap[msg.id]}
+                  className={`text-[11px] px-2 py-0.5 rounded-full border transition-all ${
+                    feedbackMap[msg.id] === 'down'
+                      ? 'bg-red-100 border-red-300 text-red-700'
+                      : 'border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-600 disabled:opacity-40'
+                  }`}
+                >👎</button>
+                {feedbackMap[msg.id] && (
+                  <span className="text-[10px] text-gray-400">
+                    {feedbackMap[msg.id] === 'up' ? 'Cảm ơn!' : 'Đã ghi nhận'}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         ))}
 

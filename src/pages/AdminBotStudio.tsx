@@ -693,6 +693,7 @@ export default function AdminBotStudio() {
   const [chatBotV3Enabled, setChatBotV3Enabled] = useState(settings?.chatBotV3Enabled === true);
   // Bot V3 rebuild embeddings state
   const [v3Rebuild, setV3Rebuild] = useState<{ running: boolean; done: number; total: number; error: string }>({ running: false, done: 0, total: 0, error: '' });
+  const [feedbackStats, setFeedbackStats] = useState<{ ups: number; downs: number; topFaqs: any[]; recentDown: any[] }>({ ups: 0, downs: 0, topFaqs: [], recentDown: [] });
   // Bot V2 template config
   const [tmplCfg, setTmplCfg] = useState<BotV2TemplateConfig>(() => {
     try { return { ...DEFAULT_TEMPLATE_CONFIG, ...JSON.parse(settings?.botV2TemplateConfig || '{}') }; } catch { return { ...DEFAULT_TEMPLATE_CONFIG }; }
@@ -726,6 +727,19 @@ export default function AdminBotStudio() {
   useEffect(() => { if (tab === 'flows' && scenarios.length === 0) loadScenarios(); }, [tab]);
   useEffect(() => { testBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [testMsgs]);
   useEffect(() => { v2TestBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [v2TestMsgs]);
+  useEffect(() => {
+    if (tab !== 'botv3') return;
+    (async () => {
+      const [{ data: allFb }, { data: topFaqs }] = await Promise.all([
+        supabase.from('bot_message_feedback').select('feedback, customer_question, bot_answer, created_at').order('created_at', { ascending: false }).limit(200),
+        supabase.from('customer_faqs').select('id, question, usage_count').eq('is_approved', true).order('usage_count', { ascending: false }).limit(8),
+      ]);
+      const ups = (allFb || []).filter((r: any) => r.feedback === 'up').length;
+      const downs = (allFb || []).filter((r: any) => r.feedback === 'down').length;
+      const recentDown = (allFb || []).filter((r: any) => r.feedback === 'down').slice(0, 5);
+      setFeedbackStats({ ups, downs, topFaqs: topFaqs || [], recentDown });
+    })();
+  }, [tab]);
   useEffect(() => {
     if (settings) {
       setGreeting(settings.chatBotGreeting || DEFAULT_GREETING);
@@ -854,7 +868,19 @@ export default function AdminBotStudio() {
   const approvePending = async (faq: CustomerFaq) => {
     const edit = pendingEdits[faq.id]; if (!edit?.answer?.trim()) return;
     setApprovingId(faq.id);
-    await supabase.from('customer_faqs').update({ answer: edit.answer.trim(), category: edit.category, is_approved: true, updated_at: new Date().toISOString() }).eq('id', faq.id);
+    const answerText = edit.answer.trim();
+    await supabase.from('customer_faqs').update({ answer: answerText, category: edit.category, is_approved: true, updated_at: new Date().toISOString() }).eq('id', faq.id);
+    // Level 3: auto-embed FAQ vừa duyệt nếu V3 đang bật
+    if (settings?.chatBotV3Enabled) {
+      try {
+        const res = await fetch('/api/embed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: `${faq.question} ${answerText}`.substring(0, 1500) }),
+        });
+        const { embedding } = await res.json();
+        if (embedding?.length) await supabase.from('customer_faqs').update({ embedding } as any).eq('id', faq.id);
+      } catch {}
+    }
     setApprovingId(null); setPendingFaqs(prev => prev.filter(f => f.id !== faq.id));
     setPendingEdits(prev => { const n = { ...prev }; delete n[faq.id]; return n; });
     loadFaqs(); loadHomeStats();
@@ -2672,6 +2698,80 @@ export default function AdminBotStudio() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            {/* ── Analytics: Feedback 👍👎 ── */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                <p className="font-semibold text-sm text-gray-800">Analytics Phản hồi khách hàng</p>
+                <span className="text-[10px] text-gray-400">Cập nhật mỗi lần vào tab</span>
+              </div>
+              <div className="p-5 space-y-5">
+                {/* Tổng 👍/👎 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-3">
+                    <span className="text-2xl">👍</span>
+                    <div>
+                      <p className="text-2xl font-bold text-green-700">{feedbackStats.ups}</p>
+                      <p className="text-xs text-green-600">Hài lòng</p>
+                    </div>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center gap-3">
+                    <span className="text-2xl">👎</span>
+                    <div>
+                      <p className="text-2xl font-bold text-red-600">{feedbackStats.downs}</p>
+                      <p className="text-xs text-red-500">Chưa hài lòng</p>
+                    </div>
+                  </div>
+                </div>
+                {/* Tỷ lệ hài lòng */}
+                {(feedbackStats.ups + feedbackStats.downs) > 0 && (
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>Tỷ lệ hài lòng</span>
+                      <span className="font-semibold text-green-600">{Math.round(feedbackStats.ups / (feedbackStats.ups + feedbackStats.downs) * 100)}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full transition-all"
+                        style={{ width: `${Math.round(feedbackStats.ups / (feedbackStats.ups + feedbackStats.downs) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* Top FAQ được dùng nhiều */}
+                {feedbackStats.topFaqs.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">FAQ được trả lời nhiều nhất</p>
+                    <div className="space-y-1.5">
+                      {feedbackStats.topFaqs.map((faq: any, i: number) => (
+                        <div key={faq.id} className="flex items-center gap-2 text-xs">
+                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                          <span className="flex-1 truncate text-gray-700">{faq.question}</span>
+                          <span className="text-indigo-500 font-semibold shrink-0">{faq.usage_count || 0}x</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Câu hỏi nhận 👎 gần đây — cần cải thiện FAQ */}
+                {feedbackStats.recentDown.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-500 mb-2">Câu hỏi chưa trả lời tốt (cần cải thiện FAQ)</p>
+                    <div className="space-y-2">
+                      {feedbackStats.recentDown.map((fb: any, i: number) => (
+                        <div key={i} className="bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-gray-700">
+                          <p className="font-medium text-red-700 mb-0.5">Khách hỏi: {fb.customer_question || '—'}</p>
+                          <p className="text-gray-500 line-clamp-2">Bot trả lời: {fb.bot_answer || '—'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {feedbackStats.ups === 0 && feedbackStats.downs === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-4">Chưa có phản hồi nào. Bật Bot V3 và để khách hàng chat thử.</p>
+                )}
               </div>
             </div>
           </div>
