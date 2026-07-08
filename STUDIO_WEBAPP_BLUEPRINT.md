@@ -98,20 +98,23 @@ export const useApp = () => ({
 });
 ```
 
-**SettingsContext.tsx** — có Realtime subscription:
+**SettingsContext.tsx** — phân quyền đọc settings theo role:
+- **Admin/staff**: đọc trực tiếp từ bảng `settings` (có token nhạy cảm) + Realtime subscription
+- **Public/client**: dùng RPC `get_public_settings()` (đã strip telegramBotToken, larkWebhookUrl, aiImageApiKey, v.v.)
+
 ```typescript
+// Realtime chỉ subscribe cho admin — public dùng RPC tĩnh
 useEffect(() => {
-  const loadSettings = async () => { /* fetch from supabase */ };
-  loadSettings();
-  const channel = supabase.channel('settings-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: 'id=eq.global' },
-      () => loadSettings())
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
-}, []);
+  if (!isAuthReady) return;
+  if (isAdmin) {
+    /* fetch full settings từ table + subscribe realtime */
+  } else {
+    supabase.rpc('get_public_settings').then(({ data }) => setSettings(data));
+  }
+}, [isAdmin, isAuthReady]);
 ```
 
-> Realtime sync đảm bảo khi admin lưu settings mới (Telegram token, Lark URL...), toàn bộ sessions đang mở đều nhận được cập nhật ngay — không cần refresh.
+> Security: SQL `get_public_settings()` dùng SECURITY DEFINER, strip 7 fields nhạy cảm trước khi trả về. Script: `supabase_security_fix.sql`.
 
 ---
 
@@ -206,7 +209,9 @@ display_name text
 **Row Level Security:** Bật RLS cho tất cả bảng.  
 - `consultations`: chỉ admin đọc/ghi  
 - `styles/albums/photos`: public read, admin write  
-- `settings`: public read (để load config), admin write  
+- `settings`: public read qua RPC `get_public_settings()` (strip token nhạy cảm), chỉ admin/staff write
+- **Write policies** (customers, shoots, faqs, settings): kiểm tra `user_roles` table — chỉ role `admin`/`staff`/`superadmin` được write (không phải toàn bộ `authenticated`)
+- SQL fix: `supabase_security_fix.sql`
 
 ---
 
@@ -262,6 +267,8 @@ api/
 ├── telegram-notify.ts          ← Vercel serverless: gửi Telegram Bot (HTML format)
 ├── chat.ts                     ← Vercel serverless: AI chat (Gemini)
 ├── live-chat-bot.ts            ← Vercel serverless: Bot Tầng 2 (Gemini + kịch bản context)
+├── embed.ts                    ← Vercel serverless: Bot V3 — Gemini text-embedding-004 (768 dims)
+├── vector-synthesis.ts         ← Vercel serverless: Bot V3 — Gemini 2.0 Flash tổng hợp câu trả lời
 └── bot.ts                      ← Vercel serverless: OG meta tags cho social preview
 ```
 
@@ -626,9 +633,10 @@ interface Props {
 
 **Bot V3 — `callBotV3()` (Vector Embedding + Gemini Synthesis):**
 - `src/lib/vectorRagEngine.ts` → `vectorRagSearch()` function
-- Embed câu hỏi bằng Gemini `text-embedding-004` (768 dims, free 1500 req/day) → `/api/embed`
+- Embed câu hỏi bằng Gemini `text-embedding-004` (768 dims, free 1500 req/day) → `api/embed.ts` (Vercel serverless)
 - pgvector `match_faqs` RPC: cosine similarity search, threshold 0.6, top-5 FAQ
-- Tổng hợp câu trả lời bằng Gemini 2.0 Flash → `/api/vector-synthesis`
+- Tổng hợp câu trả lời bằng Gemini 2.0 Flash → `api/vector-synthesis.ts` (Vercel serverless)
+- Cả hai endpoint đều có rate limiting: 30 req/min (embed), 20 req/min (synthesis) per IP
 - Fallback về V2 nếu similarity < threshold
 - Setup: chạy `supabase_vector_setup.sql` + Rebuild Embeddings trong tab Bot V3
 - Setting key: `chatBotV3Enabled`
