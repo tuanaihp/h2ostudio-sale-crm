@@ -18,16 +18,24 @@ CREATE TABLE IF NOT EXISTS bot_unmatched_logs (
   detected_service   text,
   detected_phase     text,
   created_at         timestamptz DEFAULT now(),
-  tagged_faq_id      uuid        REFERENCES customer_faqs(id) ON DELETE SET NULL,
+  tagged_faq_id      text        REFERENCES customer_faqs(id) ON DELETE SET NULL,
   reviewed           boolean     DEFAULT false
 );
 
 -- 3. RLS cho bot_unmatched_logs
 ALTER TABLE bot_unmatched_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "allow_all_bot_unmatched"
-  ON bot_unmatched_logs FOR ALL
-  USING (true) WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'bot_unmatched_logs' AND policyname = 'allow_all_bot_unmatched'
+  ) THEN
+    CREATE POLICY "allow_all_bot_unmatched"
+      ON bot_unmatched_logs FOR ALL
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- 4. Index để query nhanh
 CREATE INDEX IF NOT EXISTS idx_bot_unmatched_reviewed ON bot_unmatched_logs(reviewed, created_at DESC);
