@@ -87,14 +87,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isSuperAdmin = useMemo(() =>
     userRole === 'super_admin' || userRole === 'supper_admin' ||
-    checkPhoneInWhitelist(userPhone) || checkPhoneInWhitelist(user?.phone),
-    [userRole, userPhone, user?.phone, checkPhoneInWhitelist]
+    // Chỉ dùng user?.phone từ Supabase session (server-verified), không từ localStorage
+    checkPhoneInWhitelist(user?.phone),
+    [userRole, user?.phone, checkPhoneInWhitelist]
   );
 
   const isAdmin = useMemo(() =>
     isSuperAdmin || userRole === 'admin' || userRole === 'staff' ||
-    checkPhoneInWhitelist(userPhone) || checkPhoneInWhitelist(user?.phone),
-    [isSuperAdmin, userRole, userPhone, user?.phone, checkPhoneInWhitelist]
+    // Chỉ dùng user?.phone từ Supabase session (server-verified), không từ localStorage
+    checkPhoneInWhitelist(user?.phone),
+    [isSuperAdmin, userRole, user?.phone, checkPhoneInWhitelist]
   );
 
   const loadUserRole = useCallback(async (currentUser: User) => {
