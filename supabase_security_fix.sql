@@ -39,12 +39,12 @@ GRANT EXECUTE ON FUNCTION get_public_settings() TO anon, authenticated;
 -- Hiện tại: USING (auth.role() = 'authenticated') — bất kỳ user đăng nhập đều write được
 -- Fix: kiểm tra bảng user_roles, chỉ role 'admin' hoặc 'staff' mới được phép
 
--- customers
-DROP POLICY IF EXISTS "allow_insert_customers" ON customers;
-DROP POLICY IF EXISTS "allow_update_customers" ON customers;
-DROP POLICY IF EXISTS "allow_delete_customers" ON customers;
+-- consultations
+DROP POLICY IF EXISTS "allow_insert_consultations" ON consultations;
+DROP POLICY IF EXISTS "allow_update_consultations" ON consultations;
+DROP POLICY IF EXISTS "allow_delete_consultations" ON consultations;
 
-CREATE POLICY "allow_insert_customers" ON customers
+CREATE POLICY "allow_insert_consultations" ON consultations
   FOR INSERT WITH CHECK (
     EXISTS (
       SELECT 1 FROM user_roles
@@ -52,7 +52,7 @@ CREATE POLICY "allow_insert_customers" ON customers
     )
   );
 
-CREATE POLICY "allow_update_customers" ON customers
+CREATE POLICY "allow_update_consultations" ON consultations
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM user_roles
@@ -60,36 +60,7 @@ CREATE POLICY "allow_update_customers" ON customers
     )
   );
 
-CREATE POLICY "allow_delete_customers" ON customers
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM user_roles
-      WHERE id = auth.uid() AND role IN ('admin', 'superadmin')
-    )
-  );
-
--- shoots
-DROP POLICY IF EXISTS "allow_insert_shoots" ON shoots;
-DROP POLICY IF EXISTS "allow_update_shoots" ON shoots;
-DROP POLICY IF EXISTS "allow_delete_shoots" ON shoots;
-
-CREATE POLICY "allow_insert_shoots" ON shoots
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM user_roles
-      WHERE id = auth.uid() AND role IN ('admin', 'staff', 'superadmin')
-    )
-  );
-
-CREATE POLICY "allow_update_shoots" ON shoots
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM user_roles
-      WHERE id = auth.uid() AND role IN ('admin', 'staff', 'superadmin')
-    )
-  );
-
-CREATE POLICY "allow_delete_shoots" ON shoots
+CREATE POLICY "allow_delete_consultations" ON consultations
   FOR DELETE USING (
     EXISTS (
       SELECT 1 FROM user_roles
@@ -152,17 +123,23 @@ CREATE POLICY "allow_update_settings" ON settings
 --     )
 --   );
 
--- ── 4. bot_message_feedback — insert/read public (không cần auth) ─────────────
--- Nên giữ nguyên để widget chat của khách gửi được feedback không cần đăng nhập.
--- Nhưng delete phải là admin:
-DROP POLICY IF EXISTS "allow_delete_feedback" ON bot_message_feedback;
-CREATE POLICY "allow_delete_feedback" ON bot_message_feedback
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM user_roles
-      WHERE id = auth.uid() AND role IN ('admin', 'superadmin')
-    )
-  );
+-- ── 4. bot_message_feedback — chạy sau khi đã chạy supabase_feedback_setup.sql ──
+-- (bỏ qua nếu chưa tạo bảng bot_message_feedback)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_message_feedback') THEN
+    DROP POLICY IF EXISTS "allow_delete_feedback" ON bot_message_feedback;
+    EXECUTE $p$
+      CREATE POLICY "allow_delete_feedback" ON bot_message_feedback
+        FOR DELETE USING (
+          EXISTS (
+            SELECT 1 FROM user_roles
+            WHERE id = auth.uid() AND role IN ('admin', 'superadmin')
+          )
+        )
+    $p$;
+  END IF;
+END $$;
 
 -- ============================================================
 -- HƯỚNG DẪN ĐỔI BUCKET album-images sang PRIVATE (không thể làm bằng SQL)
