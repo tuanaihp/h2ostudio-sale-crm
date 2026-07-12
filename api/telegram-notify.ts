@@ -11,13 +11,14 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { name, phone, source, luckyGift, albums, botToken, chatId } = req.body || {};
+    const { name, phone, source, luckyGift, albums } = req.body || {};
 
-    const BOT_TOKEN: string = botToken || process.env.TELEGRAM_BOT_TOKEN || '';
-    const CHAT_ID: string = chatId || process.env.TELEGRAM_CHAT_ID || '';
+    // Credentials chỉ từ env — không nhận từ client để tránh abuse gửi tới bất kỳ bot nào
+    const BOT_TOKEN: string = process.env.TELEGRAM_BOT_TOKEN || '';
+    const CHAT_ID: string = process.env.TELEGRAM_CHAT_ID || '';
 
     if (!BOT_TOKEN || !CHAT_ID) {
-      return res.status(400).json({ error: 'Missing Telegram credentials' });
+      return res.status(500).json({ error: 'Notification service not configured' });
     }
 
     const albumList: AlbumInfo[] = Array.isArray(albums) ? albums : [];
@@ -60,7 +61,7 @@ export default async function handler(req: any, res: any) {
     return res.json(result);
   } catch (err: any) {
     console.error('[telegram-notify]', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Gửi thông báo thất bại' });
   }
 }
 
