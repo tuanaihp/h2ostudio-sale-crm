@@ -1,10 +1,26 @@
+import { checkRateLimit, getClientIp, validateExternalUrl } from './_security';
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
+
+  // Rate limit: 10 req/min/IP
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`ai-promo:${ip}`, 10)) {
+    return res.status(429).json({ error: 'Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút' });
+  }
 
   const { command, type, context, apiKey, apiUrl, modelName } = req.body || {};
 
   if (type !== 'bulk' && type !== 'content') {
     return res.status(400).json({ error: 'type không hợp lệ (bulk hoặc content)' });
+  }
+
+  // SSRF guard: validate apiUrl trước khi server gọi ra ngoài
+  if (apiUrl) {
+    const check = validateExternalUrl(apiUrl);
+    if (!check.ok) {
+      return res.status(400).json({ error: `API URL không hợp lệ: ${check.reason}` });
+    }
   }
 
   let prompt = '';
@@ -57,7 +73,6 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
   }
 
   const parseResult = (raw: string) => {
-    // Xóa markdown code fences nếu có (```json ... ``` hoặc ``` ... ```)
     const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
     const candidates = [stripped, raw];
     for (const text of candidates) {
@@ -97,19 +112,18 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
         return res.json({ error: 'AI không trả về JSON hợp lệ', raw });
       }
 
-      // Lỗi balance/auth → fallthrough sang Gemini
       const errMsg: string = data?.error?.message || '';
       const isBalanceOrAuth = /balance|quota|insufficient|unauthorized|invalid.*key/i.test(errMsg);
       if (!isBalanceOrAuth) {
-        return res.json({ error: errMsg || `AI API error ${response.status}` });
+        return res.json({ error: 'Lỗi kết nối dịch vụ AI' });
       }
-      console.warn('[ai-promo] Custom API lỗi balance/auth, thử Gemini fallback:', errMsg);
+      console.warn('[ai-promo] Custom API lỗi balance/auth, thử Gemini fallback');
     } catch (err: any) {
       console.warn('[ai-promo] Custom API exception, thử Gemini fallback:', err.message);
     }
   }
 
-  // Fallback: Google Gemini (miễn phí 1500 req/ngày)
+  // Fallback: Google Gemini
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) {
     return res.json({
@@ -138,6 +152,6 @@ Tạo nội dung hấp dẫn. Chỉ trả về JSON object, không giải thích
     return res.json({ error: 'Gemini không trả về JSON hợp lệ', raw });
   } catch (err: any) {
     console.error('[ai-promo] Gemini error:', err.message);
-    return res.status(500).json({ error: err?.message || 'Lỗi kết nối Gemini' });
+    return res.status(500).json({ error: 'Lỗi kết nối dịch vụ AI' });
   }
 }

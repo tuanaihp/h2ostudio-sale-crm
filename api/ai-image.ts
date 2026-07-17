@@ -1,11 +1,18 @@
+import { checkRateLimit, getClientIp } from './_security';
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
+
+  // Rate limit: 5 req/min/IP (DALL-E tốn tiền)
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`ai-image:${ip}`, 5)) {
+    return res.status(429).json({ error: 'Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút' });
+  }
 
   const { promoTitle, shortDesc, emoji, color, apiKey, model = 'dall-e-3', quality = 'standard' } = req.body || {};
   if (!apiKey) return res.status(400).json({ error: 'Cần API Key OpenAI để tạo ảnh (DALL-E)' });
   if (!promoTitle) return res.status(400).json({ error: 'Thiếu tiêu đề chương trình KM' });
 
-  // Map hex color to mood
   const colorMood = (() => {
     const c = (color || '#A4756B').toLowerCase();
     if (c.includes('d53f8c') || c.includes('e91e8c') || c.includes('ff69b4')) return 'pink, romantic, love';
@@ -50,7 +57,6 @@ IMPORTANT: Absolutely NO text, NO letters, NO numbers, NO words in the image. Pu
       return res.status(200).json({ error: errMsg });
     }
 
-    // Newer API returns URL; older returned b64_json — handle both
     const b64Direct = data?.data?.[0]?.b64_json;
     const imageUrl  = data?.data?.[0]?.url;
 
@@ -60,7 +66,6 @@ IMPORTANT: Absolutely NO text, NO letters, NO numbers, NO words in the image. Pu
 
     if (!imageUrl) return res.status(200).json({ error: 'DALL-E không trả về ảnh' });
 
-    // Fetch image from URL and convert to base64 for frontend compatibility
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) return res.status(200).json({ error: 'Không tải được ảnh từ OpenAI' });
     const imgBuf = await imgRes.arrayBuffer();
@@ -69,6 +74,6 @@ IMPORTANT: Absolutely NO text, NO letters, NO numbers, NO words in the image. Pu
     return res.status(200).json({ b64, revisedPrompt: data?.data?.[0]?.revised_prompt });
   } catch (err: any) {
     console.error('ai-image error:', err);
-    return res.status(500).json({ error: err?.message || 'Lỗi kết nối OpenAI' });
+    return res.status(500).json({ error: 'Lỗi kết nối dịch vụ tạo ảnh' });
   }
 }

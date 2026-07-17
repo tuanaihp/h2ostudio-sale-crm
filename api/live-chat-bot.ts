@@ -1,21 +1,34 @@
 // Bot Tầng 2: LLM với kịch bản + khuyến mãi đang chạy làm context
+import { checkRateLimit, getClientIp, validateExternalUrl } from './_security';
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
+  // Rate limit: 20 req/min/IP
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`live-chat-bot:${ip}`, 20)) {
+    return res.status(429).json({ error: 'Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút' });
+  }
+
   const { message, stage, scripts, faqs, history, integrationConfig, activePromos, customInstructions, blockedTopics, studioInfo, paymentInfo, knowledgeContext } = req.body || {};
 
-  // Build system prompt từ kịch bản
+  // SSRF guard: validate chatApiUrl trước khi server gọi ra ngoài
+  if (integrationConfig?.chatApiEnabled && integrationConfig?.chatApiUrl) {
+    const check = validateExternalUrl(integrationConfig.chatApiUrl);
+    if (!check.ok) {
+      return res.status(400).json({ error: `Chat API URL không hợp lệ: ${check.reason}` });
+    }
+  }
+
   const scriptsText = (scripts || []).slice(0, 12)
     .map((s: any) => `## ${s.title} [${s.phase}]\n${s.content}`)
     .join('\n\n---\n\n');
 
-  // Build FAQ context — câu hỏi thực tế khách hay hỏi (ưu tiên dùng câu trả lời này verbatim)
   const faqsText = (faqs || []).slice(0, 30)
     .filter((f: any) => f.question && f.answer)
     .map((f: any) => `Q: ${f.question}\nA: ${f.answer}`)
     .join('\n\n');
 
-  // Build promo context nếu có
   let promoContext = '';
   if (activePromos && activePromos.length > 0) {
     const promoLines = activePromos.map((p: any) => {
@@ -100,6 +113,6 @@ QUY TẮC QUAN TRỌNG:
     return res.json({ text });
   } catch (err: any) {
     console.error('[live-chat-bot] Gemini error:', err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Lỗi kết nối dịch vụ AI' });
   }
 }
