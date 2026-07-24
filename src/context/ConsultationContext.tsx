@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { GOOGLE_SCRIPT_URL, LARK_FALLBACK_URL } from '../utils/config';
+import { GOOGLE_SCRIPT_URL } from '../utils/config';
 import type { Consultation, DbConsultationRow } from '../types';
 import { useAuth } from './AuthContext';
 import { useSettings } from './SettingsContext';
@@ -310,7 +310,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }).catch(err => console.error('Telegram notify error:', err));
     }
 
-    const larkUrl = settings?.larkWebhookUrl || LARK_FALLBACK_URL;
+    const larkUrl = settings?.larkWebhookUrl || '';
     fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
