@@ -76,7 +76,7 @@ jobs:
           fi
       - name: OWASP ZAP Baseline Scan
         if: steps.guard.outputs.run == 'true'
-        uses: zaproxy/action-baseline@v0.12.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: ${{ secrets.STAGING_URL }}
           fail_action: true
