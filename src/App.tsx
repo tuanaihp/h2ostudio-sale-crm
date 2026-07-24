@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AppProvider } from './context/AppContext';
 import { PhoneGate } from './components/PhoneGate';
+import { useAuth } from './context/AppContext';
 import Home from './pages/Home';
 
 const StyleDetail = lazy(() => import('./pages/StyleDetail'));
@@ -25,12 +26,29 @@ const PageLoader = () => (
   </div>
 );
 
+function AuthRedirectHandler() {
+  const { user, isAuthReady } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+    const returnTo = sessionStorage.getItem('h2o_auth_return_to');
+    if (returnTo) {
+      sessionStorage.removeItem('h2o_auth_return_to');
+      navigate(returnTo, { replace: true });
+    }
+  }, [user, isAuthReady, navigate]);
+
+  return null;
+}
+
 function AppContent() {
   const location = useLocation();
   const isAdmin = location.pathname.startsWith('/admin');
 
   return (
     <>
+      <AuthRedirectHandler />
       <ScrollToTop />
       <Suspense fallback={<PageLoader />}>
         <Routes>

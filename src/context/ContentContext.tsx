@@ -110,6 +110,11 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [user]);
 
   // ─── Load styles ────────────────────────────────────────────────────────────
+  // Dùng ref cho isAdmin để tránh re-run effect khi isAdmin thay đổi sau login
+  // (thay đổi isAdmin không cần reload toàn bộ styles, chỉ cần seed nếu DB rỗng)
+  const isAdminRef = useRef(isAdmin);
+  useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
+
   useEffect(() => {
     if (!isAuthReady) return;
 
@@ -123,7 +128,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (error) { console.warn('Could not load styles:', error.message); setIsDataLoaded(true); return; }
 
       if (!data || data.length === 0) {
-        if (isAdmin) {
+        if (isAdminRef.current) {
           await seedInitialData();
           const { data: seeded } = await supabase.from('styles').select('*').eq('deleted', false).order('order', { ascending: true });
           setStyles((seeded ?? []).map(row => ({ ...dbToStyle(row as DbStyleRow), albums: [] })));
@@ -142,7 +147,9 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     loadStyles();
-  }, [isAuthReady, isAdmin, seedInitialData]);
+  // isAdmin được đọc qua ref — không cần trong deps để tránh reload styles khi login/logout
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthReady, seedInitialData]);
 
   // ─── Lazy fetch albums / photos ─────────────────────────────────────────────
   const fetchAlbums = useCallback(async (styleId: string) => {
