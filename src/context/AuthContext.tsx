@@ -131,21 +131,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    // Fallback: nếu Supabase auth treo >3s thì bỏ qua, render trang bình thường
+    // Fallback: nếu Supabase auth treo >3s thì bỏ qua, vẫn render trang bình thường
     const fallback = setTimeout(() => setIsAuthReady(true), 3000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      clearTimeout(fallback);
+    // QUAN TRỌNG: KHÔNG gọi hàm Supabase có await NGAY trong callback này.
+    // onAuthStateChange giữ lock auth khi callback đang await → query bên trong
+    // (loadUserRole) bị deadlock ở lần tải đầu, khiến phải reload mới ra data.
+    // → Chỉ cập nhật state đồng bộ ở đây; load role tách sang effect riêng theo user.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (!currentUser) { setUserRole(null); setIsAuthReady(true); }
-      else { await loadUserRole(currentUser); }
+      if (!currentUser) {
+        setUserRole(null);
+        setIsAuthReady(true);
+        clearTimeout(fallback);
+      }
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { clearTimeout(fallback); setIsAuthReady(true); }
-    });
+
     return () => { subscription.unsubscribe(); clearTimeout(fallback); };
-  }, [loadUserRole]);
+  }, []);
+
+  // Load role tách riêng — chạy SAU khi có user, ngoài callback auth → không deadlock
+  useEffect(() => {
+    if (!user) return;
+    loadUserRole(user);
+  }, [user?.id, loadUserRole]);
 
   const setUserPhone = useCallback((phone: string, customerName?: string) => {
     localStorage.setItem('h2o_user_phone', phone);
