@@ -19,6 +19,7 @@ import {
   ArrowDown,
   Loader2,
   X,
+  Home,
 } from 'lucide-react';
 import { ImageEditorModal } from '../components/ImageEditorModal';
 import { EditableText } from '../components/EditableText';
@@ -724,10 +725,18 @@ const AdminContent: React.FC = () => {
         <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
           <div className="max-w-5xl mx-auto px-4">
             <div className="flex items-center justify-between h-14">
-              {/* Brand */}
+              {/* Brand + về giao diện khách */}
               <div className="flex items-center gap-2">
                 <BookOpen size={20} className="text-primary" />
-                <span className="font-bold text-gray-900 text-sm">H2O Studio Admin</span>
+                <span className="font-bold text-gray-900 text-sm hidden md:inline">H2O Studio Admin</span>
+                <Link
+                  to="/"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 transition-colors ml-1"
+                  title="Về giao diện khách"
+                >
+                  <Home size={14} />
+                  <span className="hidden sm:inline">Giao diện khách</span>
+                </Link>
               </div>
 
               {/* Nav links */}

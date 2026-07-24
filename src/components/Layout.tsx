@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, MessageCircle, Share2, LogOut, User as UserIcon, Loader2, Heart, Home, Settings as SettingsIcon, Trash2, Bell, Bot } from 'lucide-react';
+import { ChevronLeft, MessageCircle, Share2, Loader2, Heart } from 'lucide-react';
 import { APP_CONFIG } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { getDisplayImageUrl } from '../utils/image';
@@ -29,9 +29,10 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login, handleLogout, isAuthReady, isAdmin, isSuperAdmin, favorites, settings, unreadCount } = useApp();
+  const { user, isAuthReady, isAdmin, favorites, settings } = useApp();
 
-  // Cổng bí mật: bấm logo 5 lần nhanh → trang đăng nhập admin
+  // Cổng bí mật: bấm logo 3 lần nhanh → vào khu quản lý
+  // Nếu đã đăng nhập admin → vào thẳng danh sách KH; chưa thì tới trang login
   const logoTapCount = useRef(0);
   const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleLogoTap = (e: React.MouseEvent) => {
@@ -41,7 +42,7 @@ export const Layout: React.FC<LayoutProps> = ({
     if (logoTapCount.current >= 3) {
       e.preventDefault();
       logoTapCount.current = 0;
-      navigate('/admin/login');
+      navigate(isAdmin ? '/admin/consultations' : '/admin/login');
     }
   };
 
@@ -103,70 +104,15 @@ export const Layout: React.FC<LayoutProps> = ({
               <Loader2 size={20} className="animate-spin text-primary" />
             ) : (
               <div className="flex items-center gap-2">
-                {user ? (
-                  <>
-                    <div className="hidden sm:block text-right">
-                      <p className="text-[10px] font-bold text-dark/40 uppercase tracking-widest leading-none">
-                        {isAdmin ? 'Admin' : 'Khách'}
-                      </p>
-                      <p className="text-xs font-medium text-dark truncate max-w-[100px]">{user.user_metadata?.full_name || user.email}</p>
-                    </div>
-                    {isAdmin && (
-                      <div className="flex items-center gap-1">
-                        <Link
-                          to="/admin/consultations"
-                          className="relative p-2 bg-primary/10 hover:bg-primary/20 rounded-full transition-colors text-primary flex items-center gap-2 px-3"
-                          title="Quản lý khách hàng"
-                        >
-                          <UserIcon size={18} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest hidden md:block">Quản lý</span>
-                          {unreadCount > 0 && (
-                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 animate-pulse z-10">
-                              {unreadCount > 99 ? '99+' : unreadCount}
-                            </span>
-                          )}
-                        </Link>
-                        {isSuperAdmin && (
-                          <Link 
-                            to="/admin/settings" 
-                            className="p-2 hover:bg-light-gray rounded-full transition-colors text-dark/70"
-                            title="Cấu hình hệ thống"
-                          >
-                            <SettingsIcon size={20} />
-                          </Link>
-                        )}
-                        <Link
-                          to="/admin/bot"
-                          className="p-2 hover:bg-light-gray rounded-full transition-colors text-dark/70"
-                          title="H2O Bot AI Studio"
-                        >
-                          <Bot size={20} />
-                        </Link>
-                        <Link
-                          to="/admin/trash"
-                          className="p-2 hover:bg-light-gray rounded-full transition-colors text-dark/70"
-                          title="Thùng rác"
-                        >
-                          <Trash2 size={20} />
-                        </Link>
-                      </div>
-                    )}
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleLogout();
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all border border-red-100"
-                        title="Đăng xuất"
-                      >
-                        <LogOut size={16} />
-                        <span>Đăng xuất</span>
-                      </button>
-                    )}
-                  </>
+                {/* Giao diện khách luôn sạch — KHÔNG hiện nút admin nào.
+                    Admin vào khu quản lý bằng cách bấm logo 3 lần liên tiếp. */}
+                {user && !isAdmin ? (
+                  <div className="hidden sm:block text-right">
+                    <p className="text-[10px] font-bold text-dark/40 uppercase tracking-widest leading-none">
+                      Khách
+                    </p>
+                    <p className="text-xs font-medium text-dark truncate max-w-[100px]">{user.user_metadata?.full_name || user.email}</p>
+                  </div>
                 ) : null}
               </div>
             )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
-import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen, Database } from 'lucide-react';
+import { Phone, MessageCircle, Clock, CheckCircle, Circle, Edit3, ChevronDown, Calendar, X, Save, Camera, Heart, Package, User, Copy, Check, Download, Tag, TrendingUp, Users, Gift, Trash2, LogOut, ExternalLink, DollarSign, LayoutGrid, Bell, Zap, ArrowRight, FileText, BookOpen, Database, Home } from 'lucide-react';
 import { AdminChatPanel } from '../components/AdminChatPanel';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
@@ -1484,6 +1484,10 @@ const AdminConsultations: React.FC = () => {
           ))}
         </nav>
         <div className="p-3 space-y-0.5 border-t border-gray-100">
+          <Link to="/"
+            className="flex items-center gap-2 px-3 py-2.5 mb-1 rounded-xl text-sm font-bold text-primary bg-primary/10 hover:bg-primary/20 transition-colors">
+            <Home size={15} /> Về giao diện khách
+          </Link>
           <Link to="/admin/promotions"
             className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-pink-50 hover:text-pink-700 transition-colors">
             <Gift size={15} /> Lịch KM
