@@ -60,8 +60,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({ style, albums, o
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.1 }}
                   >
-                    <Link 
-                      to={`/album/${album.slug}`}
+                    <Link
+                      to={`/style/${style.slug}/album/${album.slug}`}
                       onClick={onClose}
                       className="flex gap-4 group"
                     >

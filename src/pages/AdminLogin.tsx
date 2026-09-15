@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useApp } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
-import { Shield, Phone, LogIn, Mail, Lock } from 'lucide-react';
+import { Shield, LogIn, Mail, Lock } from 'lucide-react';
 import { supabase } from '../supabase';
 
 const AdminLogin: React.FC = () => {
-  const { isAdmin, login, setUserPhone, settings, isAuthReady } = useApp();
-  const [phoneInput, setPhoneInput] = useState('');
+  const { isAdmin, login, isAuthReady } = useApp();
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [error, setError] = useState('');
@@ -17,59 +16,19 @@ const AdminLogin: React.FC = () => {
     return <Navigate to="/admin/consultations" />;
   }
 
-  const handlePhoneLogin = async (e: React.FormEvent) => {
+  const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = phoneInput.replace(/\D/g, '');
-
-    if (cleanPhone.length < 9 || cleanPhone.length > 11) {
-      setError('Số điện thoại không hợp lệ');
-      return;
-    }
-
-    const authorizedPhones = ['0899252393', '0973685994', '0363234909', ...(settings.staffPhones || [])];
-
-    if (!authorizedPhones.includes(cleanPhone)) {
-      setError('Số điện thoại không có quyền truy cập Admin');
-      return;
-    }
-
+    if (!emailInput || !passwordInput) return;
     setIsLoading(true);
     setError('');
-
-    try {
-      let { error: signInError } = await supabase.auth.signInWithPassword({
-        email: 'staff@h2ostudio.com',
-        password: 'H2oStudioStaff2026!',
-      });
-
-      // Nếu chưa có account staff → tự tạo rồi đăng nhập lại
-      if (signInError?.message?.includes('Invalid login credentials')) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: 'staff@h2ostudio.com',
-          password: 'H2oStudioStaff2026!',
-        });
-        if (!signUpError) {
-          const { error: retryError } = await supabase.auth.signInWithPassword({
-            email: 'staff@h2ostudio.com',
-            password: 'H2oStudioStaff2026!',
-          });
-          signInError = retryError || null;
-        } else {
-          signInError = signUpError;
-        }
-      }
-
-      if (signInError) {
-        setError(`Lỗi đăng nhập: ${signInError.message}`);
-        setIsLoading(false);
-        return;
-      }
-
-      setUserPhone(cleanPhone);
-    } catch (err: any) {
-      setError(`Lỗi hệ thống: ${err.message}`);
-      setIsLoading(false);
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: emailInput.trim(),
+      password: passwordInput,
+    });
+    if (err) {
+      setError(err.message.includes('Invalid login') ? 'Email hoặc mật khẩu không đúng' : err.message);
     }
+    setIsLoading(false);
   };
 
   return (
@@ -84,64 +43,25 @@ const AdminLogin: React.FC = () => {
             <p className="text-dark/60 text-sm mt-2">Dành cho nhân viên và quản lý hệ thống</p>
           </div>
 
-          <form onSubmit={handlePhoneLogin} className="space-y-4 mb-8">
-            <div>
-              <label className="block text-sm font-bold text-dark mb-2">Số điện thoại nhân viên</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Phone size={20} className="text-dark/40" />
-                </div>
-                <input
-                  type="tel"
-                  value={phoneInput}
-                  onChange={(e) => { setPhoneInput(e.target.value); setError(''); }}
-                  placeholder="Nhập số điện thoại..."
-                  className="w-full pl-12 pr-4 py-3 bg-light-gray/50 border border-light-gray rounded-xl focus:outline-none focus:border-primary transition-colors"
-                />
-              </div>
-              {error && <p className="text-red-500 text-xs mt-2 font-medium">{error}</p>}
-            </div>
+          <button
+            type="button"
+            onClick={login}
+            className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+          >
+            <LogIn size={20} />
+            Đăng nhập bằng Google
+          </button>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <LogIn size={20} />
-              )}
-              {isLoading ? 'Đang đăng nhập...' : 'Vào hệ thống'}
-            </button>
-          </form>
-
-          <div className="relative">
+          <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-light-gray" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-dark/40">Hoặc dành cho Quản lý</span>
+              <span className="px-2 bg-white text-dark/40">Hoặc bằng email</span>
             </div>
           </div>
 
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!emailInput || !passwordInput) return;
-              setIsLoading(true);
-              setError('');
-              const { error: err } = await supabase.auth.signInWithPassword({
-                email: emailInput.trim(),
-                password: passwordInput,
-              });
-              if (err) {
-                setError(err.message.includes('Invalid login') ? 'Email hoặc mật khẩu không đúng' : err.message);
-              }
-              setIsLoading(false);
-            }}
-            className="mt-6 space-y-3"
-          >
+          <form onSubmit={handleEmailLogin} className="space-y-3">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Mail size={18} className="text-dark/40" />
@@ -150,7 +70,7 @@ const AdminLogin: React.FC = () => {
                 type="email"
                 value={emailInput}
                 onChange={(e) => { setEmailInput(e.target.value); setError(''); }}
-                placeholder="Email quản lý..."
+                placeholder="Email nhân viên..."
                 className="w-full pl-11 pr-4 py-3 bg-light-gray/50 border border-light-gray rounded-xl focus:outline-none focus:border-primary transition-colors text-sm"
               />
             </div>
@@ -166,13 +86,18 @@ const AdminLogin: React.FC = () => {
                 className="w-full pl-11 pr-4 py-3 bg-light-gray/50 border border-light-gray rounded-xl focus:outline-none focus:border-primary transition-colors text-sm"
               />
             </div>
+            {error && <p className="text-red-500 text-xs font-medium">{error}</p>}
             <button
               type="submit"
               disabled={isLoading || !emailInput || !passwordInput}
               className="w-full py-3 bg-dark text-white font-bold rounded-xl hover:bg-dark/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <LogIn size={18} />
-              Đăng nhập bằng Email
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <LogIn size={18} />
+              )}
+              {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập bằng Email'}
             </button>
           </form>
         </div>

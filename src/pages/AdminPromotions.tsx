@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
 import { uploadImageToStorage } from '../utils/image';
@@ -225,7 +225,7 @@ export default function AdminPromotions() {
   const [assignSearch, setAssignSearch]       = useState('');
   const [showAssign, setShowAssign]           = useState(false);
 
-  if (isAuthReady && !isAdmin) return <Navigate to="/admin/login" replace />;
+  // Auth guard nằm ở RequireAdmin (route level) — không return sớm trước hooks.
 
   useEffect(() => { loadPromos(); }, []);
   useEffect(() => { loadSaleDays(calYear); }, [calYear]);

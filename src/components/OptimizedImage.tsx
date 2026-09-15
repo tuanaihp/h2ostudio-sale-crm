@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, HTMLMotionProps } from 'motion/react';
 import { getDisplayImageUrl } from '../utils/image';
 
-interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+interface OptimizedImageProps extends Omit<HTMLMotionProps<'img'>, 'ref'> {
   containerClassName?: string;
 }
 

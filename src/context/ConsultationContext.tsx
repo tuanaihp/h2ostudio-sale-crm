@@ -172,7 +172,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }).catch(err => console.error('Error syncing to Sheets:', err));
   }, []);
 
-  // ─── Duplicate check (client localStorage → server fallback) ─────────────
+  // ─── Duplicate check — RPC SECURITY DEFINER (không lộ danh sách leads) ─────
   const checkPhoneDuplicate = useCallback(async (phone: string, source?: string): Promise<boolean> => {
     const localKey = source === 'lucky_wheel' ? 'h2o_lucky_wheel_played' : 'h2o_submitted_phones';
     try {
@@ -180,11 +180,22 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (stored.includes(phone)) return true;
     } catch {}
 
-    let query = supabase.from('consultations').select('id').eq('phone', phone);
-    if (source === 'lucky_wheel') query = query.eq('source', 'lucky_wheel');
-    const { data: existing } = await (query as any).limit(1).maybeSingle();
+    // RPC hoạt động ngay cả khi consultations SELECT bị khoá cho anon (v3)
+    const { data: exists, error: rpcErr } = await (supabase as any)
+      .rpc('check_phone_exists', { phone_input: phone, source_input: source ?? null });
 
-    if (existing) {
+    let isDup = false;
+    if (rpcErr) {
+      // Fallback: query trực tiếp (chỉ đúng khi RLS cho anon SELECT)
+      let query = supabase.from('consultations').select('id').eq('phone', phone);
+      if (source === 'lucky_wheel') query = query.eq('source', 'lucky_wheel');
+      const { data: existing } = await (query as any).limit(1).maybeSingle();
+      isDup = !!existing;
+    } else {
+      isDup = !!exists;
+    }
+
+    if (isDup) {
       try {
         const stored: string[] = JSON.parse(localStorage.getItem(localKey) || '[]');
         if (!stored.includes(phone)) { stored.push(phone); localStorage.setItem(localKey, JSON.stringify(stored)); }
@@ -200,7 +211,7 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     date?: Date; favoriteIds?: string[]; source?: string; luckyGift?: string;
     favoriteAlbums?: { title: string; url: string; styleName?: string }[];
   }) => {
-    const id = `consult-${Date.now()}`;
+    const id = crypto.randomUUID();
     const row: Record<string, unknown> = { id, name: data.name, phone: data.phone, status: 'new' };
     if (data.email) row.email = data.email.trim();
     if (data.message) row.message = data.message.trim();
@@ -263,21 +274,25 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const chatContent = msgLines.join('\n');
       const now = new Date().toISOString();
 
+      const chatToken = crypto.randomUUID();
       supabase.from('chat_sessions').insert({
         id: chatSessionId, phone: data.phone, name: data.name,
         status: 'waiting', stage: 'new', consultation_id: id,
-        last_message: chatContent, last_message_at: now, unread_admin: 1, created_at: now,
+        last_message: chatContent, last_message_at: now, unread_admin: 1,
+        access_token: chatToken, created_at: now,
       }).then(({ error: e }) => { if (e) console.error('chat_session create:', e.message); });
 
       supabase.from('chat_messages').insert({
         id: crypto.randomUUID(), session_id: chatSessionId,
         sender: 'customer', content: chatContent, created_at: now,
-      }).catch(() => {});
+      }).then(({ error: e }) => { if (e) console.warn('chat_message create:', e.message); });
 
       localStorage.setItem('h2o_live_session_id', chatSessionId);
+      localStorage.setItem('h2o_live_session_token', chatToken);
     } catch { /* non-critical */ }
 
-    // Lark + Telegram — gửi song song, không block submit
+    // Lark + Telegram — gửi song song, không block submit.
+    // Credentials nằm ở env server-side; client chỉ gate theo flag bật/tắt.
     if (settings?.larkNotificationEnabled !== false) {
       fetch('/api/lark-notify', {
         method: 'POST',
@@ -289,12 +304,11 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           luckyGift: data.luckyGift,
           favoriteCount: data.favoriteIds?.length || 0,
           albums: data.favoriteAlbums || [],
-          webhookUrl: settings?.larkWebhookUrl || undefined,
         }),
       }).catch(err => console.error('Lark notify error:', err));
     }
 
-    if (settings?.telegramNotificationEnabled && settings?.telegramBotToken && settings?.telegramChatId) {
+    if (settings?.telegramNotificationEnabled) {
       fetch('/api/telegram-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,8 +318,6 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           source: data.source,
           luckyGift: data.luckyGift,
           albums: data.favoriteAlbums || [],
-          botToken: settings.telegramBotToken,
-          chatId: settings.telegramChatId,
         }),
       }).catch(err => console.error('Telegram notify error:', err));
     }
@@ -332,31 +344,35 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         larkConfig: { url: larkUrl },
       }),
     }).catch(err => console.error('Error syncing to Sheets:', err));
-  }, [settings?.larkWebhookUrl]);
+  }, [settings]);
 
   // ─── Update / Delete ───────────────────────────────────────────────────────
   const updateConsultationStatus = useCallback(async (id: string, status: Consultation['status']) => {
     if (!isAdmin) return;
-    await supabase.from('consultations').update({ status }).eq('id', id);
+    const { error } = await supabase.from('consultations').update({ status }).eq('id', id);
+    if (error) throw error;
     syncLeadUpdateToSheets(id, { status });
   }, [isAdmin, syncLeadUpdateToSheets]);
 
   const updateConsultationRegistration = useCallback(async (id: string, data: Partial<Consultation>) => {
     if (!isAdmin) return;
     const row = { ...consultationToDB(data), status: 'registered' as const };
-    await supabase.from('consultations').update(row).eq('id', id);
+    const { error } = await supabase.from('consultations').update(row).eq('id', id);
+    if (error) throw error;
     syncLeadUpdateToSheets(id, { ...data, status: 'registered' });
   }, [isAdmin, syncLeadUpdateToSheets]);
 
   const updateConsultationNotes = useCallback(async (id: string, notes: string) => {
     if (!isAdmin) return;
-    await supabase.from('consultations').update({ notes }).eq('id', id);
+    const { error } = await supabase.from('consultations').update({ notes }).eq('id', id);
+    if (error) throw error;
     syncLeadUpdateToSheets(id, { notes });
   }, [isAdmin, syncLeadUpdateToSheets]);
 
   const updateConsultationTags = useCallback(async (id: string, tags: string[]) => {
     if (!isAdmin) return;
-    await supabase.from('consultations').update({ tags }).eq('id', id);
+    const { error } = await supabase.from('consultations').update({ tags }).eq('id', id);
+    if (error) throw error;
     syncLeadUpdateToSheets(id, { tags: tags.join(', ') });
   }, [isAdmin, syncLeadUpdateToSheets]);
 
@@ -369,13 +385,15 @@ export const ConsultationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       contractValue: 'contract_value',
     };
     const col = colMap[field] || field;
-    await supabase.from('consultations').update({ [col]: value }).eq('id', id);
+    const { error } = await supabase.from('consultations').update({ [col]: value }).eq('id', id);
+    if (error) throw error;
     syncLeadUpdateToSheets(id, { [field]: Array.isArray(value) ? (value as unknown[]).join(', ') : value });
   }, [isAdmin, syncLeadUpdateToSheets]);
 
   const deleteConsultation = useCallback(async (id: string) => {
     if (!isSuperAdmin) return;
-    await supabase.from('consultations').delete().eq('id', id);
+    const { error } = await supabase.from('consultations').delete().eq('id', id);
+    if (error) throw error;
     fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },

@@ -9,14 +9,17 @@ import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 import { APP_CONFIG } from '../data/mockData';
 import Fuse from 'fuse.js';
 import { normalizeVietnamese, matchBotFaq, getQuickReplies, splitIntents } from '../lib/botEngine';
+import { validateVietnamesePhone } from '../utils/phone';
 import { processMessageV2, FAQ_PRIMARY_INTENTS, PHASE_QUICK_REPLIES } from '../lib/botEngineV2';
 import { createInitialStateV2, type ConversationStateV2 } from '../types/botV2';
 import { offlineRagSearch } from '../lib/offlineRagEngine';
 import { vectorRagSearch } from '../lib/vectorRagEngine';
 import { autoSaveFaqPair } from '../utils/autoFaqSave';
 
-const SESSION_KEY   = 'h2o_live_session_id';
-const AUTO_OPEN_KEY = 'h2o_chat_auto_opened';
+const SESSION_KEY       = 'h2o_live_session_id';
+const SESSION_TOKEN_KEY = 'h2o_live_session_token';
+const AUTO_OPEN_KEY     = 'h2o_chat_auto_opened';
+const POLL_MS           = 5000;
 
 interface Msg {
   id: string;
@@ -71,7 +74,7 @@ function renderMsgContent(content: string, sender: 'customer' | 'admin') {
 }
 
 export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBotTier2Enabled, chatBotV2Enabled, chatBotV3Enabled, integrationConfig }: Props = {}) {
-  const { settings } = useApp();
+  const { settings, isAdmin, setUserPhone } = useApp();
   const isControlled = controlledOpen !== undefined;
 
   // Tên nhân viên từ settings
@@ -105,6 +108,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRef    = useRef(false);
   // Level 5: feedback 👍/👎
@@ -119,7 +123,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const scenarioCacheRef   = useRef<any[] | null>(null);
   const flowTimersRef      = useRef<ReturnType<typeof setTimeout>[]>([]);
   const CACHE_TTL_MS       = 10 * 60 * 1000; // 10 phút
+  const messagesRef        = useRef<Msg[]>([]);
   useEffect(() => { openRef.current = open; }, [open]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   // Auto-open — chỉ khi standalone + chatAutoOpenEnabled bật
   useEffect(() => {
@@ -145,58 +151,94 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     return () => { channelRef.current?.unsubscribe(); };
   }, [open]);
 
+  // Dọn polling khi unmount (polling tiếp tục khi đóng chat để bắt tin admin)
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    channelRef.current?.unsubscribe();
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, showForm]);
 
+  const mergeIncoming = (rows: Msg[]) => {
+    setMessages(prev => {
+      const known = new Set(prev.map(m => m.id));
+      const fresh = rows.filter(m => !known.has(m.id));
+      if (fresh.length === 0) return prev;
+      if (fresh.some(m => m.sender === 'admin') && !openRef.current) {
+        setHasNew(true);
+        playNotifSound();
+      }
+      return [...prev, ...fresh];
+    });
+  };
+
+  // Anon không được SELECT chat_* sau v3 → đọc qua RPC + polling.
+  // Admin (staff) vẫn được SELECT → giữ realtime postgres_changes.
   const subscribe = (sid: string) => {
     channelRef.current?.unsubscribe();
-    channelRef.current = supabase
-      .channel(`live_${sid}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public',
-        table: 'chat_messages', filter: `session_id=eq.${sid}`,
-      }, (payload) => {
-        const msg = payload.new as Msg;
-        setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
-        if (msg.sender === 'admin' && !openRef.current) {
-          setHasNew(true);
-          playNotifSound();
-        }
-      })
-      .subscribe();
+    channelRef.current = null;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+
+    const token = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (isAdmin) {
+      channelRef.current = supabase
+        .channel(`live_${sid}`)
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public',
+          table: 'chat_messages', filter: `session_id=eq.${sid}`,
+        }, (payload) => mergeIncoming([payload.new as Msg]))
+        .subscribe();
+      return;
+    }
+    if (!token) return;
+
+    const poll = async () => {
+      const lastTs = messagesRef.current.length
+        ? messagesRef.current[messagesRef.current.length - 1].created_at
+        : '1970-01-01';
+      const { data, error } = await (supabase as any).rpc('get_chat_messages', {
+        p_session_id: sid, p_token: token, p_after: lastTs,
+      });
+      if (!error && Array.isArray(data) && data.length > 0) mergeIncoming(data as Msg[]);
+    };
+    poll();
+    pollRef.current = setInterval(poll, POLL_MS);
   };
 
   const initSession = async () => {
     setBotStateV2(createInitialStateV2(sessionId || ''));
     setQuickReplies([]);
     const savedId = localStorage.getItem(SESSION_KEY);
-    if (savedId) {
-      const { data } = await supabase
-        .from('chat_sessions').select('id, phone, name')
-        .eq('id', savedId).maybeSingle();
-      if (data) {
-        setSessionId(data.id);
-        const anon = (data.phone as string).startsWith('anon_');
+    const savedToken = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (savedId && savedToken) {
+      const { data } = await (supabase as any).rpc('get_chat_session', { p_id: savedId, p_token: savedToken });
+      const sess = Array.isArray(data) ? data[0] : data;
+      if (sess?.id) {
+        setSessionId(sess.id);
+        const anon = (sess.phone as string).startsWith('anon_');
         setIsAnon(anon);
         setFormDone(!anon);
-        const { data: msgs } = await supabase
-          .from('chat_messages').select('id, sender, content, image_url, created_at')
-          .eq('session_id', data.id).order('created_at', { ascending: true });
-        setMessages((msgs || []) as Msg[]);
-        subscribe(data.id);
+        const { data: msgs } = await (supabase as any).rpc('get_chat_messages', {
+          p_session_id: sess.id, p_token: savedToken, p_after: '1970-01-01',
+        });
+        setMessages(((msgs || []) as Msg[]).sort((a, b) => a.created_at.localeCompare(b.created_at)));
+        subscribe(sess.id);
         if (anon && (msgs || []).length > 0) setShowForm(true);
         return;
       }
     }
     const sid  = crypto.randomUUID();
+    const tok  = crypto.randomUUID();
     const anon = `anon_${sid.slice(0, 8)}`;
     localStorage.setItem(SESSION_KEY, sid);
+    localStorage.setItem(SESSION_TOKEN_KEY, tok);
     await supabase.from('chat_sessions').insert({
       id: sid, phone: anon, name: '',
       status: 'waiting', stage: 'new',
       last_message: '', last_message_at: new Date().toISOString(),
-      unread_admin: 0, created_at: new Date().toISOString(),
+      unread_admin: 0, access_token: tok, created_at: new Date().toISOString(),
     });
     // Gửi lời chào đầu tiên tự động cho khách mới
     const greetId  = crypto.randomUUID();
@@ -386,6 +428,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         faqData: allFaqs,
         state: botStateV2,
         scenarioData: mappedScenarios,
+        paymentInfo: settings?.botPaymentInfo,
       });
       setBotStateV2(v2Result.newState);
 
@@ -528,7 +571,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       // Kiểm tra handoff trigger
       if (v2Result.handoffTrigger || engineResult.handoffTrigger) {
-        supabase.from('chat_sessions').update({ status: 'waiting', unread_admin: 99 }).eq('id', sid).then(() => {});
+        (supabase as any).rpc('bump_chat_unread', { p_session_id: sid }).then(() => {});
       }
 
       // Gắn ảnh báo giá nếu bot match đúng 1 gói cụ thể
@@ -572,6 +615,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot Tầng 1 error:', e);
+      await postFallbackMsg(sid);
     } finally {
       setIsThinking(false);
     }
@@ -666,6 +710,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
         faqData: allFaqs,
         state: botStateV2,
         scenarioData: [],
+        paymentInfo: settings?.botPaymentInfo,
       });
       setBotStateV2(v2Result.newState);
 
@@ -729,7 +774,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
 
       // Handoff check
       if (ragResult.handoffNeeded || v2Result.handoffTrigger) {
-        supabase.from('chat_sessions').update({ status: 'waiting', unread_admin: 99 }).eq('id', sid).then(() => {});
+        (supabase as any).rpc('bump_chat_unread', { p_session_id: sid }).then(() => {});
       }
 
       // Image from matched package
@@ -752,6 +797,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot V2 RAG error:', e);
+      await postFallbackMsg(sid);
     } finally {
       setIsThinking(false);
     }
@@ -805,12 +851,16 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     try {
       setIsThinking(true);
       const todayStr = new Date().toISOString().split('T')[0];
-      const [{ data: sess }, { data: scriptData }, { data: promoData }, { data: faqData }] = await Promise.all([
-        supabase.from('chat_sessions').select('stage').eq('id', sid).maybeSingle(),
+      // RLS v3: anon không còn SELECT trực tiếp được chat_sessions — phải qua RPC
+      // get_chat_session (cần access_token khớp), không thì stage luôn rơi về 'new'.
+      const sessToken = localStorage.getItem(SESSION_TOKEN_KEY) || '';
+      const [{ data: sessRows }, { data: scriptData }, { data: promoData }, { data: faqData }] = await Promise.all([
+        (supabase as any).rpc('get_chat_session', { p_id: sid, p_token: sessToken }),
         supabase.from('sale_scripts').select('id, phase, title, content').eq('enabled', true).order('order_num', { ascending: true }),
         supabase.from('promotions').select('title, short_desc, emoji, end_date, content').eq('enabled', true).eq('show_on_website', true).lte('start_date', todayStr).gte('end_date', todayStr).limit(3),
         supabase.from('customer_faqs').select('question, answer, category').eq('is_approved', true).order('usage_count', { ascending: false }).limit(30),
       ]);
+      const sess = Array.isArray(sessRows) ? sessRows[0] : sessRows;
 
       const thinkingDelay = settings?.chatBotThinkingDelay ?? 1200;
       await new Promise(r => setTimeout(r, thinkingDelay + Math.random() * 400));
@@ -857,9 +907,9 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
           })(),
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`live-chat-bot ${res.status}`);
       const { text } = await res.json();
-      if (!text) return;
+      if (!text) throw new Error('live-chat-bot empty response');
 
       const botId  = crypto.randomUUID();
       const botNow = new Date().toISOString();
@@ -872,6 +922,7 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       scheduleFollowUp(sid);
     } catch (e) {
       console.error('Bot Tầng 2 error:', e);
+      await postFallbackMsg(sid);
     } finally {
       setIsThinking(false);
     }
@@ -913,6 +964,20 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
       await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: followUpText, created_at: botNow });
       await supabase.from('chat_sessions').update({ last_message: followUpText, last_message_at: botNow }).eq('id', sid);
     }, delayMins * 60 * 1000);
+  };
+
+  // Tin nhắn an toàn khi MỌI bot engine fail — khách không bao giờ bị bỏ trống
+  const BOT_FALLBACK_MSG = 'Dạ chị đã nhận được tin nhắn của anh/chị rồi ạ! Chị sẽ phản hồi trong ít phút — nếu cần gấp anh/chị gọi hotline hoặc để lại SĐT giúp em nha 💕';
+  const postFallbackMsg = async (sid: string) => {
+    try {
+      const botId  = crypto.randomUUID();
+      const botNow = new Date().toISOString();
+      setMessages(prev => prev.some(m => m.content === BOT_FALLBACK_MSG) ? prev
+        : [...prev, { id: botId, sender: 'admin', content: BOT_FALLBACK_MSG, created_at: botNow }]);
+      await supabase.from('chat_messages').insert({ id: botId, session_id: sid, sender: 'admin', content: BOT_FALLBACK_MSG, created_at: botNow });
+      await supabase.from('chat_sessions').update({ last_message: BOT_FALLBACK_MSG, last_message_at: botNow }).eq('id', sid);
+      (supabase as any).rpc('bump_chat_unread', { p_session_id: sid }).then(() => {});
+    } catch {}
   };
 
   // ── Helper: post bot message trực tiếp (không qua bot engine) ──
@@ -993,29 +1058,27 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
     await supabase.from('chat_messages').insert({ id, session_id: sessionId, sender: 'customer', content, created_at: now });
     await supabase.from('chat_sessions').update({
       last_message: content, last_message_at: now, status: 'waiting',
-      unread_admin: messages.filter(m => m.sender === 'customer').length + 1,
     }).eq('id', sessionId);
+    // unread_admin tăng nguyên tử qua RPC (tránh race + sai số)
+    (supabase as any).rpc('bump_chat_unread', { p_session_id: sessionId })
+      .then(({ error }: any) => { if (error) console.warn('bump_chat_unread:', error.message); });
     // Thu thập lead tự động: phát hiện SĐT trong tin nhắn khách
     if (settings?.botCollectLeads && isAnon && !formDone) {
       const phoneMatch = content.match(/\b(0[3-9]\d{8})\b/);
       if (phoneMatch) {
         const detectedPhone = phoneMatch[1];
         supabase.from('chat_sessions').update({ phone: detectedPhone, status: 'waiting' }).eq('id', sessionId).then(() => {});
-        const { data: existing } = await supabase
-          .from('consultations').select('id').eq('phone', detectedPhone).limit(1).maybeSingle();
-        if (!existing) {
-          const consultId = crypto.randomUUID();
-          await supabase.from('consultations').insert({
-            id: consultId, name: detectedPhone, phone: detectedPhone,
-            status: 'new', source: 'website_chat',
-            message: 'Khách tự để lại SĐT trong chat (bot tự nhận diện)',
-            created_at: new Date().toISOString(),
+        // find_or_create_lead: atomic dedupe server-side (check+insert 1 chỗ)
+        const { data: consultId, error: leadErr } = await (supabase as any)
+          .rpc('find_or_create_lead', {
+            p_phone: detectedPhone, p_name: detectedPhone, p_source: 'website_chat',
+            p_message: 'Khách tự để lại SĐT trong chat (bot tự nhận diện)',
           });
+        if (leadErr) console.warn('find_or_create_lead:', leadErr.message);
+        if (consultId) {
           await supabase.from('chat_sessions').update({ consultation_id: consultId }).eq('id', sessionId);
-        } else {
-          await supabase.from('chat_sessions').update({ consultation_id: (existing as any).id }).eq('id', sessionId);
         }
-        localStorage.setItem('h2o_user_phone', detectedPhone);
+        setUserPhone(detectedPhone);
         sendLeadNotifications({ name: detectedPhone, phone: detectedPhone, source: 'website_chat', settings });
         setIsAnon(false);
         setFormDone(true);
@@ -1073,24 +1136,20 @@ export function LiveChatBubble({ controlledOpen, onClose, chatBotEnabled, chatBo
   const submitInfo = async () => {
     const phone = formPhone.trim();
     const name  = formName.trim();
-    if (phone.length < 9 || !sessionId) return;
+    if (!validateVietnamesePhone(phone) || !sessionId) return;
     setFormSaving(true);
     await supabase.from('chat_sessions').update({ phone, name, status: 'waiting' }).eq('id', sessionId);
-    const { data: existing } = await supabase
-      .from('consultations').select('id').eq('phone', phone).limit(1).maybeSingle();
-    if (!existing) {
-      const consultId = crypto.randomUUID();
-      await supabase.from('consultations').insert({
-        id: consultId, name: name || phone, phone,
-        status: 'new', source: 'website_chat',
-        message: 'Khách liên hệ qua Live Chat trên website',
-        created_at: new Date().toISOString(),
+    // find_or_create_lead: atomic dedupe — trả về id (mới hoặc đã có)
+    const { data: consultId, error: leadErr } = await (supabase as any)
+      .rpc('find_or_create_lead', {
+        p_phone: phone, p_name: name || phone, p_source: 'website_chat',
+        p_message: 'Khách liên hệ qua Live Chat trên website',
       });
+    if (leadErr) console.warn('find_or_create_lead:', leadErr.message);
+    if (consultId) {
       await supabase.from('chat_sessions').update({ consultation_id: consultId }).eq('id', sessionId);
-    } else {
-      await supabase.from('chat_sessions').update({ consultation_id: (existing as any).id }).eq('id', sessionId);
     }
-    localStorage.setItem('h2o_user_phone', phone);
+    setUserPhone(phone, name || undefined);
     const confirmId = crypto.randomUUID();
     await supabase.from('chat_messages').insert({
       id: confirmId, session_id: sessionId, sender: 'customer',

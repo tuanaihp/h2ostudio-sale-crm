@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+
+# Thêm khi có domain production:
+# Sitemap: https://<domain>/sitemap.xml

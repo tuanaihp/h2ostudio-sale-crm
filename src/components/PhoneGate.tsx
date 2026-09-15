@@ -4,13 +4,13 @@ import { Phone, ArrowRight, Lock, ChevronLeft, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { validateVietnamesePhone } from '../utils/phone';
-import { sendLeadNotifications } from '../utils/sendLeadNotifications';
 
 export const PhoneGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { userPhone, setUserPhone, isAdmin, login, isAuthReady, settings } = useApp();
+  const { userPhone, setUserPhone, isAdmin, login, isAuthReady, checkPhoneDuplicate, submitConsultation } = useApp();
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [visitedCount, setVisitedCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,8 +30,9 @@ export const PhoneGate: React.FC<{ children: React.ReactNode }> = ({ children })
     }
   }, [location.pathname, isAdmin, userPhone]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!name.trim()) {
       setError('Vui lòng nhập tên của bạn');
       return;
@@ -40,8 +41,25 @@ export const PhoneGate: React.FC<{ children: React.ReactNode }> = ({ children })
       setError('Số điện thoại không hợp lệ (VD: 0912345678)');
       return;
     }
-    setUserPhone(phone, name);
-    sendLeadNotifications({ name: name.trim(), phone, source: 'phone_gate', settings });
+    setSubmitting(true);
+    try {
+      // Lead đi qua pipeline đầy đủ: consultations + chat session + Sheets + Lark/Telegram
+      const isDup = await checkPhoneDuplicate(phone, 'phone_gate');
+      if (!isDup) {
+        await submitConsultation({
+          name: name.trim(),
+          phone,
+          source: 'phone_gate',
+          message: 'Khách hàng vượt qua màn hình đăng ký xem ảnh (PhoneGate) và cung cấp thông tin để trải nghiệm.',
+        });
+      }
+    } catch (err) {
+      console.warn('PhoneGate submit failed:', err);
+      // Vẫn cho qua — lead có thể sync sau; không chặn trải nghiệm vì lỗi mạng
+    } finally {
+      setUserPhone(phone, name.trim());
+      setSubmitting(false);
+    }
   };
 
   // If auth is not ready, show nothing or a subtle loader to prevent flash
@@ -133,9 +151,10 @@ export const PhoneGate: React.FC<{ children: React.ReactNode }> = ({ children })
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-secondary to-primary text-white py-4 rounded-2xl font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-xl shadow-primary/20 group"
+            disabled={submitting}
+            className="w-full bg-gradient-to-r from-secondary to-primary text-white py-4 rounded-2xl font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-xl shadow-primary/20 group disabled:opacity-60"
           >
-            Tiếp tục khám phá
+            {submitting ? 'Đang gửi...' : 'Tiếp tục khám phá'}
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
         </form>

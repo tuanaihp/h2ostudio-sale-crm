@@ -107,7 +107,8 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
     } catch (err) { console.error('Error seeding data:', err); }
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // ─── Load styles ────────────────────────────────────────────────────────────
   // Dùng ref cho isAdmin để tránh re-run effect khi isAdmin thay đổi sau login
@@ -156,8 +157,14 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (requestedAlbumsRef.current.has(styleId)) return;
     requestedAlbumsRef.current.add(styleId);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('albums').select('*').eq('style_id', styleId).eq('deleted', false).order('order', { ascending: true });
+
+    if (error) {
+      requestedAlbumsRef.current.delete(styleId); // cho phép retry ở lần sau
+      console.warn('Could not load albums:', error.message);
+      return;
+    }
 
     setStyles(prev => prev.map(s => {
       if (s.id !== styleId) return s;
@@ -174,8 +181,14 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (requestedPhotosRef.current.has(key)) return;
     requestedPhotosRef.current.add(key);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('photos').select('*').eq('album_id', albumId).eq('deleted', false).order('order', { ascending: true });
+
+    if (error) {
+      requestedPhotosRef.current.delete(key); // cho phép retry ở lần sau
+      console.warn('Could not load photos:', error.message);
+      return;
+    }
 
     setStyles(prev => prev.map(s => {
       if (s.id !== styleId) return s;
@@ -190,7 +203,9 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
   const touchStyle = useCallback((styleId: string) => {
-    supabase.from('styles').update({ updated_at: new Date().toISOString() }).eq('id', styleId);
+    // PostgrestBuilder chỉ gửi request khi được .then()/await — bắt buộc .then()
+    supabase.from('styles').update({ updated_at: new Date().toISOString() }).eq('id', styleId)
+      .then(({ error }) => { if (error) console.warn('touchStyle:', error.message); });
   }, []);
 
   // ─── Move helpers ─────────────────────────────────────────────────────────────
@@ -271,24 +286,27 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // ─── Reorder (batch) ─────────────────────────────────────────────────────────
   const reorderStyles = useCallback(async (newStyles: Style[]) => {
     if (!user || !isAdmin) return;
-    await supabase.from('styles').upsert(
+    const { error } = await supabase.from('styles').upsert(
       newStyles.map((s, i) => ({ id: s.id, order: i })), { onConflict: 'id' }
     );
+    if (error) throw error;
   }, [user, isAdmin]);
 
   const reorderAlbums = useCallback(async (styleId: string, newAlbums: Album[]) => {
     if (!user || !isAdmin) return;
-    await supabase.from('albums').upsert(
+    const { error } = await supabase.from('albums').upsert(
       newAlbums.map((a, i) => ({ id: a.id, order: i })), { onConflict: 'id' }
     );
+    if (error) throw error;
     touchStyle(styleId);
   }, [user, isAdmin, touchStyle]);
 
   const reorderPhotos = useCallback(async (styleId: string, albumId: string, newPhotos: Photo[]) => {
     if (!user || !isAdmin) return;
-    await supabase.from('photos').upsert(
+    const { error } = await supabase.from('photos').upsert(
       newPhotos.map((p, i) => ({ id: p.id, order: i })), { onConflict: 'id' }
     );
+    if (error) throw error;
     touchStyle(styleId);
   }, [user, isAdmin, touchStyle]);
 
@@ -310,13 +328,14 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       coverImage: uploadedState.mainImage || 'https://picsum.photos/seed/new/600/900',
       design: uploadedState, order, albums: [],
     };
+    const oldStyles = [...stylesRef.current];
     setStyles(prev => [...prev, newStyle]);
 
     const { error } = await supabase.from('styles').insert({
       id, slug, title: newStyle.title, description: newStyle.description,
       cover_image: newStyle.coverImage, design: uploadedState, order,
     });
-    if (error) { setStyles(stylesRef.current); throw error; }
+    if (error) { setStyles(oldStyles); throw error; }
   }, [user, isAdmin]);
 
   const addAlbum = useCallback(async (styleSlug: string, state: EditorState) => {
@@ -339,13 +358,14 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       coverImage: uploadedState.mainImage || 'https://picsum.photos/seed/new-album/600/900',
       design: uploadedState, order, photos: [],
     };
+    const oldStyles = [...stylesRef.current];
     setStyles(prev => prev.map(s => s.id === style.id ? { ...s, albums: [...(s.albums || []), newAlbum] } : s));
 
     const { error } = await supabase.from('albums').insert({
       id, style_id: style.id, slug, title: newAlbum.title, description: newAlbum.description,
       cover_image: newAlbum.coverImage, design: uploadedState, order,
     });
-    if (error) { setStyles(stylesRef.current); throw error; }
+    if (error) { setStyles(oldStyles); throw error; }
     touchStyle(style.id);
   }, [user, isAdmin, touchStyle]);
 
@@ -367,6 +387,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id, image: uploadedState.mainImage || 'https://picsum.photos/seed/new-photo/800/1200',
       alt: uploadedState.text || 'Ảnh mới', design: uploadedState, order,
     };
+    const oldStyles = [...stylesRef.current];
     setStyles(prev => prev.map(s => s.id === style.id ? {
       ...s, albums: s.albums.map(a => a.id === album.id ? { ...a, photos: [...(a.photos || []), newPhoto] } : a),
     } : s));
@@ -375,7 +396,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id, album_id: album.id, style_id: style.id,
       image: newPhoto.image, alt: newPhoto.alt, design: uploadedState, order,
     });
-    if (error) { setStyles(stylesRef.current); throw error; }
+    if (error) { setStyles(oldStyles); throw error; }
     touchStyle(style.id);
   }, [user, isAdmin, touchStyle]);
 
@@ -386,6 +407,8 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setStyles(prev => prev.filter(s => s.id !== styleId));
     const { error } = await supabase.from('styles').update({ deleted: true, deleted_at: new Date().toISOString() }).eq('id', styleId);
     if (error) { setStyles(oldStyles); throw error; }
+    // Xóa cache fetch để lần sau (vd: restore rồi vào lại trang) fetch lại từ DB
+    requestedAlbumsRef.current.delete(styleId);
   }, [user, isAdmin]);
 
   const deleteAlbum = useCallback(async (styleSlug: string, albumId: string) => {
@@ -416,17 +439,49 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // ─── Restore ─────────────────────────────────────────────────────────────────
   const restoreStyle = useCallback(async (styleId: string) => {
     if (!user || !isAdmin) return;
-    await supabase.from('styles').update({ deleted: false, deleted_at: null }).eq('id', styleId);
+    const { error } = await supabase.from('styles').update({ deleted: false, deleted_at: null }).eq('id', styleId);
+    if (error) throw error;
+    // Đưa item về lại local state (soft-delete đã filter nó ra)
+    const { data } = await supabase.from('styles').select('*').eq('id', styleId).maybeSingle();
+    if (data) {
+      const restored = { ...dbToStyle(data as DbStyleRow), albums: [] };
+      setStyles(prev => {
+        if (prev.some(s => s.id === styleId)) return prev;
+        return [...prev, restored].sort((a, b) => a.order - b.order);
+      });
+    }
   }, [user, isAdmin]);
 
   const restoreAlbum = useCallback(async (styleSlug: string, albumId: string) => {
     if (!user || !isAdmin) return;
-    await supabase.from('albums').update({ deleted: false, deleted_at: null }).eq('id', albumId);
+    const { error } = await supabase.from('albums').update({ deleted: false, deleted_at: null }).eq('id', albumId);
+    if (error) throw error;
+    const style = stylesRef.current.find(s => s.slug === styleSlug);
+    const { data } = await supabase.from('albums').select('*').eq('id', albumId).maybeSingle();
+    if (data && style) {
+      const restored = { ...dbToAlbum(data as DbAlbumRow), photos: [] };
+      setStyles(prev => prev.map(s => s.id === style.id
+        ? { ...s, albums: (s.albums || []).some(a => a.id === albumId) ? s.albums : [...(s.albums || []), restored].sort((a, b) => a.order - b.order) }
+        : s));
+    }
   }, [user, isAdmin]);
 
   const restorePhoto = useCallback(async (styleSlug: string, albumSlug: string, photoId: string) => {
     if (!user || !isAdmin) return;
-    await supabase.from('photos').update({ deleted: false, deleted_at: null }).eq('id', photoId);
+    const { error } = await supabase.from('photos').update({ deleted: false, deleted_at: null }).eq('id', photoId);
+    if (error) throw error;
+    const style = stylesRef.current.find(s => s.slug === styleSlug);
+    const album = style?.albums?.find(a => a.slug === albumSlug);
+    const { data } = await supabase.from('photos').select('*').eq('id', photoId).maybeSingle();
+    if (data && style && album) {
+      const restored = dbToPhoto(data as DbPhotoRow);
+      setStyles(prev => prev.map(s => s.id === style.id ? {
+        ...s,
+        albums: (s.albums || []).map(a => a.id === album.id
+          ? { ...a, photos: (a.photos || []).some(p => p.id === photoId) ? a.photos : [...(a.photos || []), restored].sort((x, y) => x.order - y.order) }
+          : a),
+      } : s));
+    }
   }, [user, isAdmin]);
 
   // ─── Permanent delete ────────────────────────────────────────────────────────
@@ -436,6 +491,9 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const style = stylesRef.current.find(s => s.id === styleId);
     setStyles(prev => prev.filter(s => s.id !== styleId));
     try {
+      const { error } = await supabase.from('styles').delete().eq('id', styleId);
+      if (error) throw error;
+      // Xóa asset sau khi DB đã xóa thành công — tránh mất ảnh nếu DB fail
       if (style?.coverImage) deleteImageFromStorage(style.coverImage).catch(console.error);
       if (style?.design?.mainImage) deleteImageFromStorage(style.design.mainImage).catch(console.error);
       if (style?.design?.logo1) deleteImageFromStorage(style.design.logo1).catch(console.error);
@@ -448,8 +506,6 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (photo.image) deleteImageFromStorage(photo.image).catch(console.error);
         }
       }
-      const { error } = await supabase.from('styles').delete().eq('id', styleId);
-      if (error) throw error;
     } catch (err) { setStyles(oldStyles); throw err; }
   }, [user, isAdmin]);
 
@@ -461,14 +517,14 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const album = style.albums?.find(a => a.id === albumId);
     setStyles(prev => prev.map(s => s.id === style.id ? { ...s, albums: (s.albums || []).filter(a => a.id !== albumId) } : s));
     try {
+      const { error } = await supabase.from('albums').delete().eq('id', albumId);
+      if (error) throw error;
       if (album?.coverImage) deleteImageFromStorage(album.coverImage).catch(console.error);
       if (album?.design?.mainImage) deleteImageFromStorage(album.design.mainImage).catch(console.error);
       const { data: allPhotos } = await supabase.from('photos').select('image, design').eq('album_id', albumId);
       for (const photo of allPhotos || []) {
         if (photo.image) deleteImageFromStorage(photo.image).catch(console.error);
       }
-      const { error } = await supabase.from('albums').delete().eq('id', albumId);
-      if (error) throw error;
       touchStyle(style.id);
     } catch (err) { setStyles(oldStyles); throw err; }
   }, [user, isAdmin, touchStyle]);
@@ -484,10 +540,10 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...s, albums: (s.albums || []).map(a => a.id === album.id ? { ...a, photos: (a.photos || []).filter(p => p.id !== photoId) } : a),
     } : s));
     try {
-      if (photo?.image) deleteImageFromStorage(photo.image).catch(console.error);
-      if (photo?.design?.mainImage) deleteImageFromStorage(photo.design.mainImage).catch(console.error);
       const { error } = await supabase.from('photos').delete().eq('id', photoId);
       if (error) throw error;
+      if (photo?.image) deleteImageFromStorage(photo.image).catch(console.error);
+      if (photo?.design?.mainImage) deleteImageFromStorage(photo.design.mainImage).catch(console.error);
       touchStyle(style.id);
     } catch (err) { setStyles(oldStyles); throw err; }
   }, [user, isAdmin, touchStyle]);
@@ -506,13 +562,14 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } : s));
     try {
       let finalUrl = base64OrUrlImage;
+      const oldPhoto = album.photos?.find(p => p.id === photoId);
       if (base64OrUrlImage.startsWith('data:image')) {
-        const oldPhoto = album.photos?.find(p => p.id === photoId);
-        if (oldPhoto?.image) deleteImageFromStorage(oldPhoto.image).catch(console.error);
         finalUrl = await uploadImageToStorage(base64OrUrlImage, `styles/${style.id}/albums/${album.id}/photos/${photoId}/mainImage.jpg`, album.title);
       }
       const { error } = await supabase.from('photos').update({ image: finalUrl, design: null }).eq('id', photoId);
       if (error) throw error;
+      // Xóa ảnh cũ sau khi DB update thành công
+      if (oldPhoto?.image && oldPhoto.image !== finalUrl) deleteImageFromStorage(oldPhoto.image).catch(console.error);
       touchStyle(style.id);
     } catch (err) { setStyles(oldStyles); throw err; }
   }, [user, isAdmin, touchStyle]);
@@ -527,9 +584,9 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...s, albums: (s.albums || []).map(a => a.id === album.id ? { ...a, coverImage, design: undefined } : a),
     } : s));
     try {
-      if (album.coverImage && coverImage !== album.coverImage) deleteImageFromStorage(album.coverImage).catch(console.error);
       const { error } = await supabase.from('albums').update({ cover_image: coverImage, design: null }).eq('id', album.id);
       if (error) throw error;
+      if (album.coverImage && coverImage !== album.coverImage) deleteImageFromStorage(album.coverImage).catch(console.error);
       touchStyle(style.id);
     } catch (err) { setStyles(oldStyles); throw err; }
   }, [user, isAdmin, touchStyle]);
@@ -540,9 +597,9 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const oldStyles = [...stylesRef.current];
     setStyles(prev => prev.map(s => s.id === styleId ? { ...s, coverImage, design: undefined } : s));
     try {
-      if (style?.coverImage && coverImage !== style.coverImage) deleteImageFromStorage(style.coverImage).catch(console.error);
       const { error } = await supabase.from('styles').update({ cover_image: coverImage, design: null, updated_at: new Date().toISOString() }).eq('id', styleId);
       if (error) throw error;
+      if (style?.coverImage && coverImage !== style.coverImage) deleteImageFromStorage(style.coverImage).catch(console.error);
     } catch (err) { setStyles(oldStyles); throw err; }
   }, [user, isAdmin]);
 
@@ -551,10 +608,12 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const style = stylesRef.current.find(s => s.slug === styleSlug);
     const album = style?.albums?.find(a => a.slug === albumSlug);
     if (!style || !album) return;
+    const oldStyles = [...stylesRef.current];
     setStyles(prev => prev.map(s => s.id === style.id ? {
       ...s, albums: (s.albums || []).map(a => a.id === album.id ? { ...a, coverImagePos: pos } : a),
     } : s));
-    await supabase.from('albums').update({ cover_image_pos: pos }).eq('id', album.id);
+    const { error } = await supabase.from('albums').update({ cover_image_pos: pos }).eq('id', album.id);
+    if (error) { setStyles(oldStyles); throw error; }
     touchStyle(style.id);
   }, [user, isAdmin, touchStyle]);
 
@@ -563,6 +622,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const style = stylesRef.current.find(s => s.slug === styleSlug);
     const album = style?.albums?.find(a => a.slug === albumSlug);
     if (!style || !album) return;
+    const oldStyles = [...stylesRef.current];
     setStyles(prev => prev.map(s => s.id === style.id ? {
       ...s, albums: (s.albums || []).map(a => a.id === album.id ? { ...a, [field]: value } : a),
     } : s));
@@ -570,7 +630,8 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       title: 'title', description: 'description',
       suggestedLayout: 'suggested_layout', suitableFor: 'suitable_for', displayLikes: 'display_likes',
     };
-    await supabase.from('albums').update({ [colMap[field]]: value }).eq('id', album.id);
+    const { error } = await supabase.from('albums').update({ [colMap[field]]: value }).eq('id', album.id);
+    if (error) { setStyles(oldStyles); throw error; }
     touchStyle(style.id);
   }, [user, isAdmin, touchStyle]);
 
@@ -578,8 +639,10 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user || !isAdmin) return;
     const style = stylesRef.current.find(s => s.slug === styleSlug);
     if (!style) return;
+    const oldStyles = [...stylesRef.current];
     setStyles(prev => prev.map(s => s.id === style.id ? { ...s, [field]: value } : s));
-    await supabase.from('styles').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', style.id);
+    const { error } = await supabase.from('styles').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', style.id);
+    if (error) { setStyles(oldStyles); throw error; }
   }, [user, isAdmin]);
 
   return (

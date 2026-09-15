@@ -115,13 +115,6 @@ const Home: React.FC = () => {
         {/* Data Management Tools */}
         {isSuperAdmin && (
           <div className="flex justify-end gap-3 mb-4">
-            <button 
-              onClick={() => (window as any).forceSeed?.()} 
-              className="text-[10px] uppercase tracking-widest font-bold text-red-500 hover:text-red-700 transition-colors mr-auto"
-              title="Nhấn để nạp lại dữ liệu mẫu nếu Database trống"
-            >
-              NẠP DỮ LIỆU
-            </button>
             <button onClick={exportData} className="text-[10px] uppercase tracking-widest font-bold text-dark/40 hover:text-primary transition-colors">
               Sao lưu (Tải về)
             </button>

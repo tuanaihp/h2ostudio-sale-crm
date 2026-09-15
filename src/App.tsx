@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavig
 import { ScrollToTop } from './components/ScrollToTop';
 import { AppProvider } from './context/AppContext';
 import { PhoneGate } from './components/PhoneGate';
+import { RequireAdmin } from './components/RequireAdmin';
 import { useAuth } from './context/AppContext';
 import Home from './pages/Home';
 
@@ -19,6 +20,8 @@ const AdminScripts = lazy(() => import('./pages/AdminScripts'));
 const AdminPromotions = lazy(() => import('./pages/AdminPromotions'));
 const AdminKnowledgeBase = lazy(() => import('./pages/AdminKnowledgeBase'));
 const AdminBotStudio = lazy(() => import('./pages/AdminBotStudio'));
+const Promotions = lazy(() => import('./pages/Promotions'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-white">
@@ -63,16 +66,18 @@ function AppContent() {
           <Route path="/favorites" element={
             <PhoneGate><Favorites /></PhoneGate>
           } />
+          <Route path="/promotions" element={<Promotions />} />
           <Route path="/admin" element={<Navigate to="/admin/consultations" replace />} />
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/admin/consultations" element={<AdminConsultations />} />
-          <Route path="/admin/settings" element={<AdminSettings />} />
-          <Route path="/admin/trash" element={<AdminTrash />} />
-          <Route path="/admin/content" element={<AdminContent />} />
-          <Route path="/admin/scripts" element={<AdminScripts />} />
-          <Route path="/admin/promotions" element={<AdminPromotions />} />
-          <Route path="/admin/knowledge-base" element={<AdminKnowledgeBase />} />
-          <Route path="/admin/bot" element={<AdminBotStudio />} />
+          <Route path="/admin/consultations" element={<RequireAdmin><AdminConsultations /></RequireAdmin>} />
+          <Route path="/admin/settings" element={<RequireAdmin><AdminSettings /></RequireAdmin>} />
+          <Route path="/admin/trash" element={<RequireAdmin><AdminTrash /></RequireAdmin>} />
+          <Route path="/admin/content" element={<RequireAdmin><AdminContent /></RequireAdmin>} />
+          <Route path="/admin/scripts" element={<RequireAdmin><AdminScripts /></RequireAdmin>} />
+          <Route path="/admin/promotions" element={<RequireAdmin><AdminPromotions /></RequireAdmin>} />
+          <Route path="/admin/knowledge-base" element={<RequireAdmin><AdminKnowledgeBase /></RequireAdmin>} />
+          <Route path="/admin/bot" element={<RequireAdmin><AdminBotStudio /></RequireAdmin>} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
     </>

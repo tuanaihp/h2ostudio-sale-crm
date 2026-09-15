@@ -470,10 +470,21 @@ function applyBusinessRulesV2(
 // ══════════════════════════════════════════════════════════════════════════════
 // BƯỚC 10 — Response Builder: ghép script + FAQ + CTA
 // ══════════════════════════════════════════════════════════════════════════════
+// Thông tin chuyển khoản mặc định — override bằng settings.botPaymentInfo
+const DEFAULT_PAYMENT_INFO =
+  '➡️ MB Bank: 9098688688888 – NGUYEN THU THUY\n' +
+  '➡️ Vietcombank: 0031000367971 – NGUYEN THU THUY';
+
+const depositCtaText = (paymentInfo?: string): string =>
+  '\n💳 Đặt cọc 1.000.000đ để giữ lịch:\n' +
+  (paymentInfo?.trim() || DEFAULT_PAYMENT_INFO) +
+  '\nGhi nội dung: [Tên] cọc chụp ảnh – Gửi chị ảnh CK nha em!';
+
 function buildResponseV2(
   scriptContent: string,
   injectedFaq: AnyFaq | null,
   businessAction: BusinessAction,
+  paymentInfo?: string,
 ): string {
   const parts: string[] = [];
 
@@ -497,12 +508,7 @@ function buildResponseV2(
     parts.push('Chỉ cọc 1.000.000đ là giữ được lịch + toàn bộ ưu đãi hiện tại nha em!');
   }
   if (businessAction.appendDepositCTA) {
-    parts.push(
-      '\n💳 Đặt cọc 1.000.000đ để giữ lịch:\n' +
-      '➡️ MB Bank: 9098688688888 – NGUYEN THU THUY\n' +
-      '➡️ Vietcombank: 0031000367971 – NGUYEN THU THUY\n' +
-      'Ghi nội dung: [Tên] cọc chụp ảnh – Gửi chị ảnh CK nha em!',
-    );
+    parts.push(depositCtaText(paymentInfo));
   }
 
   return parts.join('\n').trim();
@@ -592,8 +598,10 @@ export function processMessageV2(params: {
   faqData: AnyFaq[];
   state: ConversationStateV2;
   scenarioData?: SaleScenario[];
+  /** settings.botPaymentInfo — override thông tin chuyển khoản */
+  paymentInfo?: string;
 }): BotV2Result {
-  const { rawMessage, scriptData, faqData, state, scenarioData = [] } = params;
+  const { rawMessage, scriptData, faqData, state, scenarioData = [], paymentInfo } = params;
 
   // ── Step 1: Normalize ──
   const normalized = normalizeVietnamese(rawMessage);
@@ -753,10 +761,10 @@ export function processMessageV2(params: {
       text += '\n\n🔥 Lịch tháng này đang được đặt nhanh lắm em ơi! 💕';
     }
     if (businessAction.appendDepositCTA) {
-      text += '\n\n💳 Đặt cọc 1.000.000đ:\n➡️ MB Bank: 9098688688888 – NGUYEN THU THUY\nGhi nội dung: [Tên] cọc chụp ảnh';
+      text += '\n' + depositCtaText(paymentInfo);
     }
   } else {
-    text = buildResponseV2(scriptContent, injectedFaq, businessAction);
+    text = buildResponseV2(scriptContent, injectedFaq, businessAction, paymentInfo);
   }
 
   // Giới hạn độ dài

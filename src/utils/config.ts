@@ -4,6 +4,5 @@ export const GOOGLE_SCRIPT_URL: string =
 
 export const GOOGLE_DRIVE_FOLDER_ID = '1N3yRO61mkEcWf2mQ-2aA244kfGA7hs11';
 
-// Cloudflare R2 — điền vào Vercel env khi tạo xong Cloudflare
-export const R2_WORKER_URL: string = (import.meta as any).env?.VITE_R2_WORKER_URL || '';
-export const R2_UPLOAD_SECRET: string = (import.meta as any).env?.VITE_R2_UPLOAD_SECRET || '';
+// Cloudflare R2 — upload/delete đi qua /api/r2-upload + /api/r2-delete (server-side).
+// KHÔNG đặt R2 secret trong VITE_ env — nó sẽ lộ trong client bundle.

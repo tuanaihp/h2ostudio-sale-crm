@@ -175,7 +175,7 @@ CREATE POLICY "Auth delete images" ON storage.objects FOR DELETE USING (bucket_i
 -- HUONG DAN SAU KHI CHAY SQL:
 -- 1. Authentication -> Providers -> Google -> Enable (neu muon dang nhap Google)
 --    Them Google Client ID va Secret tu Google Cloud Console
--- 2. Authentication -> Users -> Add user:
---    Email: staff@h2ostudio.com | Password: H2oStudioStaff2026!
---    Email: maxsamuelbldhp@gmail.com | Password: (dat mat khau cho admin)
+-- 2. Authentication -> Users -> Add user: tao account RIENG cho tung nhan vien
+--    (email that + mat khau manh), KHONG dung account dung chung.
+--    Sau do gan role trong bang user_roles: 'staff' | 'admin' | 'super_admin'.
 -- ============================================================

@@ -225,7 +225,12 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
 
   // Load messages when session switches
   useEffect(() => {
-    if (!activeId) return;
+    if (!isOpen || !activeId) {
+      // Panel đóng → hủy subscription để không nhận event + ghi unread_admin sai
+      messageCh.current?.unsubscribe();
+      messageCh.current = null;
+      return;
+    }
     loadMessages(activeId);
     markRead(activeId);
     fetchScripts(activeId);
@@ -242,7 +247,7 @@ export function AdminChatPanel({ isOpen, onClose, initialPhone, consultations }:
       })
       .subscribe();
     return () => { messageCh.current?.unsubscribe(); };
-  }, [activeId]);
+  }, [activeId, isOpen]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 

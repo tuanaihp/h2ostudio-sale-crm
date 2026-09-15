@@ -30,19 +30,14 @@ export const useApp = () => {
   const content = useContent();
   const toast = useToast();
 
-  // isAdmin: ngoài HARDCODED_STAFF_PHONES, còn check settings.staffPhones từ Supabase
-  // Yêu cầu user phải đã Supabase-authenticated (auth.user !== null) để tránh PhoneGate bypass
-  const staffPhones = settingsCtx.settings?.staffPhones || [];
-  const isAdmin = auth.isAdmin ||
-    (auth.user !== null && auth.checkPhoneInWhitelist(auth.userPhone, staffPhones));
-
+  // isAdmin chỉ từ AuthContext (server-verified: user_roles + user.phone từ session).
+  // KHÔNG check auth.userPhone (localStorage) — user tự ghi được → giả mạo admin UI.
   return {
     ...auth,
     ...settingsCtx,
     ...consultations,
     ...content,
     ...toast,
-    isAdmin,
   };
 };
 

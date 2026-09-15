@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { StyleCard } from '../components/StyleCard';
 import { AlbumCard } from '../components/AlbumCard';
@@ -13,7 +13,7 @@ import { ChatModal } from '../components/ChatModal';
 import { motion } from 'motion/react';
 
 export const Favorites: React.FC = () => {
-  const { styles, favorites } = useApp();
+  const { styles, favorites, fetchAlbums, fetchPhotos } = useApp();
   const [searchParams] = useSearchParams();
   const [isConsultModalOpen, setIsConsultModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
@@ -25,8 +25,34 @@ export const Favorites: React.FC = () => {
     return raw ? raw.split(',').filter(Boolean) : null;
   }, [searchParams]);
 
+  const activeIds = previewIds ?? favorites;
+
+  // Favorites/photos được lazy-load theo trang detail — ở đây phải tự fetch:
+  // bước 1: tải albums của mọi style; bước 2: nếu vẫn còn id chưa resolve
+  // (photo ids) → tải photos của các album đã có.
+  useEffect(() => {
+    if (!activeIds.length) return;
+    styles.forEach(s => { if (!s.albums) fetchAlbums(s.id); });
+  }, [styles, activeIds, fetchAlbums]);
+
+  useEffect(() => {
+    if (!activeIds.length) return;
+    const resolved = new Set<string>();
+    styles.forEach(s => {
+      if (s.id) resolved.add(s.id);
+      (s.albums || []).forEach(a => resolved.add(a.id));
+    });
+    const hasUnresolved = activeIds.some(id => !resolved.has(id));
+    if (!hasUnresolved) return;
+    styles.forEach(s =>
+      (s.albums || []).forEach(a => {
+        if (!a.photos) fetchPhotos(s.id, a.id);
+      })
+    );
+  }, [styles, activeIds, fetchPhotos]);
+
   const favoriteItems = useMemo(() => {
-    const ids = previewIds ?? favorites;
+    const ids = activeIds;
     const items: { type: 'style' | 'album' | 'photo', data: any, styleSlug?: string, albumSlug?: string, index?: number }[] = [];
     styles.forEach(style => {
       if (ids.includes(style.id)) {
@@ -44,7 +70,22 @@ export const Favorites: React.FC = () => {
       });
     });
     return items;
-  }, [styles, favorites, previewIds]);
+  }, [styles, activeIds]);
+
+  // Đang lazy-load albums/photos → hiện spinner thay vì flash trạng thái rỗng
+  const stillLoading = activeIds.length > 0 && favoriteItems.length === 0 &&
+    (styles.length === 0 ||
+     styles.some(s => !s.albums || (s.albums || []).some(a => !a.photos)));
+
+  if (stillLoading) {
+    return (
+      <Layout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (favoriteItems.length === 0) {
     return (

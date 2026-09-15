@@ -1,5 +1,10 @@
 import { supabase } from '../supabase';
-import { GOOGLE_SCRIPT_URL, GOOGLE_DRIVE_FOLDER_ID, R2_WORKER_URL, R2_UPLOAD_SECRET } from './config';
+import { GOOGLE_SCRIPT_URL, GOOGLE_DRIVE_FOLDER_ID } from './config';
+
+const getAccessToken = async (): Promise<string> => {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || '';
+};
 
 export const getDisplayImageUrl = (url: string | undefined): string => {
   if (!url) return '';
@@ -18,16 +23,17 @@ export const getDisplayImageUrl = (url: string | undefined): string => {
 export const deleteImageFromStorage = async (imageUrl: string | undefined): Promise<void> => {
   if (!imageUrl || imageUrl.startsWith('data:image')) return;
 
-  // R2
-  if (R2_WORKER_URL && imageUrl.includes('r2.dev') || (R2_WORKER_URL && imageUrl.includes('workers.dev'))) {
+  // R2 — xoá qua server endpoint (secret nằm server-side, không lộ client)
+  if (imageUrl.includes('r2.dev') || imageUrl.includes('workers.dev')) {
     try {
       const url = new URL(imageUrl);
       const path = url.pathname.replace(/^\//, '');
-      await fetch(`${R2_WORKER_URL}/delete`, {
+      const token = await getAccessToken();
+      await fetch('/api/r2-delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(R2_UPLOAD_SECRET ? { 'Authorization': `Bearer ${R2_UPLOAD_SECRET}` } : {}),
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ path }),
       });
@@ -94,7 +100,9 @@ const uploadToSupabase = async (base64Image: string, path: string): Promise<stri
 };
 
 const uploadToR2 = async (base64Image: string, path: string): Promise<string> => {
-  if (!R2_WORKER_URL) throw new Error('R2 not configured');
+  const token = await getAccessToken();
+  if (!token) throw new Error('Chưa đăng nhập — không upload được');
+
   const parts = base64Image.split(',');
   const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
   const base64Data = parts[1];
@@ -102,20 +110,21 @@ const uploadToR2 = async (base64Image: string, path: string): Promise<string> =>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-  const response = await fetch(R2_WORKER_URL, {
+  const response = await fetch('/api/r2-upload', {
     method: 'POST',
     signal: controller.signal,
     headers: {
       'Content-Type': 'application/json',
-      ...(R2_UPLOAD_SECRET ? { 'Authorization': `Bearer ${R2_UPLOAD_SECRET}` } : {}),
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ base64: base64Data, path, mimeType: mime }),
   });
 
   clearTimeout(timeoutId);
-  if (!response.ok) throw new Error(`R2 Worker responded ${response.status}`);
+  if (!response.ok) throw new Error(`R2 upload responded ${response.status}`);
   const result = await response.json();
   if (result.status === 'success' && result.url) return result.url;
+  if (result.url) return result.url;
   throw new Error('R2 returned no URL');
 };
 
@@ -149,20 +158,28 @@ const uploadToDrive = async (base64Image: string, path: string, displayFolderNam
   throw new Error('Drive returned no URL');
 };
 
+const fileToBase64 = (file: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
 export const uploadImageToStorage = async (
-  base64Image: string,
+  image: string | Blob,
   path: string,
   displayFolderName?: string
 ): Promise<string> => {
+  // Chấp nhận cả File/Blob — convert sang data URL trước khi xử lý
+  const base64Image = image instanceof Blob ? await fileToBase64(image) : image;
   if (!base64Image.startsWith('data:image')) return base64Image;
 
-  // Tầng 1: Cloudflare R2 (chính — nhanh nhất, CDN toàn cầu)
-  if (R2_WORKER_URL) {
-    try {
-      return await uploadToR2(base64Image, path);
-    } catch (e: any) {
-      console.warn('R2 upload failed, trying Google Drive:', e.message);
-    }
+  // Tầng 1: Cloudflare R2 qua /api/r2-upload (chính — nhanh nhất, CDN toàn cầu)
+  try {
+    return await uploadToR2(base64Image, path);
+  } catch (e: any) {
+    console.warn('R2 upload failed, trying Google Drive:', e.message);
   }
 
   // Tầng 2: Google Drive (dự phòng 1)

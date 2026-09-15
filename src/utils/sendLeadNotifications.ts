@@ -1,4 +1,6 @@
-/** Gửi thông báo Lark + Telegram cho mọi điểm đăng ký (chat form, PhoneGate, consultation). */
+/** Gửi thông báo Lark + Telegram cho mọi điểm đăng ký (chat form, PhoneGate, consultation).
+ *  Credentials (botToken/chatId/webhook) nằm ở ENV server-side — client KHÔNG gửi,
+ *  chỉ gửi dữ liệu lead. Gate chỉ dựa trên flag bật/tắt (không nhạy cảm). */
 export async function sendLeadNotifications({
   name, phone, source, albums, luckyGift, settings,
 }: {
@@ -9,10 +11,7 @@ export async function sendLeadNotifications({
   luckyGift?: string;
   settings?: {
     larkNotificationEnabled?: boolean;
-    larkWebhookUrl?: string;
     telegramNotificationEnabled?: boolean;
-    telegramBotToken?: string;
-    telegramChatId?: string;
   } | null;
 }) {
   if (settings?.larkNotificationEnabled !== false) {
@@ -23,20 +22,17 @@ export async function sendLeadNotifications({
         name, phone, source, luckyGift,
         favoriteCount: albums?.length ?? 0,
         albums: albums ?? [],
-        webhookUrl: settings?.larkWebhookUrl || undefined,
       }),
     }).catch(() => {});
   }
 
-  if (settings?.telegramNotificationEnabled && settings?.telegramBotToken && settings?.telegramChatId) {
+  if (settings?.telegramNotificationEnabled) {
     fetch('/api/telegram-notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name, phone, source, luckyGift,
         albums: albums ?? [],
-        botToken: settings.telegramBotToken,
-        chatId: settings.telegramChatId,
       }),
     }).catch(() => {});
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../supabase';
 import { expandQuery } from '../utils/synonyms';
@@ -593,7 +593,7 @@ interface PendingEdit { answer: string; category: string; }
 
 export default function AdminBotStudio() {
   const { settings, updateSettings, isAdmin, isSuperAdmin } = useApp() as any;
-  if (!isAdmin) return <Navigate to="/admin/login" replace />;
+  // Auth guard nằm ở RequireAdmin (route level) — không return sớm trước hooks.
 
   const [tab, setTab] = useState<Tab>('home');
   const [kTab, setKTab] = useState<KnowledgeTab>('faqs');
@@ -1283,6 +1283,7 @@ export default function AdminBotStudio() {
         scriptData: scriptData || [],
         faqData: faqData || [],
         state: testStateV2,
+        paymentInfo: settings?.botPaymentInfo,
       });
       setTestStateV2(v2Result.newState);
 
@@ -1604,7 +1605,7 @@ export default function AdminBotStudio() {
               <div className="ml-auto flex items-center gap-2">
                 <button onClick={() => { if (kTab === 'faqs') loadFaqs(); else loadScripts(); }} className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-colors"><RefreshCw size={15} /></button>
                 {kTab === 'faqs'
-                  ? <button onClick={openAddFaq} className="flex items-center gap-1.5 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-700 transition-colors"><Plus size={15} /> Thêm câu hỏi</button>
+                  ? <button onClick={() => openAddFaq()} className="flex items-center gap-1.5 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-700 transition-colors"><Plus size={15} /> Thêm câu hỏi</button>
                   : <button onClick={() => setScriptModal({ open: true, script: { phase: selectedPhase, enabled: true } })} className="flex items-center gap-1.5 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-700 transition-colors"><Plus size={15} /> Thêm kịch bản</button>}
               </div>
             </div>
@@ -1685,7 +1686,7 @@ export default function AdminBotStudio() {
                 {faqLoading
                   ? <div className="text-center py-16"><div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" /><p className="text-gray-400 text-sm">Đang tải...</p></div>
                   : filteredFaqs.length === 0
-                    ? <div className="text-center py-16 bg-white rounded-2xl border border-gray-100"><BookOpen size={40} className="mx-auto mb-3 text-gray-200" /><p className="font-medium text-gray-500">{faqSearch || faqCatFilter !== 'all' ? 'Không tìm thấy câu hỏi nào' : 'Kho câu hỏi đang trống'}</p><button onClick={openAddFaq} className="mt-4 text-purple-600 text-sm font-bold hover:underline">+ Thêm câu hỏi đầu tiên</button></div>
+                    ? <div className="text-center py-16 bg-white rounded-2xl border border-gray-100"><BookOpen size={40} className="mx-auto mb-3 text-gray-200" /><p className="font-medium text-gray-500">{faqSearch || faqCatFilter !== 'all' ? 'Không tìm thấy câu hỏi nào' : 'Kho câu hỏi đang trống'}</p><button onClick={() => openAddFaq()} className="mt-4 text-purple-600 text-sm font-bold hover:underline">+ Thêm câu hỏi đầu tiên</button></div>
                     : (
                       <div className="space-y-2.5">
                         {filteredFaqs.map(faq => (
@@ -1863,7 +1864,7 @@ export default function AdminBotStudio() {
                   className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
                   <Plus size={15} /> Thêm thông tin
                 </button>
-                <button onClick={() => { setPkgForm({ title: '', price: '', description: '', image_url: '', service_type: '', keywords: '', enabled: true }); setPkgModal({ open: true, pkg: null }); }}
+                <button onClick={() => { setPkgForm({ title: '', price: '', description: '', image_url: '', album_url: '', service_type: '', keywords: '', enabled: true }); setPkgModal({ open: true, pkg: null }); }}
                   className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors shadow-sm">
                   <Plus size={15} /> Thêm báo giá mới
                 </button>
@@ -1908,7 +1909,7 @@ export default function AdminBotStudio() {
                           <p className="text-xs text-gray-400">{pricePackages.length > 0 ? `${pricePackages.filter(p => p.enabled).length} gói đang bật` : 'Chưa có gói báo giá'}</p>
                         </div>
                       </div>
-                      <button onClick={() => { setPkgForm({ title: '', price: '', description: '', image_url: '', service_type: '', keywords: '', enabled: true }); setPkgModal({ open: true, pkg: null }); }}
+                      <button onClick={() => { setPkgForm({ title: '', price: '', description: '', image_url: '', album_url: '', service_type: '', keywords: '', enabled: true }); setPkgModal({ open: true, pkg: null }); }}
                         className="flex items-center gap-1.5 text-xs bg-purple-50 text-purple-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
                         <Plus size={12} /> Thêm mới
                       </button>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase, loginWithGoogle, logout } from '../supabase';
 
 const LIKE_SESSION_KEY = 'h2o_like_session';
@@ -57,21 +57,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [favorites]);
 
   const toggleFavorite = useCallback((id: string) => {
-    const sessionId = getLikeSessionId();
+    // Side-effect đặt NGOÀI setState updater — StrictMode double-invoke updater
+    // sẽ gây gọi API upsert/delete 2 lần nếu để bên trong.
     setFavorites(prev => {
       const isAdding = !prev.includes(id);
-      if (isAdding) {
-        supabase.from('album_likes')
-          .upsert({ album_id: id, session_id: sessionId }, { onConflict: 'album_id,session_id' })
-          .then(() => {});
-      } else {
-        supabase.from('album_likes')
-          .delete().eq('album_id', id).eq('session_id', sessionId)
-          .then(() => {});
-      }
       return isAdding ? [...prev, id] : prev.filter(fId => fId !== id);
     });
   }, []);
+
+  // Đồng bộ album_likes theo thay đổi favorites (chạy sau khi state commit)
+  const prevFavoritesRef = useRef<string[]>(favorites);
+  useEffect(() => {
+    const added = favorites.filter(f => !prevFavoritesRef.current.includes(f));
+    const removed = prevFavoritesRef.current.filter(f => !favorites.includes(f));
+    prevFavoritesRef.current = favorites;
+    if (added.length === 0 && removed.length === 0) return;
+    const sessionId = getLikeSessionId();
+    for (const id of added) {
+      supabase.from('album_likes')
+        .upsert({ album_id: id, session_id: sessionId }, { onConflict: 'album_id,session_id' })
+        .then(() => {});
+    }
+    for (const id of removed) {
+      supabase.from('album_likes')
+        .delete().eq('album_id', id).eq('session_id', sessionId)
+        .then(() => {});
+    }
+  }, [favorites]);
 
   const checkPhoneInWhitelist = useCallback((
     p: string | null | undefined,
@@ -99,13 +111,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [isSuperAdmin, userRole, user?.phone, checkPhoneInWhitelist]
   );
 
-  const loadUserRole = useCallback(async (currentUser: User) => {
+  // isStale(): trả true nếu request này đã lỗi thời (logout/user đổi giữa chừng)
+  // → kết quả query sẽ không được áp vào state.
+  const loadUserRole = useCallback(async (currentUser: User, isStale: () => boolean) => {
     try {
       const { data } = await supabase
         .from('user_roles')
         .select('role')
         .eq('id', currentUser.id)
         .maybeSingle<DbUserRoleRow>();
+
+      if (isStale()) return;
 
       if (data) {
         setUserRole(data.role);
@@ -124,10 +140,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } catch (err) {
+      if (isStale()) return;
       console.warn('Could not load user role:', err);
       setUserRole('client');
     }
-    setIsAuthReady(true);
+    if (!isStale()) setIsAuthReady(true);
   }, []);
 
   useEffect(() => {
@@ -154,24 +171,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Load role tách riêng — chạy SAU khi có user, ngoài callback auth → không deadlock
   useEffect(() => {
     if (!user) return;
-    loadUserRole(user);
+    let stale = false;
+    loadUserRole(user, () => stale);
+    return () => { stale = true; };
   }, [user?.id, loadUserRole]);
 
-  const setUserPhone = useCallback((phone: string, customerName?: string) => {
+  // Chỉ lưu định danh khách (localStorage + state). KHÔNG insert consultations
+  // ở đây — lead được tạo qua ConsultationContext.submitConsultation để đi đủ
+  // pipeline (Sheets + Lark/Telegram + chat session) và dedupe đúng cách.
+  const setUserPhone = useCallback((phone: string, _customerName?: string) => {
     localStorage.setItem('h2o_user_phone', phone);
     setUserPhoneState(phone);
-    // Server check trước khi insert — tránh tạo bản ghi trùng SĐT
-    supabase.from('consultations').select('id').eq('phone', phone).limit(1).maybeSingle()
-      .then(({ data: existing }) => {
-        if (existing) return; // SĐT đã tồn tại, bỏ qua
-        supabase.from('consultations').insert({
-          id: `consult-${Date.now()}`,
-          name: customerName || `Khách mới (${phone})`,
-          phone,
-          status: 'new',
-          message: 'Khách hàng vượt qua màn hình đăng ký xem ảnh (PhoneGate) và cung cấp thông tin để trải nghiệm.',
-        }).then(({ error }) => { if (error) console.warn('PhoneGate insert failed:', error.message); });
-      });
   }, []);
 
   const login = useCallback(async () => {
