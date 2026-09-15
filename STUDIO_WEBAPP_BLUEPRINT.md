@@ -537,23 +537,25 @@ Khách (LiveChatWidget + LiveChatBubble)  ←→  Supabase Realtime  ←→  Adm
 -- Chat sessions
 CREATE TABLE chat_sessions (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  consultation_id text REFERENCES consultations(id),
-  phone text NOT NULL,
+  consultation_id text,
+  phone text NOT NULL DEFAULT '',
   name text NOT NULL DEFAULT '',
   status text NOT NULL DEFAULT 'waiting',  -- 'waiting' | 'open' | 'closed'
   stage text NOT NULL DEFAULT 'new',       -- STAGE_OPTIONS values
   last_message text NOT NULL DEFAULT '',
   last_message_at timestamptz DEFAULT now(),
   unread_admin integer NOT NULL DEFAULT 0,
+  access_token text,                        -- UUID không đoán được, khách dùng để tự đọc session của mình
   created_at timestamptz DEFAULT now()
 );
 
 -- Chat messages
 CREATE TABLE chat_messages (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  session_id text NOT NULL REFERENCES chat_sessions(id),
+  session_id text NOT NULL,
   sender text NOT NULL,   -- 'customer' | 'admin'
-  content text NOT NULL,
+  content text NOT NULL DEFAULT '',
+  image_url text,
   created_at timestamptz DEFAULT now()
 );
 
@@ -570,6 +572,52 @@ CREATE TABLE sale_scripts (
   updated_at timestamptz DEFAULT now()
 );
 ```
+
+### RLS chat_* — anon KHÔNG SELECT trực tiếp, đọc qua RPC + polling
+
+Setup ban đầu hay để `USING (true)` cho SELECT vì tiện — nhưng vậy thì ai cũng
+`supabase.from('chat_sessions').select('*')` là dump được toàn bộ tên/SĐT/nội
+dung chat của mọi khách. Model đúng (xem `supabase_security_fix_v3.sql`):
+
+- **SELECT**: chỉ `is_staff_or_above()`. Admin panel vẫn nhận Realtime
+  (`postgres_changes` tôn trọng RLS, staff qua được).
+- **Khách (anon)** đọc session/tin nhắn của chính mình qua 2 RPC
+  `SECURITY DEFINER`, xác thực bằng `access_token` (UUID) lưu trong
+  `localStorage`, KHÔNG qua `.select()` trực tiếp:
+  - `get_chat_session(p_id, p_token)` — trả về row nếu `access_token` khớp
+  - `get_chat_messages(p_session_id, p_token, p_after)` — cùng cơ chế, có
+    `p_after` để chỉ lấy tin mới (dùng cho polling)
+  - Vì Realtime tôn trọng RLS nên khách không nhận `postgres_changes` nữa →
+    client-side phải polling RPC `get_chat_messages` mỗi ~5s (`POLL_MS`) khi
+    không phải staff.
+- **UPDATE**: policy `USING (true)` (khách cần tự set `status`/`last_message`)
+  nhưng **REVOKE UPDATE cột `access_token`** rồi chỉ `GRANT UPDATE` các cột
+  còn lại cho `anon, authenticated` — nếu không, ai biết `session id` (đoán
+  được qua network tab) có thể tự ghi đè `access_token` rồi đọc trộm tin nhắn
+  người khác (session hijack).
+- **unread_admin** tăng qua RPC `bump_chat_unread(p_session_id)` (atomic),
+  không phải client tự đọc-rồi-cộng — tránh race condition khi khách gõ
+  nhanh nhiều tin.
+- ⚠️ Khi thêm field mới cần đọc phía khách (VD: `stage` để bot biết đang ở
+  giai đoạn nào của phễu sale), PHẢI thêm vào RPC `get_chat_session`/
+  `get_chat_messages` — không được tự tiện gọi `.from('chat_sessions').select()`
+  ở component phía khách, RLS sẽ âm thầm trả rỗng (không lỗi, chỉ mất dữ liệu).
+
+### Lead dedupe — dùng RPC atomic, không check-then-insert phía client
+
+`check_phone_exists()`/`.select().maybeSingle()` rồi mới `.insert()` phía
+client bị race condition (2 tab gửi cùng lúc → 2 lead trùng) VÀ bị RLS chặn
+SELECT khiến check luôn trả `false`. Dùng `find_or_create_lead(p_phone,
+p_name, p_source, p_message)` — 1 RPC `SECURITY DEFINER` làm cả 2 bước
+nguyên tử, trả về `id` (mới hoặc đã tồn tại).
+
+### Upload ảnh — JWT staff bắt buộc
+
+`/api/r2-upload`, `/api/r2-delete` verify `Authorization: Bearer <supabase JWT>`
+qua `api/_auth.ts` (`verifyUser()` + `isStaff()`) trước khi proxy sang
+Cloudflare Worker — secret Worker không nằm trong client bundle. Client lấy
+token qua `getAccessToken()` (session hiện tại), báo lỗi "Chưa đăng nhập"
+nếu gọi khi chưa login — không upload ẩn danh được nữa.
 
 ### LiveChatWidget.tsx (customer side)
 
