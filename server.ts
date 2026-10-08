@@ -12,15 +12,11 @@ import embedHandler from "./api/embed";
 import vectorSynthesisHandler from "./api/vector-synthesis";
 import aiImageHandler from "./api/ai-image";
 import aiPromoHandler from "./api/ai-promo";
-import larkNotifyHandler from "./api/lark-notify";
-import telegramNotifyHandler from "./api/telegram-notify";
+import notifyHandler from "./api/notify";
 import r2UploadHandler from "./api/r2-upload";
 import r2DeleteHandler from "./api/r2-delete";
 import botHandler from "./api/bot";
-import cronDigestHandler from "./api/cron-digest";
-import cronFollowupHandler from "./api/cron-followup";
-import cronShootsHandler from "./api/cron-shoots";
-import cronStaleHandler from "./api/cron-stale";
+import cronHandler from "./api/cron";
 
 type VercelHandler = (req: any, res: any) => any;
 
@@ -51,15 +47,29 @@ async function startServer() {
   app.use("/api/vector-synthesis", wrap(vectorSynthesisHandler));
   app.use("/api/ai-image", wrap(aiImageHandler));
   app.use("/api/ai-promo", wrap(aiPromoHandler));
-  app.use("/api/lark-notify", wrap(larkNotifyHandler));
-  app.use("/api/telegram-notify", wrap(telegramNotifyHandler));
+  // Gộp notify + cron để vừa giới hạn 12 functions trên Vercel Hobby.
+  // Giữ cả path cũ (inject query param) cho tương thích.
+  const notifyAs = (channel: string) =>
+    (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+      (req as any).query = { ...(req as any).query, channel };
+      next();
+    };
+  const cronAs = (job: string) =>
+    (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+      (req as any).query = { ...(req as any).query, job };
+      next();
+    };
+  app.use("/api/notify", wrap(notifyHandler));
+  app.use("/api/lark-notify", notifyAs("lark"), wrap(notifyHandler));
+  app.use("/api/telegram-notify", notifyAs("telegram"), wrap(notifyHandler));
   app.use("/api/r2-upload", wrap(r2UploadHandler));
   app.use("/api/r2-delete", wrap(r2DeleteHandler));
   app.use("/api/bot", wrap(botHandler));
-  app.use("/api/cron-digest", wrap(cronDigestHandler));
-  app.use("/api/cron-followup", wrap(cronFollowupHandler));
-  app.use("/api/cron-shoots", wrap(cronShootsHandler));
-  app.use("/api/cron-stale", wrap(cronStaleHandler));
+  app.use("/api/cron", wrap(cronHandler));
+  app.use("/api/cron-digest", cronAs("digest"), wrap(cronHandler));
+  app.use("/api/cron-followup", cronAs("followup"), wrap(cronHandler));
+  app.use("/api/cron-shoots", cronAs("shoots"), wrap(cronHandler));
+  app.use("/api/cron-stale", cronAs("stale"), wrap(cronHandler));
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

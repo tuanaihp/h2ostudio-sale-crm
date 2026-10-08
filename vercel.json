@@ -1,10 +1,16 @@
 {
   "crons": [
-    { "path": "/api/cron-digest",  "schedule": "0 1 * * *"  },
-    { "path": "/api/cron-stale",   "schedule": "30 1 * * *" },
-    { "path": "/api/cron-shoots",  "schedule": "0 10 * * *" }
+    { "path": "/api/cron?job=digest",  "schedule": "0 1 * * *"  },
+    { "path": "/api/cron?job=stale",   "schedule": "30 1 * * *" },
+    { "path": "/api/cron?job=shoots",  "schedule": "0 10 * * *" }
   ],
   "rewrites": [
+    { "source": "/api/lark-notify",     "destination": "/api/notify?channel=lark" },
+    { "source": "/api/telegram-notify", "destination": "/api/notify?channel=telegram" },
+    { "source": "/api/cron-digest",     "destination": "/api/cron?job=digest" },
+    { "source": "/api/cron-stale",      "destination": "/api/cron?job=stale" },
+    { "source": "/api/cron-shoots",     "destination": "/api/cron?job=shoots" },
+    { "source": "/api/cron-followup",   "destination": "/api/cron?job=followup" },
     {
       "source": "/(.*)",
       "has": [
